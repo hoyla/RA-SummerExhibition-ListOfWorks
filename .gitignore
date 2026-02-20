@@ -1,0 +1,15 @@
+# Virtual environment
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime data
+uploads/
+
+# OS
+.DS_Store
+
+# Test artifacts
+.pytest_cache/
