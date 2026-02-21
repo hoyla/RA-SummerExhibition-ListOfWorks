@@ -12,4 +12,4 @@ uploads/
 .DS_Store
 
 # Test artifacts
-.pytest_cache/
+.pytest_cache/test.txt
