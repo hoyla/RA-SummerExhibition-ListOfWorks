@@ -54,15 +54,34 @@ Components with `enabled=False` are omitted entirely from the output.
 When a component's value is empty and `omit_sep_when_empty=True` (default),
 the separator after that component is also suppressed.
 
+### Line wrapping
+
+`max_line_chars` (integer or `null`) sets a soft wrap width for a component.
+When set, the value is broken across multiple soft-return-separated lines.
+
+`balance_lines` (boolean) redistributes the wrapped lines so they are as
+equal in length as possible, rather than filling each line to the limit.
+
+`next_component_position` controls where the _next_ component is placed
+relative to a wrapped field:
+
+| Value               | Meaning                                         |
+| ------------------- | ----------------------------------------------- |
+| `end_of_text`       | next component starts after all wrapped lines   |
+| `end_of_first_line` | next component continues on the same first line |
+
 ---
 
 ## Separator Types
 
-| Key             | Output                                                      |
-| --------------- | ----------------------------------------------------------- |
-| `tab`           | real tab character (`\t`)                                   |
-| `none`          | nothing                                                     |
-| `new-paragraph` | `\r<ParaStyle:entry_style>` (continues same InDesign story) |
+| Key           | Output                                              |
+| ------------- | --------------------------------------------------- |
+| `none`        | nothing                                             |
+| `space`       | space character                                     |
+| `tab`         | real tab character (`\t`)                           |
+| `right_tab`   | right-indent tab (uses InDesign tab stop)           |
+| `soft_return` | soft return / forced line break (`\n`)              |
+| `hard_return` | hard paragraph return (`\r<ParaStyle:entry_style>`) |
 
 ---
 

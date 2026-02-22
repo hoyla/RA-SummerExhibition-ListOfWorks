@@ -37,6 +37,9 @@
 - Section-level Tagged Text export
 - Artwork field support
 - ASCII-MAC encoding with Mac Roman escape fallback
+- Line wrapping with `max_line_chars` and `balance_lines`
+- `next_component_position` for layout after wrapped fields
+- Extended separator types (`soft_return`, `hard_return`, `right_tab`)
 
 ---
 
@@ -58,6 +61,27 @@
 - Docker + docker-compose deployment
 - PostgreSQL 16
 - `.env.example` for configuration
+
+---
+
+## Phase 7 – Export Templates ✅
+
+- Named export templates stored in the database (`Ruleset` model)
+- Template CRUD API (`GET/POST/PUT/DELETE /api/templates`)
+- Duplicate endpoint (clone any template, including built-ins)
+- Built-in seed templates shipped as JSON files in `backend/seed_templates/`
+- Seed upsert on startup: name and config updated when JSON file hash changes
+- Built-in templates are read-only (403 on edit/delete); duplicate to customise
+- Templates UI: list, create, edit, view (built-ins), duplicate, delete
+
+---
+
+## Phase 8 – Normalisation Config & Test Expansion ✅
+
+- Global normalisation config endpoint (`GET/PUT /api/config`)
+- Configurable honorific token list persisted to the database
+- Config UI page
+- Route integration tests using SQLite in-memory + StaticPool (114 tests total)
 
 ---
 

@@ -28,7 +28,7 @@ Excel Upload
 | Database   | PostgreSQL 16                     |
 | Frontend   | Vanilla JS SPA, served by FastAPI |
 | Deployment | Docker / docker-compose           |
-| Testing    | pytest (63 tests)                 |
+| Testing    | pytest (114 tests)                |
 
 ---
 
@@ -81,6 +81,20 @@ Recorded when a raw field cannot be parsed to its expected type.
 ### AuditLog
 
 Records all mutating API calls for traceability.
+
+### Ruleset
+
+Stores both export templates and global normalisation config in a single table,
+distinguished by `config_type` (`'template'` | `'normalisation'`).
+
+- `id` (UUID), `name`, `config` (JSONB), `config_hash`, `config_type`
+- `is_builtin` — `True` for seed templates shipped with the repository
+- `slug` — short identifier used for seed deduplication (e.g. `ra-default`)
+- `archived` — soft-delete flag
+- `created_at`
+
+Built-in templates are seeded from `backend/seed_templates/*.json` on startup
+and upserted (name + config updated) whenever the file's hash has changed.
 
 ---
 
@@ -138,9 +152,13 @@ Controls all export behaviour:
 Each component in the entry layout:
 
 - `field` — one of: `work_number`, `artist`, `title`, `edition`, `artwork`, `price`, `medium`
-- `separator_after` — `tab`, `none`, or `new-paragraph`
+- `separator_after` — `none`, `space`, `tab`, `right_tab`, `soft_return`, `hard_return`
 - `omit_sep_when_empty` — suppress separator when field is empty (default `True`)
 - `enabled` — `False` excludes the component entirely (artwork defaults to `False`)
+- `max_line_chars` — wrap long values onto continuation lines at this width (`null` = no wrap)
+- `balance_lines` — distribute wrapped lines evenly when `max_line_chars` is set
+- `next_component_position` — where the next component starts after a wrapped field:
+  `'end_of_text'` (after all wrapped lines) or `'end_of_first_line'` (on the same first line)
 
 ### JSON Export
 
@@ -154,19 +172,28 @@ Structured JSON output with sections → works hierarchy, also available.
 
 All routes under `/api/`. Protected by API key if `API_KEY` env var is set.
 
-| Method | Path                            | Description                          |
-| ------ | ------------------------------- | ------------------------------------ |
-| POST   | `/api/imports`                  | Upload Excel file                    |
-| GET    | `/api/imports`                  | List all imports                     |
-| DELETE | `/api/imports/{id}`             | Delete import and all data           |
-| GET    | `/api/imports/{id}/sections`    | List sections with works             |
-| PUT    | `/api/works/{id}/override`      | Set/update work override             |
-| DELETE | `/api/works/{id}/override`      | Remove override                      |
-| GET    | `/api/imports/{id}/export`      | Export full import as Tagged Text    |
-| GET    | `/api/imports/{id}/export-json` | Export full import as JSON           |
-| GET    | `/api/sections/{id}/export`     | Export single section as Tagged Text |
-| GET    | `/api/config`                   | Get current export config            |
-| POST   | `/api/config`                   | Save export config                   |
+| Method | Path                                           | Description                               |
+| ------ | ---------------------------------------------- | ----------------------------------------- |
+| POST   | `/api/imports`                                 | Upload Excel file                         |
+| GET    | `/api/imports`                                 | List all imports                          |
+| DELETE | `/api/imports/{id}`                            | Delete import and all data                |
+| GET    | `/api/imports/{id}/sections`                   | List sections with works                  |
+| GET    | `/api/imports/{id}/warnings`                   | Validation warnings for the import        |
+| GET    | `/api/imports/{id}/preview`                    | Lightweight preview of all works          |
+| PUT    | `/api/imports/{id}/works/{wid}/override`       | Set/update work override                  |
+| DELETE | `/api/imports/{id}/works/{wid}/override`       | Remove override                           |
+| PATCH  | `/api/imports/{id}/works/{wid}/exclude`        | Exclude or re-include a work              |
+| GET    | `/api/imports/{id}/export-tags`                | Export full import as Tagged Text         |
+| GET    | `/api/imports/{id}/export-json`                | Export full import as JSON                |
+| GET    | `/api/imports/{id}/sections/{sid}/export-tags` | Export single section as Tagged Text      |
+| GET    | `/api/config`                                  | Get global normalisation config           |
+| PUT    | `/api/config`                                  | Save global normalisation config          |
+| GET    | `/api/templates`                               | List non-archived export templates        |
+| GET    | `/api/templates/{id}`                          | Get full config of a template             |
+| POST   | `/api/templates`                               | Create a new export template              |
+| PUT    | `/api/templates/{id}`                          | Update a template (non-builtin only)      |
+| DELETE | `/api/templates/{id}`                          | Soft-delete a template (non-builtin only) |
+| POST   | `/api/templates/{id}/duplicate`                | Clone a template                          |
 
 ---
 
@@ -174,10 +201,14 @@ All routes under `/api/`. Protected by API key if `API_KEY` env var is set.
 
 `frontend/` — vanilla JS SPA served at `/ui`.
 
+- Import list with upload and delete
 - Section browser with collapsible sections
 - Works table (work number, artist, title, price, edition, artwork, medium, include flag)
 - Inline override editor per work
-- Settings panel: component order, include/exclude per component, separator config, character style names, number formatting
+- Validation warnings panel per import
+- Export buttons (full import and per-section) with template selector
+- Templates page: list, create, edit, duplicate, delete (built-in templates are read-only)
+- Config page: manage normalisation honorific tokens
 
 ---
 

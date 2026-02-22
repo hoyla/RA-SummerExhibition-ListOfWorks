@@ -8,9 +8,12 @@ A tool for ingesting Royal Academy exhibition catalogue Excel files, applying ed
 
 - Excel upload and structured import model
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
+- Configurable normalisation config (honorific token list)
 - Validation warnings for unparseable values
 - Editorial overrides per work (title, artist, price, edition, medium)
-- Configurable export component order, separators, and character styles
+- Export templates: named, versioned configs stored in the database
+- Built-in seed templates (upserted from `backend/seed_templates/*.json` on startup)
+- Configurable export component order, separators, balance-lines, and character styles
 - Per-component include/exclude toggle
 - InDesign Tagged Text export (ASCII-MAC encoding)
 - JSON export
@@ -62,7 +65,7 @@ uvicorn backend.app.main:app --reload
 1. Upload an Excel file via the UI (or `POST /api/imports`)
 2. Browse sections and works; check normalisation warnings
 3. Apply overrides where needed (title, artist, price, edition, medium)
-4. Configure export settings (component order, styles, include/exclude)
+4. Select or create an export template (Templates page)
 5. Export the full import or a single section as InDesign Tagged Text
 
 ---
@@ -76,12 +79,14 @@ backend/app/
   services/       # Business logic (import, normalisation, export, overrides)
   config.py       # App settings
   db.py           # Database session
-  main.py         # App entry point
+  main.py         # App entry point + seed template loader
+backend/seed_templates/
+                  # Built-in template JSON files (upserted on startup)
 frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (63 tests)
+tests/            # pytest suite (114 tests)
 docs/
   architecture_v1.md
   export_spec_v1.md
