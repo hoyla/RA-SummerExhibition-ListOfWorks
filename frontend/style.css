@@ -302,15 +302,15 @@ details.section-block[open] > .section-summary::before {
 }
 
 .works-table .col-no      { width: 50px; white-space: nowrap; }
-.works-table .col-include { width: 40px; text-align: center; padding: 0; }
+.works-table .col-include { width: 40px; text-align: center; vertical-align: middle; }
 .works-table .col-include abbr { text-decoration: none; cursor: help; }
 .works-table .col-actions { width: 70px; text-align: center; }
 
-.include-cb { width: 16px; height: 16px; cursor: pointer; accent-color: var(--ra-red); }
+.include-cb { width: 16px; height: 16px; cursor: pointer; vertical-align: middle; }
 .include-cb.excluded {
+  accent-color: #c0392b;
   outline: 2px solid #c0392b;
   outline-offset: 1px;
-  accent-color: #c0392b;
 }
 
 .work-row.row-excluded td { opacity: 0.45; }
