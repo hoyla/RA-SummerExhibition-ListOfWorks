@@ -1,10 +1,10 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-psycopg2-binary
-pydantic
-python-multipart
-openpyxl
-aiofiles
-python-dotenv
-httpx  # required by starlette TestClient for tests
+fastapi==0.129.0
+uvicorn[standard]==0.41.0
+sqlalchemy==2.0.46
+psycopg2-binary==2.9.11
+pydantic==2.12.5
+python-multipart==0.0.22
+openpyxl==3.1.5
+aiofiles==25.1.0
+python-dotenv==1.2.1
+httpx==0.28.1  # required by starlette TestClient for tests
