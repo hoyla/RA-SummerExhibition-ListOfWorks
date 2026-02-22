@@ -1,6 +1,62 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
+// Toast notifications
+// ---------------------------------------------------------------------------
+
+function _ensureToastContainer() {
+  let c = document.getElementById('toast-container');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = 'toast-container';
+    c.className = 'toast-container';
+    document.body.appendChild(c);
+  }
+  return c;
+}
+
+/**
+ * Show a toast notification.
+ * @param {string}  message
+ * @param {'error'|'success'|'info'} type
+ * @param {number}  duration  ms before auto-dismiss (0 = manual only)
+ */
+function showToast(message, type = 'info', duration = 4000) {
+  const container = _ensureToastContainer();
+  const icons = { error: '\u2718', success: '\u2713', info: '\u24d8' };
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || ''}</span>
+    <span class="toast-body">${esc(message)}</span>
+    <button class="toast-close" aria-label="Dismiss">&times;</button>`;
+  toast.querySelector('.toast-close').addEventListener('click', () => _dismissToast(toast));
+  container.appendChild(toast);
+  if (duration > 0) setTimeout(() => _dismissToast(toast), duration);
+}
+
+function _dismissToast(toast) {
+  if (toast._removing) return;
+  toast._removing = true;
+  toast.classList.add('toast-removing');
+  toast.addEventListener('animationend', () => toast.remove());
+}
+
+/** Set a button to loading state; returns a restore function */
+function btnLoading(btn, loadingText) {
+  if (!btn) return () => {};
+  const orig = btn.textContent;
+  const wasDisabled = btn.disabled;
+  btn.textContent = loadingText || orig;
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+  return () => {
+    btn.textContent = orig;
+    btn.classList.remove('btn-loading');
+    btn.disabled = wasDisabled;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Auth state
 // ---------------------------------------------------------------------------
 
@@ -257,10 +313,10 @@ async function renderTemplates() {
       ? '<span class="badge badge-builtin">built-in</span>'
       : '';
     const editBtn = `<a class="btn btn-sm" href="#/templates/${esc(t.id)}/edit">${t.is_builtin ? 'View' : 'Edit'}</a>`;
-    const dupBtn  = `<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}')">Duplicate</button>`;
+    const dupBtn  = `<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}',this)">Duplicate</button>`;
     const delBtn  = t.is_builtin
       ? ''
-      : `<button class="btn btn-sm btn-danger" onclick="deleteTemplate('${esc(t.id)}','${esc(t.name)}')">Delete</button>`;
+      : `<button class="btn btn-sm btn-danger" onclick="deleteTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`;
     return `<tr class="template-row">
       <td>${esc(t.name)} ${builtinBadge}</td>
       <td>${esc(created)}</td>
@@ -282,22 +338,29 @@ async function renderTemplates() {
     </section>`;
 }
 
-async function duplicateTemplate(id) {
+async function duplicateTemplate(id, btnEl) {
+  const restore = btnLoading(btnEl, 'Duplicating');
   try {
     const created = await api('POST', `/templates/${id}/duplicate`);
     location.hash = `#/templates/${created.id}/edit`;
   } catch (e) {
-    alert(`Could not duplicate: ${e.message}`);
+    showToast(`Could not duplicate: ${e.message}`, 'error');
+  } finally {
+    restore();
   }
 }
 
-async function deleteTemplate(id, name) {
+async function deleteTemplate(id, name, btnEl) {
   if (!confirm(`Delete template "${name}"? This cannot be undone.`)) return;
+  const restore = btnLoading(btnEl, 'Deleting');
   try {
     await api('DELETE', `/templates/${id}`);
+    showToast('Template deleted', 'success', 3000);
     renderTemplates();
   } catch (e) {
-    alert(`Could not delete: ${e.message}`);
+    showToast(`Could not delete: ${e.message}`, 'error');
+  } finally {
+    restore();
   }
 }
 
@@ -407,7 +470,7 @@ async function renderTemplateEdit(id) {
   const heading = isNew ? 'New Template' : esc(cfg.name ?? 'Edit Template');
   const builtinNote = isBuiltin
     ? `<div class="info-banner" style="margin-bottom:16px;padding:10px 14px;background:var(--bg-alt);border-radius:6px;font-size:13px;color:var(--muted)">
-        <strong>Built-in template</strong> &mdash; read-only. <button class="btn btn-sm" onclick="duplicateTemplate('${esc(id)}')">Duplicate to edit</button>
+        <strong>Built-in template</strong> &mdash; read-only. <button class="btn btn-sm" onclick="duplicateTemplate('${esc(id)}',this)">Duplicate to edit</button>
        </div>`
     : '';
   const saveBtn = isBuiltin
@@ -522,7 +585,7 @@ async function renderTemplateEdit(id) {
 async function saveTemplate(id) {
   const nameEl = document.getElementById('tmpl-name');
   const name = (nameEl?.value ?? '').trim();
-  if (!name) { alert('Please enter a template name.'); nameEl?.focus(); return; }
+  if (!name) { showToast('Please enter a template name.', 'error'); nameEl?.focus(); return; }
 
   const components = Array.from(
     document.querySelectorAll('#tmpl-components .component-row')
@@ -628,7 +691,7 @@ async function loadImportList() {
         <td class="num">${ovrCell}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="navigate('#/import/${esc(i.id)}')">View</button>
-          <button class="btn btn-sm btn-danger" onclick="handleDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}')">Delete</button>
+          <button class="btn btn-sm btn-danger" onclick="handleDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}', this)">Delete</button>
         </td>
       </tr>`;
     }).join('');
@@ -649,6 +712,8 @@ async function loadImportList() {
 
 async function handleUpload(file) {
   const statusEl = document.getElementById('upload-status');
+  const uploadBtn = document.querySelector('#upload-form .btn-primary');
+  const restore = btnLoading(uploadBtn, 'Uploading');
   statusEl.textContent = 'Uploading\u2026';
   statusEl.className = 'status-msg';
   try {
@@ -665,16 +730,22 @@ async function handleUpload(file) {
   } catch (err) {
     statusEl.textContent = `Upload failed: ${err.message}`;
     statusEl.className = 'status-msg error';
+  } finally {
+    restore();
   }
 }
 
-async function handleDelete(id, filename) {
+async function handleDelete(id, filename, btnEl) {
   if (!confirm(`Delete import \u201c${filename}\u201d? This cannot be undone.`)) return;
+  const restore = btnLoading(btnEl, 'Deleting');
   try {
     await api('DELETE', `/imports/${id}`);
+    showToast('Import deleted', 'success', 3000);
     await loadImportList();
   } catch (err) {
-    alert(`Delete failed: ${err.message}`);
+    showToast(`Delete failed: ${err.message}`, 'error');
+  } finally {
+    restore();
   }
 }
 
@@ -758,11 +829,11 @@ async function renderDetail(importId) {
       <div class="template-row">
         <label class="export-template-label">Template</label>
         <select id="tmpl-select-${esc(importId)}"${templates.length ? '' : ' disabled'}>${tmplOpts}</select>
-        <button class="btn btn-secondary" onclick="downloadExportWithTemplate('${esc(importId)}','tags','txt')">InDesign Tags (.txt)</button>
+        <button class="btn btn-secondary" onclick="downloadExportWithTemplate('${esc(importId)}','tags','txt',null,this)">InDesign Tags (.txt)</button>
       </div>
-      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','json','json')">JSON</button>
-      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','xml','xml')">XML</button>
-      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','csv','csv')">CSV</button>
+      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','json','json',null,null,this)">JSON</button>
+      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','xml','xml',null,null,this)">XML</button>
+      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','csv','csv',null,null,this)">CSV</button>
     </div>`;
 
   const heading = sections._error
@@ -887,7 +958,7 @@ function renderSections(importId, sections, cfg) {
         <span class="section-name">${esc(section.name)}</span>
         <span class="section-meta">${section.works.length} work${section.works.length !== 1 ? 's' : ''}</span>
         <button type="button" class="btn btn-xs btn-secondary section-export-btn"
-          onclick="event.preventDefault();downloadExportWithTemplate('${esc(importId)}','tags','txt','${esc(section.id)}')">
+          onclick="event.preventDefault();downloadExportWithTemplate('${esc(importId)}','tags','txt','${esc(section.id)}',this)">
           Export section
         </button>
       </summary>
@@ -989,7 +1060,7 @@ async function toggleExclude(importId, workId, currentlyIncluded) {
     btn.className = `btn btn-xs ${nowIncluded ? 'btn-warning' : 'btn-success'}`;
     btn.setAttribute('onclick', `toggleExclude('${importId}','${workId}',${nowIncluded})`);
   } catch (err) {
-    alert(`Toggle failed: ${err.message}`);
+    showToast(`Toggle failed: ${err.message}`, 'error');
   } finally {
     btn.disabled = false;
   }
@@ -1164,13 +1235,14 @@ async function deleteOverride(importId, workId) {
 // Export download
 // ---------------------------------------------------------------------------
 
-function downloadExportWithTemplate(importId, format, ext, sectionId = null) {
+function downloadExportWithTemplate(importId, format, ext, sectionId = null, btnEl = null) {
   const sel = document.getElementById(`tmpl-select-${importId}`);
   const tid = sel?.value || null;
-  downloadExport(importId, format, ext, sectionId, tid);
+  downloadExport(importId, format, ext, sectionId, tid, btnEl);
 }
 
-async function downloadExport(importId, format, ext, sectionId = null, templateId = null) {
+async function downloadExport(importId, format, ext, sectionId = null, templateId = null, btnEl = null) {
+  const restore = btnLoading(btnEl, 'Exporting');
   try {
     let path = sectionId
       ? `/imports/${importId}/sections/${sectionId}/export-${format}`
@@ -1196,7 +1268,10 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    showToast('Export downloaded', 'success', 2500);
   } catch (err) {
-    alert(`Export failed: ${err.message}`);
+    showToast(`Export failed: ${err.message}`, 'error');
+  } finally {
+    restore();
   }
 }
