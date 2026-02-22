@@ -77,6 +77,7 @@ class ExportConfig:
     section_separator: str = (
         "paragraph"  # paragraph | column_break | frame_break | page_break | none
     )
+    section_separator_style: str = ""
     # Entry layout
     leading_separator: str = "none"
     trailing_separator: str = "none"
@@ -369,18 +370,19 @@ def _raw_text_for_field(field: str, w: dict) -> str:
     return mapping[field]() if field in mapping else ""
 
 
-def _section_sep(name: str) -> str:
+def _section_sep(name: str, style: str = "") -> str:
     """Return the InDesign tagged-text string for a section separator."""
+    prefix = f"<ParaStyle:{style}>" if style else ""
     if name == "none":
         return ""
     if name == "column_break":
-        return "<cnxc:Column>\r"
+        return f"{prefix}<cnxc:Column>\r"
     if name == "frame_break":
-        return "<cnxc:Frame>\r"
+        return f"{prefix}<cnxc:Frame>\r"
     if name == "page_break":
-        return "<cnxc:Page>\r"
+        return f"{prefix}<cnxc:Page>\r"
     # Default: paragraph (blank line)
-    return "\r"
+    return f"{prefix}\r"
 
 
 def _sep(name: str, entry_style: str = "") -> str:
@@ -596,7 +598,7 @@ def render_import_as_tagged_text(
             lines.append("\r")
 
         # Section separator after each section
-        sep = _section_sep(config.section_separator)
+        sep = _section_sep(config.section_separator, config.section_separator_style)
         if sep:
             lines.append(sep)
 

@@ -719,6 +719,10 @@ async function renderTemplateEdit(id) {
           <label>Between sections</label>
           <select id="tmpl-section-sep"${isBuiltin ? ' disabled' : ''}>${_sectionSepOpts(cfg.section_separator ?? 'paragraph')}</select>
         </div>
+        <div class="form-row">
+          <label>Separator style</label>
+          <input id="tmpl-section-sep-style" value="${esc(cfg.section_separator_style ?? '')}"${isBuiltin ? ' disabled' : ''} placeholder="(none)">
+        </div>
       </div>
     </section>
 
@@ -779,6 +783,7 @@ async function saveTemplate(id) {
     section_style:       (document.getElementById('tmpl-section-style')?.value      ?? '').trim() || 'SectionTitle',
     entry_style:         (document.getElementById('tmpl-entry-style')?.value        ?? '').trim() || 'CatalogueEntry',
     section_separator:    document.getElementById('tmpl-section-sep')?.value        ?? 'paragraph',
+    section_separator_style: (document.getElementById('tmpl-section-sep-style')?.value ?? '').trim(),
     cat_no_style:        (document.getElementById('tmpl-cat-no-style')?.value       ?? '').trim(),
     artist_style:        (document.getElementById('tmpl-artist-style')?.value       ?? '').trim(),
     honorifics_style:    (document.getElementById('tmpl-honorifics-style')?.value   ?? '').trim(),

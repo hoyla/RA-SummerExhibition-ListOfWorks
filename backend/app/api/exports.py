@@ -119,6 +119,9 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
         section_separator=cfg.get(
             "section_separator", DEFAULT_CONFIG.section_separator
         ),
+        section_separator_style=cfg.get(
+            "section_separator_style", DEFAULT_CONFIG.section_separator_style
+        ),
         components=components,
     )
 

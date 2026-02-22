@@ -229,6 +229,7 @@ class TemplateBodyIn(BaseModel):
     thousands_separator: str = ","
     decimal_places: int = 0
     section_separator: str = "paragraph"
+    section_separator_style: str = ""
     leading_separator: str = "none"
     trailing_separator: str = "none"
     final_sep_from_last_component: bool = False
