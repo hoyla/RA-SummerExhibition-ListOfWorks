@@ -187,6 +187,8 @@ a:hover { text-decoration: underline; }
 .upload-form input[type="file"] {
   font-size: 13px;
   cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* ------------------------------------------------------------------ */

@@ -997,6 +997,7 @@ async function renderDetail(importId) {
     <h2 class="page-heading" id="detail-heading">Loading\u2026</h2>
     <section class="panel reimport-panel">
       <h3>Update Import</h3>
+      <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
       <form id="reimport-form" class="upload-form">
         <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
         <button type="submit" class="btn btn-primary">Re-import</button>
