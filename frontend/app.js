@@ -171,14 +171,23 @@ async function renderSettings() {
     edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
   };
   const defaultComponents = [
-    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true},{field:'artist',separator_after:'tab',omit_sep_when_empty:true},
-    {field:'title',separator_after:'tab',omit_sep_when_empty:true},{field:'edition',separator_after:'tab',omit_sep_when_empty:true},
-    {field:'price',separator_after:'none',omit_sep_when_empty:true},{field:'medium',separator_after:'none',omit_sep_when_empty:true},
+    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true},{field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true},
+    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true},{field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true},
+    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false},
+    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true},{field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true},
   ];
-  const componentRowsHTML = (cfg.components ?? defaultComponents).map(c => {
+  // Merge: if a saved config is missing a known component, append it with defaults
+  const savedComponents = cfg.components ?? defaultComponents;
+  const savedFields = new Set(savedComponents.map(c => c.field));
+  const mergedComponents = [
+    ...savedComponents,
+    ...defaultComponents.filter(c => !savedFields.has(c.field)),
+  ];
+  const componentRowsHTML = mergedComponents.map(c => {
     const label = COMP_LABELS[c.field] ?? c.field;
+    const enabled = c.enabled ?? true;
     return `
-    <div class="component-row" data-field="${esc(c.field)}">
+    <div class="component-row" data-field="${esc(c.field)}" style="opacity:${enabled ? 1 : 0.45}">
       <div class="component-handle">
         <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up">▲</button>
         <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down">▼</button>
@@ -186,6 +195,8 @@ async function renderSettings() {
       <span class="component-label">${esc(label)}</span>
       <select class="component-sep">${_sepOpts(c.separator_after)}</select>
       <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}> omit when empty</label>
+      <label class="inline-check"><input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
+        onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> include</label>
     </div>`;
   }).join('');
 
