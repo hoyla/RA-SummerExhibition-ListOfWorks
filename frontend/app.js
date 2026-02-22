@@ -273,7 +273,7 @@ async function renderSettings() {
         </div>
         <div class="form-row">
           <label>Edition brackets</label>
-          <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;font-size:13px;font-weight:normal">
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
             <input type="checkbox" id="cfg-edition-brackets"${cfg.edition_brackets !== false ? ' checked' : ''}>
             Wrap edition info in brackets
           </label>
@@ -363,7 +363,7 @@ async function renderSettings() {
       <h4 class="panel-subheading">HTML Preview Formatting</h4>
       <div class="settings-form" style="margin-bottom:14px">
         <div class="form-row" style="grid-column:1/-1">
-          <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;font-size:13px;font-weight:500">
+          <label class="inline-check" style="text-transform:none;font-weight:500">
             <input type="checkbox" id="cfg-display-mirror"${dispMirror ? ' checked' : ''}
                    onchange="document.getElementById('display-custom').style.display=this.checked?'none':'grid'">
             Mirror currency &amp; price formatting from export settings
