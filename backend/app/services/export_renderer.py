@@ -73,6 +73,10 @@ class ExportConfig:
     # Number formatting
     thousands_separator: str = ","
     decimal_places: int = 0
+    # Section separator (between gallery sections in tagged text output)
+    section_separator: str = (
+        "paragraph"  # paragraph | column_break | frame_break | page_break | none
+    )
     # Entry layout
     leading_separator: str = "none"
     trailing_separator: str = "none"
@@ -361,6 +365,20 @@ def _raw_text_for_field(field: str, w: dict) -> str:
     return mapping[field]() if field in mapping else ""
 
 
+def _section_sep(name: str) -> str:
+    """Return the InDesign tagged-text string for a section separator."""
+    if name == "none":
+        return ""
+    if name == "column_break":
+        return "\r<cNextXFrame:Column>\r"
+    if name == "frame_break":
+        return "\r<cNextXFrame:TextFrame>\r"
+    if name == "page_break":
+        return "\r<cNextXFrame:Page>\r"
+    # Default: paragraph (blank line)
+    return "\r"
+
+
 def _sep(name: str, entry_style: str = "") -> str:
     """Return the InDesign tagged-text string for a named separator."""
     if name == "none":
@@ -421,7 +439,11 @@ def render_import_as_tagged_text(
     sections = _collect_export_data(import_id, db, section_id=section_id)
     lines = ["<ASCII-MAC>\r"]
 
-    for section in sections:
+    for sec_idx, section in enumerate(sections):
+        # Insert section separator before every section except the first
+        if sec_idx > 0:
+            lines.append(_section_sep(config.section_separator))
+
         lines.append(f"<ParaStyle:{config.section_style}>{section['section_name']}")
         lines.append("\r")
 
@@ -572,8 +594,6 @@ def render_import_as_tagged_text(
 
             lines.append(entry)
             lines.append("\r")
-
-        lines.append("\r")
 
     return "".join(lines)
 

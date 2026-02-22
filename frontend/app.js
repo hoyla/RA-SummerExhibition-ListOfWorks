@@ -540,6 +540,14 @@ async function renderTemplateEdit(id) {
     ['hard_return',  'hard return'],
   ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
 
+  const _sectionSepOpts = (val) => [
+    ['paragraph',    'Paragraph return (blank line)'],
+    ['column_break', 'Column break'],
+    ['frame_break',  'Frame break'],
+    ['page_break',   'Page break'],
+    ['none',         'None (continuous)'],
+  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
+
   const sepOpts = (val) => [
     [',', ', &nbsp; 1,000'],
     ['.', '. &nbsp; 1.000'],
@@ -703,6 +711,17 @@ async function renderTemplateEdit(id) {
       </div>
     </section>
 
+    <h3 class="settings-group-heading">Section Separator</h3>
+    <section class="panel">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">What to insert between gallery sections in the export.</p>
+      <div class="settings-form">
+        <div class="form-row">
+          <label>Between sections</label>
+          <select id="tmpl-section-sep"${isBuiltin ? ' disabled' : ''}>${_sectionSepOpts(cfg.section_separator ?? 'paragraph')}</select>
+        </div>
+      </div>
+    </section>
+
     <h3 class="settings-group-heading">Entry Layout</h3>
     <section class="panel">
       <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Drag to reorder. Separator fires after each non-empty component. Right-align tab = <code>\y</code>, soft return = <code>\n</code>.</p>
@@ -759,6 +778,7 @@ async function saveTemplate(id) {
     edition_brackets:     document.getElementById('tmpl-edition-brackets')?.checked ?? true,
     section_style:       (document.getElementById('tmpl-section-style')?.value      ?? '').trim() || 'SectionTitle',
     entry_style:         (document.getElementById('tmpl-entry-style')?.value        ?? '').trim() || 'CatalogueEntry',
+    section_separator:    document.getElementById('tmpl-section-sep')?.value        ?? 'paragraph',
     cat_no_style:        (document.getElementById('tmpl-cat-no-style')?.value       ?? '').trim(),
     artist_style:        (document.getElementById('tmpl-artist-style')?.value       ?? '').trim(),
     honorifics_style:    (document.getElementById('tmpl-honorifics-style')?.value   ?? '').trim(),

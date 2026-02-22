@@ -192,3 +192,109 @@ def test_renderer_applies_override_values():
     assert "Overridden Artist" in output
     assert "Original Title" not in output
     assert "Original Artist" not in output
+
+
+# ---------------------------------------------------------------------------
+# Section separator
+# ---------------------------------------------------------------------------
+
+
+def _two_section_db():
+    """Create a fake DB with two sections, each with one work."""
+    sec1 = SimpleNamespace(
+        id="sec1",
+        import_id="imp1",
+        name="Gallery I",
+        position=1,
+    )
+    sec2 = SimpleNamespace(
+        id="sec2",
+        import_id="imp1",
+        name="Gallery II",
+        position=2,
+    )
+    work1 = SimpleNamespace(
+        id="w1",
+        raw_cat_no=1,
+        artist_name="Alice",
+        artist_honorifics=None,
+        title="Dawn",
+        price_numeric=100,
+        price_text="100",
+        edition_total=None,
+        edition_price_numeric=None,
+        artwork=None,
+        medium=None,
+        section_id="sec1",
+        position_in_section=1,
+        include_in_export=True,
+    )
+    work2 = SimpleNamespace(
+        id="w2",
+        raw_cat_no=2,
+        artist_name="Bob",
+        artist_honorifics=None,
+        title="Dusk",
+        price_numeric=200,
+        price_text="200",
+        edition_total=None,
+        edition_price_numeric=None,
+        artwork=None,
+        medium=None,
+        section_id="sec2",
+        position_in_section=1,
+        include_in_export=True,
+    )
+    return FakeSession([sec1, sec2], [work1, work2])
+
+
+def test_section_separator_paragraph():
+    """Default 'paragraph' separator inserts a blank line between sections."""
+    db = _two_section_db()
+    cfg = ExportConfig(section_separator="paragraph")
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    # Between last work of sec1 and section heading of sec2 there should be
+    # a paragraph return (\r) separating them
+    assert "Gallery I" in output
+    assert "Gallery II" in output
+    # No column/frame/page break markers
+    assert "<cNextXFrame:" not in output
+
+
+def test_section_separator_column_break():
+    db = _two_section_db()
+    cfg = ExportConfig(section_separator="column_break")
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    assert "<cNextXFrame:Column>" in output
+    assert "<cNextXFrame:TextFrame>" not in output
+
+
+def test_section_separator_frame_break():
+    db = _two_section_db()
+    cfg = ExportConfig(section_separator="frame_break")
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    assert "<cNextXFrame:TextFrame>" in output
+
+
+def test_section_separator_page_break():
+    db = _two_section_db()
+    cfg = ExportConfig(section_separator="page_break")
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    assert "<cNextXFrame:Page>" in output
+
+
+def test_section_separator_none():
+    """'none' should produce no extra separator between sections."""
+    db = _two_section_db()
+    cfg = ExportConfig(section_separator="none")
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    assert "<cNextXFrame:" not in output
+
+
+def test_section_separator_not_before_first():
+    """No section separator should appear before the first section."""
+    db = _two_section_db()
+    cfg = ExportConfig(section_separator="column_break")
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    # Column break should appear exactly once (before section 2 only)
+    assert output.count("<cNextXFrame:Column>") == 1

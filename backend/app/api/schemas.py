@@ -228,6 +228,7 @@ class TemplateBodyIn(BaseModel):
     artwork_style: str = "Artwork"
     thousands_separator: str = ","
     decimal_places: int = 0
+    section_separator: str = "paragraph"
     leading_separator: str = "none"
     trailing_separator: str = "none"
     final_sep_from_last_component: bool = False
