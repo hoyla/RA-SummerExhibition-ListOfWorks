@@ -325,12 +325,16 @@ def _balance_wrap_lines(text: str, max_chars: int) -> list:
     Wrap *text* at *max_chars* to get the target line count N, then
     binary-search for the narrowest column that still yields N lines.
     This prevents disproportionately short final lines.
+
+    The search floor is clamped to 80% of *max_chars* so the first line
+    never appears awkwardly short relative to the column width.
     """
     lines = _wrap_lines(text, max_chars)
     n = len(lines)
     if n <= 1:
         return lines
-    lo = max(1, -(-len(text) // n))  # ceil(len/n)
+    floor = max(1, -(-len(text) // n))  # ceil(len/n)
+    lo = max(floor, int(max_chars * 0.8))
     hi = max_chars
     while lo < hi:
         mid = (lo + hi) // 2
