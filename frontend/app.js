@@ -363,8 +363,9 @@ async function renderSettings() {
           <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;font-size:13px;font-weight:500">
             <input type="checkbox" id="cfg-display-mirror"${dispMirror ? ' checked' : ''}
                    onchange="document.getElementById('display-custom').style.display=this.checked?'none':'grid'">
-            Mirror export settings
+            Mirror currency &amp; price formatting from export settings
           </label>
+          <p class="form-hint" style="margin:4px 0 0;grid-column:1/-1">When checked, the currency symbol, thousands separator and decimal places below are taken from the export settings above. Component order, inclusion, separators and character styles are never reflected in the preview.</p>
         </div>
       </div>
       <div id="display-custom" class="settings-form" style="display:${dispMirror ? 'none' : 'grid'}">

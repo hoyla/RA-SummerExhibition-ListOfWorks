@@ -553,9 +553,9 @@ details.section-block[open] > .section-summary::before {
   user-select: none;
 }
 .component-toggle:has(input:checked) {
-  color: var(--ra-red, #c41230);
-  border-color: var(--ra-red, #c41230);
-  background: #fff0f3;
+  color: #1a7a3a;
+  border-color: #1a7a3a;
+  background: #f0faf3;
 }
 
 .component-row .component-sep {
