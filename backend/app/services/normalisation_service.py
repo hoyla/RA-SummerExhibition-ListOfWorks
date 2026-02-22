@@ -156,6 +156,7 @@ def collect_work_warnings(work) -> List[Tuple[str, str]]:
       unrecognised_price     – raw price present but could not be parsed
       edition_anomaly        – raw edition present but could not be parsed
       zero_edition_suppressed – edition was explicitly of 0 (suppressed)
+      non_ascii_characters    – normalised fields contain chars outside ASCII-128
     """
     warnings: List[Tuple[str, str]] = []
 
@@ -204,5 +205,29 @@ def collect_work_warnings(work) -> List[Tuple[str, str]]:
                         f"Edition field could not be parsed: {raw_ed!r}",
                     )
                 )
+
+    # Non-ASCII characters – will be unicode-escaped in the InDesign export
+    _non_ascii_fields = {
+        "title": getattr(work, "title", None),
+        "artist": getattr(work, "artist_name", None),
+        "honorifics": getattr(work, "artist_honorifics", None),
+        "medium": getattr(work, "medium", None),
+    }
+    non_ascii_hits = []
+    for field_name, value in _non_ascii_fields.items():
+        if not value:
+            continue
+        chars = sorted({ch for ch in value if ord(ch) > 127}, key=ord)
+        if chars:
+            samples = ", ".join(f"{ch!r} (U+{ord(ch):04X})" for ch in chars[:5])
+            non_ascii_hits.append(f"{field_name}: {samples}")
+    if non_ascii_hits:
+        warnings.append(
+            (
+                "non_ascii_characters",
+                "Non-ASCII characters will be unicode-escaped in export — "
+                + "; ".join(non_ascii_hits),
+            )
+        )
 
     return warnings

@@ -1,6 +1,8 @@
 import pytest
+from types import SimpleNamespace
 
 from backend.app.services.normalisation_service import (
+    collect_work_warnings,
     normalise_artist,
     parse_price,
     parse_edition,
@@ -104,3 +106,45 @@ def test_edition_incomplete_price():
     total, price = parse_edition("Edition of 2 at ")
     assert total == 2
     assert price is None
+
+
+# -----------------------------
+# Non-ASCII Warnings
+# -----------------------------
+
+
+def _work(**kwargs):
+    """Minimal work stub for collect_work_warnings."""
+    defaults = dict(
+        title=None,
+        artist_name=None,
+        artist_honorifics=None,
+        medium=None,
+        price_numeric=None,
+        price_text="*",
+        raw_price=None,
+        raw_edition=None,
+        edition_total=None,
+    )
+    defaults.update(kwargs)
+    return SimpleNamespace(**defaults)
+
+
+def test_non_ascii_warning_raised():
+    w = _work(title="Caf\u00e9 au lait", artist_name="Smith")
+    types = [t for t, _ in collect_work_warnings(w)]
+    assert "non_ascii_characters" in types
+
+
+def test_non_ascii_warning_message_names_field_and_codepoint():
+    w = _work(title="Na\u00efve", artist_name="Jones")
+    msgs = {t: m for t, m in collect_work_warnings(w)}
+    msg = msgs.get("non_ascii_characters", "")
+    assert "title" in msg
+    assert "U+00EF" in msg or "\u00ef" in repr("\u00ef")
+
+
+def test_non_ascii_warning_absent_for_ascii_only():
+    w = _work(title="Plain title", artist_name="Jane Doe", medium="oil on canvas")
+    types = [t for t, _ in collect_work_warnings(w)]
+    assert "non_ascii_characters" not in types
