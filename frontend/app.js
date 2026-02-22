@@ -1001,6 +1001,7 @@ async function renderDetail(importId) {
         <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
         <button type="submit" class="btn btn-primary">Re-import</button>
       </form>
+      <p id="reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
       <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
     </section>
     <section class="panel">
@@ -1023,6 +1024,35 @@ async function renderDetail(importId) {
     e.preventDefault();
     const file = document.getElementById('reimport-file').files[0];
     if (file) await handleReimport(importId, file);
+  });
+
+  // Fetch import metadata for filename mismatch detection + heading
+  let originalFilename = null;
+  try {
+    const allImports = await api('GET', '/imports');
+    const thisImport = allImports.find(i => i.id === importId);
+    if (thisImport) originalFilename = thisImport.filename;
+  } catch (_) { /* non-critical */ }
+
+  // Show filename in heading
+  document.getElementById('detail-heading').textContent =
+    originalFilename
+      ? `Import \u2013 ${originalFilename}`
+      : `Import \u2013 ${importId.slice(0, 8)}\u2026`;
+
+  // Warn on filename mismatch
+  const fileInput = document.getElementById('reimport-file');
+  const warnEl = document.getElementById('reimport-warn');
+  fileInput.addEventListener('change', () => {
+    const selected = fileInput.files[0];
+    if (!selected || !originalFilename) { warnEl.style.display = 'none'; return; }
+    if (selected.name !== originalFilename) {
+      warnEl.textContent = `\u26a0 Selected file "${selected.name}" differs from the original "${originalFilename}". This will replace the current data.`;
+      warnEl.className = 'status-msg warning';
+      warnEl.style.display = '';
+    } else {
+      warnEl.style.display = 'none';
+    }
   });
 
   const cfg = _getDisplayCfg();
@@ -1052,11 +1082,6 @@ async function renderDetail(importId) {
       <button class="btn btn-secondary btn-diff" onclick="showExportDiff('${esc(importId)}',this)">Show changes since last export</button>
     </div>
     <div id="diff-panel-${esc(importId)}"></div>`;
-
-  const heading = sections._error
-    ? importId
-    : `Import \u2013 ${importId.slice(0, 8)}\u2026`;
-  document.getElementById('detail-heading').textContent = heading;
 
   renderWarningsPanel(warnings);
 

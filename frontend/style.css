@@ -325,7 +325,7 @@ details.section-block[open] > .section-summary::before {
 .section-export-btn { margin-left: auto; }
 
 .section-name {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--ra-red);
   border-left: 3px solid var(--ra-red);
@@ -592,6 +592,7 @@ details.section-block[open] > .section-summary::before {
 .status-msg        { font-size: 12px; color: var(--muted); }
 .status-msg.success { color: var(--success); }
 .status-msg.error   { color: var(--danger); }
+.status-msg.warning { color: #b8860b; }
 
 .import-id {
   font-family: monospace;
