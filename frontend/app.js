@@ -1085,9 +1085,11 @@ async function renderDetail(importId) {
     api('GET', `/imports/${importId}/audit-log`).catch(() => []),
   ]);
 
-  // Populate template picker
+  // Populate template picker — restore last-used template from localStorage
+  const _lastTmplKey = 'catalogue_last_template';
+  const _lastTmplId = localStorage.getItem(_lastTmplKey) || '';
   const tmplOpts = templates.length
-    ? templates.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')
+    ? templates.map(t => `<option value="${esc(t.id)}"${t.id === _lastTmplId ? ' selected' : ''}>${esc(t.name)}</option>`).join('')
     : '<option value="" disabled>No templates \u2014 create one in Templates</option>';
   const panelEl = document.getElementById(`export-panel-${importId}`);
   if (panelEl) panelEl.innerHTML = `
@@ -1103,6 +1105,10 @@ async function renderDetail(importId) {
       <button class="btn btn-secondary btn-diff" onclick="showExportDiff('${esc(importId)}',this)">Show changes since last export</button>
     </div>
     <div id="diff-panel-${esc(importId)}"></div>`;
+
+  // Persist template choice on change
+  const _tmplSel = document.getElementById(`tmpl-select-${importId}`);
+  if (_tmplSel) _tmplSel.addEventListener('change', () => localStorage.setItem(_lastTmplKey, _tmplSel.value));
 
   renderWarningsPanel(warnings);
 
@@ -1643,6 +1649,8 @@ function downloadExportWithTemplate(importId, format, ext, sectionId = null, btn
   const sel = document.getElementById(`tmpl-select-${importId}`);
   const tid = sel?.value || null;
   const tname = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : null;
+  // Remember the last-used template
+  if (tid) localStorage.setItem('catalogue_last_template', tid);
   downloadExport(importId, format, ext, sectionId, tid, btnEl, sectionName, tname);
 }
 
