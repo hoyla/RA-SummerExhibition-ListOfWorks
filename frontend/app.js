@@ -242,7 +242,7 @@ function _auditLogTable(logs) {
   }).join('');
 
   return `<table class="data-table audit-table">
-    <thead><tr><th class="col-ts">Time</th><th>Action</th><th>Work</th><th>Change</th></tr></thead>
+    <thead><tr><th class="col-ts">Time</th><th>Action</th><th>Subject</th><th>Change</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -1010,6 +1010,10 @@ async function renderDetail(importId) {
     <section class="panel" id="warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
     <section class="panel">
       <h3>Works</h3>
+      <div class="works-filter-bar">
+        <input type="text" id="works-filter" class="works-filter-input" placeholder="Filter by cat no, artist, or title\u2026" autocomplete="off">
+        <span id="works-filter-count" class="works-filter-count"></span>
+      </div>
       <div id="sections-container"><p class="loading">Loading\u2026</p></div>
     </section>
     <section class="panel" id="audit-panel"><p class="loading">Loading audit log\u2026</p></section>`;
@@ -1155,6 +1159,40 @@ function scrollToWork(workId) {
   setTimeout(() => row.classList.remove('row-highlight'), 2000);
 }
 
+function _applyWorksFilter(query, countEl, totalWorks) {
+  const q = query.trim().toLowerCase();
+  const rows = document.querySelectorAll('.work-row');
+  let visible = 0;
+  rows.forEach(row => {
+    if (!q) {
+      row.style.display = '';
+      visible++;
+      return;
+    }
+    // Match against cat no (col 0), artist (col 1), title (col 2)
+    const cells = row.cells;
+    const text = [
+      cells[0]?.textContent ?? '',
+      cells[1]?.textContent ?? '',
+      cells[2]?.textContent ?? '',
+    ].join(' ').toLowerCase();
+    const match = text.includes(q);
+    row.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  // Also hide the override form row if its parent work row is hidden
+  document.querySelectorAll('.override-form-row').forEach(fr => {
+    const prevRow = fr.previousElementSibling;
+    if (prevRow && prevRow.style.display === 'none') fr.style.display = 'none';
+    else fr.style.display = '';
+  });
+  if (q) {
+    countEl.textContent = `${visible} of ${totalWorks} works`;
+  } else {
+    countEl.textContent = '';
+  }
+}
+
 function renderSections(importId, sections, cfg) {
   const container = document.getElementById('sections-container');
   if (!sections.length) {
@@ -1163,8 +1201,18 @@ function renderSections(importId, sections, cfg) {
   }
   // Populate work cache so the override form can show normalised values
   _workCache = {};
+  let totalWorks = 0;
   for (const section of sections) {
     for (const w of section.works) { _workCache[w.id] = w; }
+    totalWorks += section.works.length;
+  }
+  // Wire up filter input
+  const filterInput = document.getElementById('works-filter');
+  const filterCount = document.getElementById('works-filter-count');
+  if (filterInput) {
+    filterInput.value = '';
+    filterCount.textContent = '';
+    filterInput.addEventListener('input', () => _applyWorksFilter(filterInput.value, filterCount, totalWorks));
   }
   container.innerHTML = sections.map(section => `
     <details class="section-block" open>
