@@ -1,0 +1,86 @@
+{
+  "_name": "List of Works 2026",
+  "components": [
+    {
+      "field": "work_number",
+      "enabled": true,
+      "balance_lines": false,
+      "max_line_chars": null,
+      "separator_after": "tab",
+      "omit_sep_when_empty": false,
+      "next_component_position": "end_of_text"
+    },
+    {
+      "field": "title",
+      "enabled": true,
+      "balance_lines": true,
+      "max_line_chars": 28,
+      "separator_after": "tab",
+      "omit_sep_when_empty": false,
+      "next_component_position": "end_of_first_line"
+    },
+    {
+      "field": "price",
+      "enabled": true,
+      "balance_lines": false,
+      "max_line_chars": null,
+      "separator_after": "soft_return",
+      "omit_sep_when_empty": false,
+      "next_component_position": "end_of_text"
+    },
+    {
+      "field": "medium",
+      "enabled": true,
+      "balance_lines": true,
+      "max_line_chars": 45,
+      "separator_after": "soft_return",
+      "omit_sep_when_empty": false,
+      "next_component_position": "end_of_text"
+    },
+    {
+      "field": "artist",
+      "enabled": true,
+      "balance_lines": false,
+      "max_line_chars": null,
+      "separator_after": "soft_return",
+      "omit_sep_when_empty": false,
+      "next_component_position": "end_of_text"
+    },
+    {
+      "field": "edition",
+      "enabled": true,
+      "balance_lines": false,
+      "max_line_chars": null,
+      "separator_after": "none",
+      "omit_sep_when_empty": true,
+      "next_component_position": "end_of_text"
+    },
+    {
+      "field": "artwork",
+      "enabled": false,
+      "balance_lines": false,
+      "max_line_chars": null,
+      "separator_after": "tab",
+      "omit_sep_when_empty": true,
+      "next_component_position": "end_of_text"
+    }
+  ],
+  "entry_style": "Title No Nest",
+  "price_style": "Work Price",
+  "title_style": "Work Number/Name",
+  "artist_style": "Artist",
+  "cat_no_style": "Work Number/Name",
+  "medium_style": "Work Medium",
+  "artwork_style": "Artwork",
+  "section_style": "Gallery 2 deck small",
+  "decimal_places": 0,
+  "edition_prefix": "edition of",
+  "currency_symbol": "£",
+  "edition_brackets": true,
+  "honorifics_style": "Artist honorifics",
+  "leading_separator": "tab",
+  "trailing_separator": "none",
+  "thousands_separator": ",",
+  "honorifics_lowercase": true,
+  "final_sep_from_last_component": true
+}
