@@ -479,11 +479,9 @@ def render_import_as_tagged_text(
 
                 val = comp_values.get(comp.field, "")
 
-                # -- Wrapped / "end of first line" mode --
-                should_wrap = (
-                    comp.max_line_chars
-                    and comp.next_component_position == "end_of_first_line"
-                )
+                # -- Wrapped mode (max_line_chars set) --
+                should_wrap = bool(comp.max_line_chars)
+                end_of_first_line = comp.next_component_position == "end_of_first_line"
                 if should_wrap:
                     raw = _raw_text_for_field(comp.field, w)
                     _wrap_fn = (
@@ -498,14 +496,14 @@ def render_import_as_tagged_text(
                     )
 
                     if len(wrapped) <= 1:
-                        # Title fits on one line — normal behaviour
+                        # Fits on one line — normal behaviour
                         if val:
                             entry += val
                             entry += _sep(eff_sep, config.entry_style)
                         elif not comp.omit_sep_when_empty:
                             entry += _sep(eff_sep, config.entry_style)
-                    else:
-                        # Multi-line: find the next enabled component (NC)
+                    elif end_of_first_line:
+                        # Multi-line + end_of_first_line: interleave next component
                         nc = (
                             enabled_comps[idx + 1]
                             if idx + 1 < len(enabled_comps)
@@ -535,6 +533,14 @@ def render_import_as_tagged_text(
                                 entry += _sep(nc.separator_after, config.entry_style)
                             elif not nc.omit_sep_when_empty:
                                 entry += _sep(nc.separator_after, config.entry_style)
+                    else:
+                        # Multi-line, normal position: join with soft returns
+                        full = "\n".join(wrapped)
+                        if style:
+                            entry += f"<CharStyle:{style}>{full}<CharStyle:>"
+                        else:
+                            entry += full
+                        entry += _sep(eff_sep, config.entry_style)
 
                 # -- Normal mode --
                 else:

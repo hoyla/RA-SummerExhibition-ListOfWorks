@@ -407,3 +407,51 @@ def test_balance_wrap_reduces_last_line_disparity():
         balanced_last = len(balanced[-1].rstrip())
         # Balanced last line should be at least as long as greedy last line
         assert balanced_last >= greedy_last
+
+
+# ---------------------------------------------------------------------------
+# Plain wrap (max_line_chars set, next_component_position = "end_of_text")
+# ---------------------------------------------------------------------------
+
+
+def test_plain_wrap_inserts_soft_returns():
+    """max_line_chars with end_of_text position should wrap with soft returns."""
+    long_medium = "carborundum, drypoint, mezzotint and sandpaper on aluminium"
+    work = _make_work(medium=long_medium)
+    cfg = _config(
+        components=[
+            ComponentConfig(
+                field="medium",
+                separator_after="hard_return",
+                max_line_chars=45,
+                next_component_position="end_of_text",
+            ),
+        ]
+    )
+    db = FakeSession([_section()], [work])
+    out = render_import_as_tagged_text("imp1", db, cfg)
+    # The soft-return (0x000A) must appear inside the medium char style block
+    assert "<0x000A>" in out or "\n" in out.split("carborundum")[1].split("<0x000D>")[0]
+
+
+def test_plain_wrap_does_not_interleave_next_component():
+    """In plain wrap mode the next component should NOT be pulled into the first line."""
+    long_medium = "carborundum, drypoint, mezzotint and sandpaper on aluminium"
+    work = _make_work(medium=long_medium, price_numeric=500)
+    cfg = _config(
+        components=[
+            ComponentConfig(
+                field="medium",
+                separator_after="hard_return",
+                max_line_chars=45,
+                next_component_position="end_of_text",
+            ),
+            ComponentConfig(field="price", separator_after="hard_return"),
+        ]
+    )
+    db = FakeSession([_section()], [work])
+    out = render_import_as_tagged_text("imp1", db, cfg)
+    # Price should appear AFTER the medium block, not interleaved on the first line
+    medium_pos = out.find("carborundum")
+    price_pos = out.find("500")
+    assert price_pos > medium_pos
