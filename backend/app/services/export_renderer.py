@@ -449,10 +449,10 @@ def render_import_as_tagged_text(
                 )
                 if should_wrap:
                     raw = _raw_text_for_field(comp.field, w)
-                    lines = _wrap_lines(raw, comp.max_line_chars) if raw else []
+                    wrapped = _wrap_lines(raw, comp.max_line_chars) if raw else []
                     style = _field_char_style(config, comp.field)
 
-                    if len(lines) <= 1:
+                    if len(wrapped) <= 1:
                         # Title fits on one line — normal behaviour
                         if val:
                             entry += val
@@ -473,12 +473,12 @@ def render_import_as_tagged_text(
                             nc_val = ""
 
                         # First line of TC, then sep-after-TC, then NC
-                        entry += _cs(style, lines[0])
+                        entry += _cs(style, wrapped[0])
                         entry += _sep(comp.separator_after, config.entry_style)
                         entry += nc_val  # NC inserted inline (empty string if no NC)
 
                         # Remaining lines of TC, all in one reopened char style block
-                        rest = "\n".join(lines[1:])
+                        rest = "\n".join(wrapped[1:])
                         if style:
                             entry += f"<CharStyle:{style}>\n{rest}<CharStyle:>"
                         else:

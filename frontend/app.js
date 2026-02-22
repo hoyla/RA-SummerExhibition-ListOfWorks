@@ -199,10 +199,13 @@ async function renderSettings() {
           <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up">▲</button>
           <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down">▼</button>
         </div>
-        <label class="inline-check component-label"><input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
-          onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> ${esc(label)}</label>
+        <span class="component-label">${esc(label)}</span>
         <select class="component-sep">${_sepOpts(c.separator_after)}</select>
         <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}> omit when empty</label>
+        <label class="component-toggle" title="Include this component in the export">
+          <input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
+            onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> include
+        </label>
       </div>
       <div class="component-wrap-opts">
         <label>max chars/line <input type="number" class="component-max-chars" min="1" style="width:4.5em"

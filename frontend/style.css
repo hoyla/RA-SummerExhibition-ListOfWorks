@@ -537,6 +537,27 @@ details.section-block[open] > .section-summary::before {
   min-width: 90px;
 }
 
+.component-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.component-toggle:has(input:checked) {
+  color: var(--ra-red, #c41230);
+  border-color: var(--ra-red, #c41230);
+  background: #fff0f3;
+}
+
 .component-row .component-sep {
   font-size: 12px;
   font-family: var(--font);
