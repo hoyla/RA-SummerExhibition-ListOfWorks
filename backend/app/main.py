@@ -105,14 +105,19 @@ def _seed_builtin_templates() -> None:
     try:
         for f in sorted(_seed_dir.glob("*.json")):
             slug = f.stem
-            if db.query(_Ruleset).filter(_Ruleset.slug == slug).first():
-                continue
             with open(f, encoding="utf-8") as fp:
                 seed = json.load(fp)
             name = seed.pop("_name", slug)
             cfg_hash = hashlib.sha256(
                 json.dumps(seed, sort_keys=True).encode()
             ).hexdigest()
+            existing = db.query(_Ruleset).filter(_Ruleset.slug == slug).first()
+            if existing:
+                if existing.config_hash != cfg_hash:
+                    existing.name = name
+                    existing.config = seed
+                    existing.config_hash = cfg_hash
+                continue
             db.add(
                 _Ruleset(
                     name=name,
