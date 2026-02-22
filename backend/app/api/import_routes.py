@@ -546,6 +546,10 @@ def get_config(db: Session = Depends(get_db)):
         "trailing_separator": cfg.get(
             "trailing_separator", DEFAULT_CONFIG.trailing_separator
         ),
+        "final_sep_from_last_component": cfg.get(
+            "final_sep_from_last_component",
+            DEFAULT_CONFIG.final_sep_from_last_component,
+        ),
         "components": [
             (
                 {
@@ -623,6 +627,7 @@ class ConfigIn(BaseModel):
     decimal_places: int = 0
     leading_separator: str = "none"
     trailing_separator: str = "none"
+    final_sep_from_last_component: bool = False
     components: list[ComponentConfigIn] = [
         ComponentConfigIn(field="work_number", separator_after="tab"),
         ComponentConfigIn(field="artist", separator_after="tab"),
@@ -726,6 +731,10 @@ def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
             trailing_separator=cfg.get(
                 "trailing_separator", DEFAULT_CONFIG.trailing_separator
             ),
+            final_sep_from_last_component=cfg.get(
+                "final_sep_from_last_component",
+                DEFAULT_CONFIG.final_sep_from_last_component,
+            ),
             components=components,
         )
     output = render_import_as_tagged_text(import_id, db, config)
@@ -814,6 +823,10 @@ def export_section_indesign_tags(
             ),
             trailing_separator=cfg.get(
                 "trailing_separator", DEFAULT_CONFIG.trailing_separator
+            ),
+            final_sep_from_last_component=cfg.get(
+                "final_sep_from_last_component",
+                DEFAULT_CONFIG.final_sep_from_last_component,
             ),
             components=components,
         )

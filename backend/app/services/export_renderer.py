@@ -75,6 +75,7 @@ class ExportConfig:
     # Entry layout
     leading_separator: str = "none"
     trailing_separator: str = "none"
+    final_sep_from_last_component: bool = False
     components: List[ComponentConfig] = field(
         default_factory=lambda: [
             ComponentConfig(
@@ -436,6 +437,19 @@ def render_import_as_tagged_text(
             enabled_comps = [c for c in config.components if c.enabled]
             skip_fields = set()
 
+            # Pre-compute separator override: when the last component is omitted,
+            # whichever component actually emits last inherits its separator.
+            actual_last_field = None
+            final_sep_override = None
+            if config.final_sep_from_last_component and len(enabled_comps) > 1:
+                last_sep = enabled_comps[-1].separator_after
+                for _c in reversed(enabled_comps):
+                    if comp_values.get(_c.field, "") or not _c.omit_sep_when_empty:
+                        if _c.field != enabled_comps[-1].field:
+                            actual_last_field = _c.field
+                            final_sep_override = last_sep
+                        break
+
             for idx, comp in enumerate(enabled_comps):
                 if comp.field in skip_fields:
                     continue
@@ -451,14 +465,19 @@ def render_import_as_tagged_text(
                     raw = _raw_text_for_field(comp.field, w)
                     wrapped = _wrap_lines(raw, comp.max_line_chars) if raw else []
                     style = _field_char_style(config, comp.field)
+                    eff_sep = (
+                        final_sep_override
+                        if comp.field == actual_last_field
+                        else comp.separator_after
+                    )
 
                     if len(wrapped) <= 1:
                         # Title fits on one line — normal behaviour
                         if val:
                             entry += val
-                            entry += _sep(comp.separator_after, config.entry_style)
+                            entry += _sep(eff_sep, config.entry_style)
                         elif not comp.omit_sep_when_empty:
-                            entry += _sep(comp.separator_after, config.entry_style)
+                            entry += _sep(eff_sep, config.entry_style)
                     else:
                         # Multi-line: find the next enabled component (NC)
                         nc = (
@@ -493,11 +512,16 @@ def render_import_as_tagged_text(
 
                 # -- Normal mode --
                 else:
+                    eff_sep = (
+                        final_sep_override
+                        if comp.field == actual_last_field
+                        else comp.separator_after
+                    )
                     if val:
                         entry += val
-                        entry += _sep(comp.separator_after, config.entry_style)
+                        entry += _sep(eff_sep, config.entry_style)
                     elif not comp.omit_sep_when_empty:
-                        entry += _sep(comp.separator_after, config.entry_style)
+                        entry += _sep(eff_sep, config.entry_style)
 
             entry += _sep(config.trailing_separator, config.entry_style)
 

@@ -345,6 +345,13 @@ async function renderSettings() {
         <select id="cfg-trailing-sep">${_sepOpts(cfg.trailing_separator ?? 'none')}</select>
         <span class="form-hint">Inserted after the last component</span>
       </div>
+      <div class="form-row" style="margin-top:8px">
+        <label class="inline-check" style="text-transform:none;font-size:13px">
+          <input type="checkbox" id="cfg-final-sep-from-last"
+            ${(cfg.final_sep_from_last_component ?? false) ? 'checked' : ''}>
+          When last component is omitted, adopt its separator for the final non-empty field
+        </label>
+      </div>
     </section>
 
     <h3 class="settings-group-heading">Preview</h3>
@@ -402,6 +409,7 @@ async function saveSettings() {
     honorific_tokens,
     leading_separator:   document.getElementById('cfg-leading-sep')?.value  ?? 'none',
     trailing_separator:  document.getElementById('cfg-trailing-sep')?.value ?? 'none',
+    final_sep_from_last_component: document.getElementById('cfg-final-sep-from-last')?.checked ?? false,
     components,
     section_style:       (document.getElementById('cfg-section-style')?.value    ?? '').trim() || 'SectionTitle',
     entry_style:         (document.getElementById('cfg-entry-style')?.value      ?? '').trim() || 'CatalogueEntry',
