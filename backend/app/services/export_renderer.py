@@ -163,21 +163,36 @@ def _collect_export_data(import_id, db: Session, section_id=None) -> list[dict]:
     if section_id is not None:
         sections = [s for s in sections if str(s.id) == str(section_id)]
 
+    # Batch-fetch all included works and their overrides to avoid N+1 queries
+    section_ids = [s.id for s in sections]
+    all_works = (
+        db.query(Work)
+        .filter(Work.section_id.in_(section_ids))
+        .filter(Work.include_in_export == True)
+        .order_by(Work.section_id, Work.position_in_section.asc())
+        .all()
+    )
+    work_ids = [w.id for w in all_works]
+    all_overrides = (
+        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all()
+        if work_ids
+        else []
+    )
+    override_map = {o.work_id: o for o in all_overrides}
+
+    # Group works by section_id
+    works_by_section: dict = {}
+    for w in all_works:
+        works_by_section.setdefault(w.section_id, []).append(w)
+
     result = []
 
     for section in sections:
-        works = (
-            db.query(Work)
-            .filter(Work.section_id == section.id)
-            .filter(Work.include_in_export == True)
-            .order_by(Work.position_in_section.asc())
-            .all()
-        )
+        works = works_by_section.get(section.id, [])
 
         work_rows = []
         for w in works:
-            override = db.query(WorkOverride).filter(WorkOverride.work_id == w.id).all()
-            override = override[0] if override else None
+            override = override_map.get(w.id)
             ew = resolve_effective_work(w, override)
 
             price_numeric = int(ew.price_numeric) if ew.price_numeric else None
