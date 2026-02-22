@@ -109,26 +109,21 @@ def compute_diff(
       - ``unchanged_count``: int
     """
     snapshot = get_last_snapshot(import_id, template_id, db)
-    current_data = _collect_export_data(import_id, db)
-    current_works = _flatten_works(current_data)
 
     if snapshot is None:
-        # No previous export — everything is "new"
+        # No previous export — nothing to compare against
         return {
-            "has_changes": True,
+            "has_changes": False,
             "previous_exported_at": None,
-            "added": [
-                {
-                    "cat_no": k,
-                    "section": w["_section"],
-                    **{f: w.get(f) for f in _DIFF_FIELDS},
-                }
-                for k, w in current_works.items()
-            ],
+            "no_previous_export": True,
+            "added": [],
             "removed": [],
             "changed": [],
             "unchanged_count": 0,
         }
+
+    current_data = _collect_export_data(import_id, db)
+    current_works = _flatten_works(current_data)
 
     old_works = _flatten_works(snapshot.snapshot_data)
     old_keys = set(old_works.keys())

@@ -209,9 +209,10 @@ class TestComputeDiff:
         _seed_work(db_session, imp, sec, raw_cat_no="2", position=2, title="Dawn")
 
         diff = compute_diff(imp.id, None, db_session)
-        assert diff["has_changes"] is True
+        assert diff["has_changes"] is False
+        assert diff["no_previous_export"] is True
         assert diff["previous_exported_at"] is None
-        assert len(diff["added"]) == 2
+        assert diff["added"] == []
         assert diff["removed"] == []
         assert diff["changed"] == []
         assert diff["unchanged_count"] == 0
@@ -352,9 +353,10 @@ class TestExportDiffRoute:
         r = client.get(f"/imports/{imp.id}/export-diff")
         assert r.status_code == 200
         data = r.json()
-        assert data["has_changes"] is True
+        assert data["has_changes"] is False
+        assert data["no_previous_export"] is True
         assert data["previous_exported_at"] is None
-        assert len(data["added"]) == 1
+        assert data["added"] == []
 
     def test_diff_after_export_no_changes(self, client, db_session):
         imp = _seed_import(db_session)

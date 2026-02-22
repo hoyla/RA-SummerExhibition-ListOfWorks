@@ -1448,9 +1448,9 @@ async function showExportDiff(importId, btnEl) {
 }
 
 function _renderDiffPanel(diff) {
-  if (!diff.previous_exported_at) {
+  if (diff.no_previous_export) {
     return `<div class="diff-result diff-info">
-      <p><strong>No previous export found.</strong> All ${diff.added.length} work${diff.added.length !== 1 ? 's' : ''} will be new.</p>
+      <p><strong>No previous export found.</strong> Export the catalogue first, then use this to see what changed before the next export.</p>
     </div>`;
   }
 
