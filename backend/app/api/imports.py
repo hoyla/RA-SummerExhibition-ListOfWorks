@@ -29,7 +29,10 @@ from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
 from backend.app.models.override_model import WorkOverride
 from backend.app.models.validation_warning_model import ValidationWarning
-from backend.app.services.excel_importer import import_excel
+from backend.app.services.excel_importer import (
+    import_excel,
+    ImportError as ExcelImportError,
+)
 from backend.app.services.export_renderer import resolve_export_config
 
 router = APIRouter()
@@ -54,9 +57,15 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
         honorific_tokens = ruleset.config["honorific_tokens"]
     # Pass the original filename so the Import record shows the user-facing name
-    import_record = import_excel(
-        file_path, db, honorific_tokens=honorific_tokens, display_name=original_name
-    )
+    try:
+        import_record = import_excel(
+            file_path, db, honorific_tokens=honorific_tokens, display_name=original_name
+        )
+    except ExcelImportError as exc:
+        # Clean up the saved file on validation failure
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     return {"import_id": str(import_record.id)}
 

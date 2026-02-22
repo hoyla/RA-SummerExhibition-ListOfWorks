@@ -1,5 +1,7 @@
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy.orm import Session
+from difflib import get_close_matches
 
 from backend.app.models.import_model import Import
 from backend.app.models.section_model import Section
@@ -13,14 +15,100 @@ from backend.app.services.normalisation_service import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Expected column headers
+# ---------------------------------------------------------------------------
+
+REQUIRED_COLUMNS = {"Cat No", "Title", "Artist"}
+KNOWN_COLUMNS = {
+    "Cat No",
+    "Gallery",
+    "Title",
+    "Artist",
+    "Price",
+    "Edition",
+    "Artwork",
+    "Medium",
+}
+
+
+class ImportError(Exception):
+    """Raised when the uploaded file cannot be imported."""
+
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Header validation
+# ---------------------------------------------------------------------------
+
+
+def _validate_headers(headers: list[str]) -> list[str]:
+    """Validate spreadsheet headers. Returns a list of warning strings for
+    missing optional columns.  Raises ImportError for fatal problems."""
+
+    # Strip empties
+    found = {h for h in headers if h}
+
+    if not found:
+        raise ImportError(
+            "The spreadsheet has no column headers in row 1. "
+            "Expected columns: " + ", ".join(sorted(KNOWN_COLUMNS))
+        )
+
+    # Check for required columns
+    missing_required = REQUIRED_COLUMNS - found
+    if missing_required:
+        # Try to suggest close matches from what was found
+        suggestions = []
+        for col in sorted(missing_required):
+            matches = get_close_matches(col, list(found), n=1, cutoff=0.6)
+            if matches:
+                suggestions.append(
+                    f'  - "{col}" not found (did you mean "{matches[0]}"?)'
+                )
+            else:
+                suggestions.append(f'  - "{col}" not found')
+
+        raise ImportError(
+            "Spreadsheet is missing required column(s):\n"
+            + "\n".join(suggestions)
+            + f"\n\nFound columns: {', '.join(sorted(found))}"
+            + f"\nExpected: {', '.join(sorted(KNOWN_COLUMNS))}"
+        )
+
+    # Warnings for missing optional columns
+    warnings = []
+    missing_optional = (KNOWN_COLUMNS - REQUIRED_COLUMNS) - found
+    for col in sorted(missing_optional):
+        matches = get_close_matches(col, list(found), n=1, cutoff=0.6)
+        hint = f' (did you mean "{matches[0]}"?)' if matches else ""
+        warnings.append(f'Optional column "{col}" not found{hint}')
+
+    return warnings
+
+
 def import_excel(
     file_path: str,
     db: Session,
     honorific_tokens: Optional[List[str]] = None,
     display_name: Optional[str] = None,
 ) -> Import:
-    workbook = load_workbook(filename=file_path, data_only=True)
+    # --- Open workbook (catch corrupt / non-Excel files) ---
+    try:
+        workbook = load_workbook(filename=file_path, data_only=True)
+    except InvalidFileException:
+        raise ImportError("The uploaded file is not a valid Excel (.xlsx) file.")
+    except Exception as exc:
+        raise ImportError(f"Could not read the uploaded file: {exc}")
+
     sheet = workbook.active
+    if sheet is None or sheet.max_row is None or sheet.max_row < 1:
+        raise ImportError("The spreadsheet is empty (no rows found).")
+
+    # --- Read & validate headers ---
+    headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
+    header_warnings = _validate_headers(headers)
 
     # Use the user-facing display name for the record, falling back to file_path
     record_name = display_name or file_path
@@ -45,10 +133,19 @@ def import_excel(
             )
         )
 
+    # Import-level warnings for missing optional columns
+    for msg in header_warnings:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="missing_column",
+                message=msg,
+            )
+        )
+
     sections_map = {}
     section_positions = {}
-
-    headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
 
     def _cell_value(cell):
         """Return the cell's value, restoring a leading apostrophe that Excel
@@ -114,6 +211,17 @@ def import_excel(
                     message=message,
                 )
             )
+
+    # Warn if spreadsheet had headers but no data rows
+    if not sections_map:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="empty_spreadsheet",
+                message="The spreadsheet has column headers but no data rows.",
+            )
+        )
 
     db.commit()
     return import_record
