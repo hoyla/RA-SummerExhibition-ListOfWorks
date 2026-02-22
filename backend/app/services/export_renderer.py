@@ -444,10 +444,6 @@ def render_import_as_tagged_text(
     lines = ["<ASCII-MAC>\r"]
 
     for sec_idx, section in enumerate(sections):
-        # Insert section separator before every section except the first
-        if sec_idx > 0:
-            lines.append(_section_sep(config.section_separator))
-
         lines.append(f"<ParaStyle:{config.section_style}>{section['section_name']}")
         lines.append("\r")
 
@@ -598,6 +594,11 @@ def render_import_as_tagged_text(
 
             lines.append(entry)
             lines.append("\r")
+
+        # Section separator after each section
+        sep = _section_sep(config.section_separator)
+        if sep:
+            lines.append(sep)
 
     return "".join(lines)
 

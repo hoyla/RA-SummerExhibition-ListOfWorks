@@ -292,9 +292,12 @@ def test_section_separator_none():
 
 
 def test_section_separator_not_before_first():
-    """No section separator should appear before the first section."""
+    """Section separator appears after each section, not before."""
     db = _two_section_db()
     cfg = ExportConfig(section_separator="column_break")
     output = render_import_as_tagged_text("imp1", db, config=cfg)
-    # Column break should appear exactly once (before section 2 only)
-    assert output.count("<cnxc:Column>") == 1
+    # Column break should appear once per section (after each)
+    assert output.count("<cnxc:Column>") == 2
+    # Should not appear before the first section heading
+    first_heading = output.index("Gallery I")
+    assert "<cnxc:Column>" not in output[:first_heading]
