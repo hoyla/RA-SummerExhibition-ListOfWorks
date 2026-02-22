@@ -54,6 +54,7 @@ class Work(Base):
     price_text = Column(Text, nullable=True)
     edition_total = Column(Integer, nullable=True)
     edition_price_numeric = Column(Numeric(12, 2), nullable=True)
+    artwork = Column(Integer, nullable=True)
     medium = Column(Text, nullable=True)
 
     include_in_export = Column(Boolean, nullable=False, server_default="true")

@@ -30,6 +30,24 @@ def test_artist_multiple_spaces():
     assert honorifics is None
 
 
+def test_artist_ra_elect():
+    name, honorifics = normalise_artist("Barbara Walker RA Elect")
+    assert name == "Barbara Walker"
+    assert honorifics == "RA Elect"
+
+
+def test_artist_hon_ra():
+    name, honorifics = normalise_artist("William Kentridge HON RA")
+    assert name == "William Kentridge"
+    assert honorifics == "HON RA"
+
+
+def test_artist_ra_ex_officio():
+    name, honorifics = normalise_artist("Jane Doe RA Ex Officio")
+    assert name == "Jane Doe"
+    assert honorifics == "RA Ex Officio"
+
+
 # -----------------------------
 # Price Parsing Tests
 # -----------------------------

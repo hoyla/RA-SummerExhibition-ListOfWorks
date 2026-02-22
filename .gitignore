@@ -12,4 +12,8 @@ uploads/
 .DS_Store
 
 # Test artifacts
-.pytest_cache/test.txt
+.pytest_cache/
+test.txt
+
+# Environment
+.env

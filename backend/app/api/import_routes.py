@@ -1,6 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
+import hashlib
+import json
 import os
 import shutil
 from pydantic import BaseModel
@@ -12,9 +14,27 @@ from backend.app.db import SessionLocal
 from backend.app.models.import_model import Import
 from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
+from backend.app.models.override_model import WorkOverride
+from backend.app.models.validation_warning_model import ValidationWarning
+from backend.app.models.audit_log_model import AuditLog
+from backend.app.models.ruleset_model import Ruleset
 from backend.app.services.excel_importer import import_excel
+from backend.app.services.normalisation_service import DEFAULT_HONORIFIC_TOKENS
+from backend.app.services.export_renderer import (
+    render_import_as_tagged_text,
+    render_import_as_json,
+    render_import_as_xml,
+    render_import_as_csv,
+    ExportConfig,
+    DEFAULT_CONFIG,
+    DEFAULT_COMPONENTS,
+    ComponentConfig,
+    resolve_export_config,
+    escape_for_mac_roman,
+)
+from backend.app.api.auth import require_api_key
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key)])
 
 
 # Pydantic model for import output
@@ -36,8 +56,14 @@ class WorkOut(BaseModel):
     raw_cat_no: str | None
     title: str | None
     artist_name: str | None
+    artist_honorifics: str | None
     price_text: str | None
+    price_numeric: float | None
     edition_total: int | None
+    edition_price_numeric: float | None
+    artwork: int | None
+    medium: str | None
+    include_in_export: bool
 
     model_config = {"from_attributes": True}
 
@@ -73,6 +99,45 @@ class PreviewSectionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ValidationWarningOut(BaseModel):
+    id: str
+    work_id: str | None
+    warning_type: str
+    message: str
+    artist_name: str | None = None
+    title: str | None = None
+    cat_no: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class OverrideIn(BaseModel):
+    """Request body for setting work overrides. All fields are optional."""
+
+    title_override: str | None = None
+    artist_name_override: str | None = None
+    artist_honorifics_override: str | None = None
+    price_numeric_override: float | None = None
+    price_text_override: str | None = None
+    edition_total_override: int | None = None
+    edition_price_numeric_override: float | None = None
+    medium_override: str | None = None
+
+
+class OverrideOut(BaseModel):
+    work_id: str
+    title_override: str | None
+    artist_name_override: str | None
+    artist_honorifics_override: str | None
+    price_numeric_override: float | None
+    price_text_override: str | None
+    edition_total_override: int | None
+    edition_price_numeric_override: float | None
+    medium_override: str | None
+
+    model_config = {"from_attributes": True}
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -89,7 +154,11 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    import_record = import_excel(file_path, db)
+    ruleset = resolve_export_config(db)
+    honorific_tokens = None
+    if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
+        honorific_tokens = ruleset.config["honorific_tokens"]
+    import_record = import_excel(file_path, db, honorific_tokens=honorific_tokens)
 
     return {"import_id": str(import_record.id)}
 
@@ -146,8 +215,20 @@ def list_sections(import_id: UUID, db: Session = Depends(get_db)):
                 raw_cat_no=str(w.raw_cat_no) if w.raw_cat_no is not None else None,
                 title=w.title,
                 artist_name=w.artist_name,
+                artist_honorifics=w.artist_honorifics,
                 price_text=w.price_text,
+                price_numeric=(
+                    float(w.price_numeric) if w.price_numeric is not None else None
+                ),
                 edition_total=w.edition_total,
+                edition_price_numeric=(
+                    float(w.edition_price_numeric)
+                    if w.edition_price_numeric is not None
+                    else None
+                ),
+                artwork=w.artwork,
+                medium=w.medium,
+                include_in_export=bool(w.include_in_export),
             )
             for w in works
         ]
@@ -215,53 +296,516 @@ def preview_import(import_id: UUID, db: Session = Depends(get_db)):
     return result
 
 
-@router.get("/imports/{import_id}/export-tags")
-def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
-    sections = (
-        db.query(Section)
-        .filter(Section.import_id == import_id)
-        .order_by(Section.position.asc())
+@router.get("/imports/{import_id}/warnings", response_model=List[ValidationWarningOut])
+def list_warnings(import_id: UUID, db: Session = Depends(get_db)):
+    from sqlalchemy.orm import outerjoin
+
+    rows = (
+        db.query(ValidationWarning, Work)
+        .outerjoin(Work, Work.id == ValidationWarning.work_id)
+        .filter(ValidationWarning.import_id == import_id)
+        .order_by(ValidationWarning.created_at.asc())
         .all()
     )
 
-    lines = []
-
-    for section in sections:
-        # Section heading
-        lines.append(f"<ParaStyle:SectionTitle>{section.name}")
-        lines.append("\r")
-
-        works = (
-            db.query(Work)
-            .filter(Work.section_id == section.id)
-            .order_by(Work.position_in_section.asc())
-            .all()
+    return [
+        ValidationWarningOut(
+            id=str(w.id),
+            work_id=str(w.work_id) if w.work_id else None,
+            warning_type=w.warning_type,
+            message=w.message,
+            artist_name=work.artist_name if work else None,
+            title=work.title if work else None,
+            cat_no=str(work.raw_cat_no) if work and work.raw_cat_no else None,
         )
+        for w, work in rows
+    ]
 
-        for w in works:
-            number = str(w.raw_cat_no) if w.raw_cat_no else ""
-            title = w.title or ""
-            artist = w.artist_name or ""
-            price = w.price_text or ""
 
-            edition_display = ""
-            if w.edition_total and w.edition_price_numeric:
-                edition_display = (
-                    f" (edition of {w.edition_total} at £{w.edition_price_numeric})"
+# ---------------------------------------------------------------------------
+# Override endpoints
+# ---------------------------------------------------------------------------
+
+
+def _get_work_or_404(import_id: UUID, work_id: UUID, db: Session):
+    work = (
+        db.query(Work).filter(Work.id == work_id, Work.import_id == import_id).first()
+    )
+    if not work:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work not found in this import",
+        )
+    return work
+
+
+@router.get("/imports/{import_id}/works/{work_id}/override", response_model=OverrideOut)
+def get_override(import_id: UUID, work_id: UUID, db: Session = Depends(get_db)):
+    _get_work_or_404(import_id, work_id, db)
+    override = db.query(WorkOverride).filter(WorkOverride.work_id == work_id).first()
+    if not override:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No override exists for this work",
+        )
+    return OverrideOut(
+        work_id=str(override.work_id),
+        title_override=override.title_override,
+        artist_name_override=override.artist_name_override,
+        artist_honorifics_override=override.artist_honorifics_override,
+        price_numeric_override=(
+            float(override.price_numeric_override)
+            if override.price_numeric_override is not None
+            else None
+        ),
+        price_text_override=override.price_text_override,
+        edition_total_override=override.edition_total_override,
+        edition_price_numeric_override=(
+            float(override.edition_price_numeric_override)
+            if override.edition_price_numeric_override is not None
+            else None
+        ),
+        medium_override=override.medium_override,
+    )
+
+
+@router.put("/imports/{import_id}/works/{work_id}/override", response_model=OverrideOut)
+def set_override(
+    import_id: UUID,
+    work_id: UUID,
+    body: OverrideIn,
+    db: Session = Depends(get_db),
+):
+    work = _get_work_or_404(import_id, work_id, db)
+    override = db.query(WorkOverride).filter(WorkOverride.work_id == work_id).first()
+
+    fields = body.model_dump()
+    audit_entries = []
+
+    if override is None:
+        # Create new override
+        override = WorkOverride(work_id=work.id, **fields)
+        db.add(override)
+        for field, new_val in fields.items():
+            if new_val is not None:
+                audit_entries.append(
+                    AuditLog(
+                        import_id=import_id,
+                        work_id=work_id,
+                        action="override_set",
+                        field=field,
+                        old_value=None,
+                        new_value=str(new_val),
+                    )
                 )
-            elif w.edition_total:
-                edition_display = f" (edition of {w.edition_total})"
+    else:
+        # Update existing override, log changed fields
+        for field, new_val in fields.items():
+            old_val = getattr(override, field)
+            if new_val != old_val:
+                audit_entries.append(
+                    AuditLog(
+                        import_id=import_id,
+                        work_id=work_id,
+                        action="override_set",
+                        field=field,
+                        old_value=str(old_val) if old_val is not None else None,
+                        new_value=str(new_val) if new_val is not None else None,
+                    )
+                )
+                setattr(override, field, new_val)
 
-            # Catalogue entry paragraph
-            lines.append(
-                f"<ParaStyle:CatalogueEntry>{number}\t{artist}\t{title}{edition_display}\t{price}"
+    for entry in audit_entries:
+        db.add(entry)
+
+    db.commit()
+    db.refresh(override)
+
+    return OverrideOut(
+        work_id=str(override.work_id),
+        title_override=override.title_override,
+        artist_name_override=override.artist_name_override,
+        artist_honorifics_override=override.artist_honorifics_override,
+        price_numeric_override=(
+            float(override.price_numeric_override)
+            if override.price_numeric_override is not None
+            else None
+        ),
+        price_text_override=override.price_text_override,
+        edition_total_override=override.edition_total_override,
+        edition_price_numeric_override=(
+            float(override.edition_price_numeric_override)
+            if override.edition_price_numeric_override is not None
+            else None
+        ),
+        medium_override=override.medium_override,
+    )
+
+
+@router.delete(
+    "/imports/{import_id}/works/{work_id}/override",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_override(import_id: UUID, work_id: UUID, db: Session = Depends(get_db)):
+    _get_work_or_404(import_id, work_id, db)
+    override = db.query(WorkOverride).filter(WorkOverride.work_id == work_id).first()
+    if not override:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No override exists for this work",
+        )
+    db.delete(override)
+    db.add(
+        AuditLog(
+            import_id=import_id,
+            work_id=work_id,
+            action="override_deleted",
+            field=None,
+            old_value=None,
+            new_value=None,
+        )
+    )
+    db.commit()
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Exclude / include toggle
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/imports/{import_id}/works/{work_id}/exclude",
+    status_code=status.HTTP_200_OK,
+)
+def set_work_excluded(
+    import_id: UUID,
+    work_id: UUID,
+    exclude: bool,
+    db: Session = Depends(get_db),
+):
+    """
+    Set include_in_export on a work.
+    Pass ?exclude=true to exclude, ?exclude=false to re-include.
+    """
+    work = _get_work_or_404(import_id, work_id, db)
+
+    old_value = not bool(work.include_in_export)  # old excluded state
+    new_excluded = exclude
+
+    if old_value != new_excluded:
+        work.include_in_export = not new_excluded
+        db.add(
+            AuditLog(
+                import_id=import_id,
+                work_id=work_id,
+                action="work_excluded" if new_excluded else "work_included",
+                field="include_in_export",
+                old_value=str(not old_value),
+                new_value=str(not new_excluded),
             )
-            lines.append("\r")
+        )
+        db.commit()
 
-        # Extra break after each section
-        lines.append("\r")
+    return {"work_id": str(work_id), "include_in_export": not new_excluded}
 
-    return PlainTextResponse(content="".join(lines), media_type="text/plain")
+
+@router.get("/config")
+def get_config(db: Session = Depends(get_db)):
+    """Return the active export configuration (or built-in defaults)."""
+    ruleset = resolve_export_config(db)
+    cfg = ruleset.config if ruleset else {}
+    return {
+        "currency_symbol": cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
+        "section_style": cfg.get("section_style", DEFAULT_CONFIG.section_style),
+        "entry_style": cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
+        "edition_prefix": cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
+        "edition_brackets": cfg.get(
+            "edition_brackets", DEFAULT_CONFIG.edition_brackets
+        ),
+        "cat_no_style": cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
+        "artist_style": cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
+        "honorifics_style": cfg.get(
+            "honorifics_style", DEFAULT_CONFIG.honorifics_style
+        ),
+        "honorifics_lowercase": cfg.get(
+            "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
+        ),
+        "title_style": cfg.get("title_style", DEFAULT_CONFIG.title_style),
+        "price_style": cfg.get("price_style", DEFAULT_CONFIG.price_style),
+        "medium_style": cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
+        "artwork_style": cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
+        "thousands_separator": cfg.get(
+            "thousands_separator", DEFAULT_CONFIG.thousands_separator
+        ),
+        "decimal_places": cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
+        "honorific_tokens": cfg.get("honorific_tokens", DEFAULT_HONORIFIC_TOKENS),
+        "leading_separator": cfg.get(
+            "leading_separator", DEFAULT_CONFIG.leading_separator
+        ),
+        "trailing_separator": cfg.get(
+            "trailing_separator", DEFAULT_CONFIG.trailing_separator
+        ),
+        "components": [
+            (
+                {
+                    "field": c["field"],
+                    "separator_after": c.get("separator_after", "tab"),
+                    "omit_sep_when_empty": c.get("omit_sep_when_empty", True),
+                    "enabled": c.get("enabled", True),
+                }
+                if isinstance(c, dict)
+                else {
+                    "field": c.field,
+                    "separator_after": c.separator_after,
+                    "omit_sep_when_empty": c.omit_sep_when_empty,
+                    "enabled": c.enabled,
+                }
+            )
+            for c in cfg.get(
+                "components",
+                [
+                    {
+                        "field": c.field,
+                        "separator_after": c.separator_after,
+                        "omit_sep_when_empty": c.omit_sep_when_empty,
+                        "enabled": c.enabled,
+                    }
+                    for c in DEFAULT_COMPONENTS
+                ],
+            )
+        ],
+    }
+
+
+class ComponentConfigIn(BaseModel):
+    field: str
+    separator_after: str = "tab"
+    omit_sep_when_empty: bool = True
+    enabled: bool = True
+
+
+class ConfigIn(BaseModel):
+    honorific_tokens: list[str] = [
+        "RA",
+        "PRA",
+        "PPRA",
+        "HON",
+        "HONRA",
+        "ELECT",
+        "EX",
+        "OFFICIO",
+    ]
+    currency_symbol: str = "£"
+    section_style: str = "SectionTitle"
+    entry_style: str = "CatalogueEntry"
+    edition_prefix: str = "edition of"
+    edition_brackets: bool = True
+    cat_no_style: str = "CatNo"
+    artist_style: str = "ArtistName"
+    honorifics_style: str = "Honorifics"
+    honorifics_lowercase: bool = False
+    title_style: str = "WorkTitle"
+    price_style: str = "Price"
+    medium_style: str = "Medium"
+    artwork_style: str = "Artwork"
+    thousands_separator: str = ","
+    decimal_places: int = 0
+    leading_separator: str = "none"
+    trailing_separator: str = "none"
+    components: list[ComponentConfigIn] = [
+        ComponentConfigIn(field="work_number", separator_after="tab"),
+        ComponentConfigIn(field="artist", separator_after="tab"),
+        ComponentConfigIn(field="title", separator_after="tab"),
+        ComponentConfigIn(field="edition", separator_after="tab"),
+        ComponentConfigIn(field="artwork", separator_after="tab", enabled=False),
+        ComponentConfigIn(field="price", separator_after="none"),
+        ComponentConfigIn(field="medium", separator_after="none"),
+    ]
+
+
+@router.put("/config")
+def put_config(body: ConfigIn, db: Session = Depends(get_db)):
+    """Save (replace) the active export configuration."""
+    config_dict = body.model_dump()
+    config_hash = hashlib.sha256(
+        json.dumps(config_dict, sort_keys=True).encode()
+    ).hexdigest()
+    # Archive previous active rulesets
+    db.query(Ruleset).filter(Ruleset.archived == False).update({"archived": True})
+    ruleset = Ruleset(name="active", config=config_dict, config_hash=config_hash)
+    db.add(ruleset)
+    db.commit()
+    return config_dict
+
+
+@router.get("/imports/{import_id}/export-tags")
+def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
+    ruleset = resolve_export_config(db)
+    config = DEFAULT_CONFIG
+    if ruleset:
+        cfg = ruleset.config
+        raw_components = cfg.get(
+            "components",
+            [
+                {
+                    "field": c.field,
+                    "separator_after": c.separator_after,
+                    "omit_sep_when_empty": c.omit_sep_when_empty,
+                    "enabled": c.enabled,
+                }
+                for c in DEFAULT_COMPONENTS
+            ],
+        )
+        components = [
+            ComponentConfig(
+                field=c["field"] if isinstance(c, dict) else c.field,
+                separator_after=(
+                    c.get("separator_after", "tab")
+                    if isinstance(c, dict)
+                    else c.separator_after
+                ),
+                omit_sep_when_empty=(
+                    c.get("omit_sep_when_empty", True)
+                    if isinstance(c, dict)
+                    else c.omit_sep_when_empty
+                ),
+                enabled=(c.get("enabled", True) if isinstance(c, dict) else c.enabled),
+            )
+            for c in raw_components
+        ]
+        config = ExportConfig(
+            currency_symbol=cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
+            section_style=cfg.get("section_style", DEFAULT_CONFIG.section_style),
+            entry_style=cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
+            edition_prefix=cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
+            edition_brackets=cfg.get(
+                "edition_brackets", DEFAULT_CONFIG.edition_brackets
+            ),
+            cat_no_style=cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
+            artist_style=cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
+            honorifics_style=cfg.get(
+                "honorifics_style", DEFAULT_CONFIG.honorifics_style
+            ),
+            honorifics_lowercase=cfg.get(
+                "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
+            ),
+            title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
+            price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
+            medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
+            artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
+            thousands_separator=cfg.get(
+                "thousands_separator", DEFAULT_CONFIG.thousands_separator
+            ),
+            decimal_places=cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
+            leading_separator=cfg.get(
+                "leading_separator", DEFAULT_CONFIG.leading_separator
+            ),
+            trailing_separator=cfg.get(
+                "trailing_separator", DEFAULT_CONFIG.trailing_separator
+            ),
+            components=components,
+        )
+    output = render_import_as_tagged_text(import_id, db, config)
+    return Response(
+        content=escape_for_mac_roman(output).encode("mac_roman"),
+        media_type="text/plain",
+    )
+
+
+@router.get("/imports/{import_id}/sections/{section_id}/export-tags")
+def export_section_indesign_tags(
+    import_id: UUID, section_id: UUID, db: Session = Depends(get_db)
+):
+    """Export InDesign Tagged Text for a single section only."""
+    ruleset = resolve_export_config(db)
+    config = DEFAULT_CONFIG
+    if ruleset:
+        cfg = ruleset.config
+        raw_components = cfg.get(
+            "components",
+            [
+                {
+                    "field": c.field,
+                    "separator_after": c.separator_after,
+                    "omit_sep_when_empty": c.omit_sep_when_empty,
+                    "enabled": c.enabled,
+                }
+                for c in DEFAULT_COMPONENTS
+            ],
+        )
+        components = [
+            ComponentConfig(
+                field=c["field"] if isinstance(c, dict) else c.field,
+                separator_after=(
+                    c.get("separator_after", "tab")
+                    if isinstance(c, dict)
+                    else c.separator_after
+                ),
+                omit_sep_when_empty=(
+                    c.get("omit_sep_when_empty", True)
+                    if isinstance(c, dict)
+                    else c.omit_sep_when_empty
+                ),
+                enabled=(c.get("enabled", True) if isinstance(c, dict) else c.enabled),
+            )
+            for c in raw_components
+        ]
+        config = ExportConfig(
+            currency_symbol=cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
+            section_style=cfg.get("section_style", DEFAULT_CONFIG.section_style),
+            entry_style=cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
+            edition_prefix=cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
+            edition_brackets=cfg.get(
+                "edition_brackets", DEFAULT_CONFIG.edition_brackets
+            ),
+            cat_no_style=cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
+            artist_style=cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
+            honorifics_style=cfg.get(
+                "honorifics_style", DEFAULT_CONFIG.honorifics_style
+            ),
+            honorifics_lowercase=cfg.get(
+                "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
+            ),
+            title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
+            price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
+            medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
+            artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
+            thousands_separator=cfg.get(
+                "thousands_separator", DEFAULT_CONFIG.thousands_separator
+            ),
+            decimal_places=cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
+            leading_separator=cfg.get(
+                "leading_separator", DEFAULT_CONFIG.leading_separator
+            ),
+            trailing_separator=cfg.get(
+                "trailing_separator", DEFAULT_CONFIG.trailing_separator
+            ),
+            components=components,
+        )
+    output = render_import_as_tagged_text(import_id, db, config, section_id=section_id)
+    return Response(
+        content=escape_for_mac_roman(output).encode("mac_roman"),
+        media_type="text/plain",
+    )
+
+
+@router.get("/imports/{import_id}/export-json")
+def export_json(import_id: UUID, db: Session = Depends(get_db)):
+    output = render_import_as_json(import_id, db)
+    return Response(content=output, media_type="application/json")
+
+
+@router.get("/imports/{import_id}/export-xml")
+def export_xml(import_id: UUID, db: Session = Depends(get_db)):
+    output = render_import_as_xml(import_id, db)
+    return Response(content=output, media_type="application/xml")
+
+
+@router.get("/imports/{import_id}/export-csv")
+def export_csv(import_id: UUID, db: Session = Depends(get_db)):
+    output = render_import_as_csv(import_id, db)
+    return Response(content=output, media_type="text/csv")
 
 
 # Endpoint to delete an import (cascades to sections and works)

@@ -1,7 +1,9 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
 psycopg2-binary
 pydantic
 python-multipart
 openpyxl
+aiofiles
+python-dotenv
