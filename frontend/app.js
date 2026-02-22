@@ -509,23 +509,30 @@ async function loadImportList() {
       container.innerHTML = '<p class="muted">No imports yet.</p>';
       return;
     }
-    const rows = imports.map(i => `
+    const rows = imports.map(i => {
+      const ovrCell = i.override_count > 0
+        ? `${i.override_count}<br><span class="muted" style="font-size:11px">${esc(formatDate(i.last_override_at))}</span>`
+        : `<span class="muted">&mdash;</span>`;
+      return `
       <tr>
         <td><code class="import-id" title="${esc(i.id)}">${esc(i.id.slice(0, 8))}&hellip;</code></td>
         <td><a class="link" href="#/import/${esc(i.id)}">${esc(i.filename)}</a></td>
         <td>${esc(formatDate(i.uploaded_at))}</td>
         <td class="num">${i.sections}</td>
         <td class="num">${i.works}</td>
+        <td class="num">${ovrCell}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="navigate('#/import/${esc(i.id)}')">View</button>
           <button class="btn btn-sm btn-danger" onclick="handleDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}')">Delete</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
     container.innerHTML = `
       <table class="data-table">
         <thead><tr>
           <th>ID</th><th>Filename</th><th>Uploaded</th>
           <th class="num">Sections</th><th class="num">Works</th>
+          <th class="num">Overrides</th>
           <th>Actions</th>
         </tr></thead>
         <tbody>${rows}</tbody>

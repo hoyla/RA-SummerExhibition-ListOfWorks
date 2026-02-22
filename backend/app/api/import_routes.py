@@ -10,6 +10,8 @@ from typing import List
 from uuid import UUID
 from datetime import datetime
 
+from sqlalchemy import func
+
 from backend.app.db import SessionLocal
 from backend.app.models.import_model import Import
 from backend.app.models.section_model import Section
@@ -45,6 +47,8 @@ class ImportOut(BaseModel):
     notes: str | None
     sections: int
     works: int
+    override_count: int
+    last_override_at: str | None
 
     model_config = {"from_attributes": True}
 
@@ -185,21 +189,49 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
 def list_imports(db: Session = Depends(get_db)):
     imports = db.query(Import).order_by(Import.uploaded_at.desc()).all()
 
+    # Batch-fetch section counts, work counts, and override stats in one query each
+    section_counts = {
+        str(row.import_id): row.cnt
+        for row in db.query(Section.import_id, func.count(Section.id).label("cnt"))
+        .group_by(Section.import_id)
+        .all()
+    }
+    work_counts = {
+        str(row.import_id): row.cnt
+        for row in db.query(Work.import_id, func.count(Work.id).label("cnt"))
+        .group_by(Work.import_id)
+        .all()
+    }
+    override_stats = {
+        str(row.import_id): row
+        for row in db.query(
+            Work.import_id,
+            func.count(WorkOverride.work_id).label("override_count"),
+            func.max(WorkOverride.updated_at).label("last_override_at"),
+        )
+        .join(WorkOverride, WorkOverride.work_id == Work.id)
+        .group_by(Work.import_id)
+        .all()
+    }
+
     result = []
-
     for i in imports:
-        section_count = db.query(Section).filter(Section.import_id == i.id).count()
-
-        work_count = db.query(Work).filter(Work.import_id == i.id).count()
-
+        iid = str(i.id)
+        ovr = override_stats.get(iid)
         result.append(
             {
-                "id": str(i.id),
+                "id": iid,
                 "filename": i.filename,
                 "uploaded_at": i.uploaded_at.isoformat(),
                 "notes": i.notes,
-                "sections": section_count,
-                "works": work_count,
+                "sections": section_counts.get(iid, 0),
+                "works": work_counts.get(iid, 0),
+                "override_count": ovr.override_count if ovr else 0,
+                "last_override_at": (
+                    ovr.last_override_at.isoformat()
+                    if ovr and ovr.last_override_at
+                    else None
+                ),
             }
         )
 
