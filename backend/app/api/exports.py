@@ -116,6 +116,9 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
             "final_sep_from_last_component",
             DEFAULT_CONFIG.final_sep_from_last_component,
         ),
+        section_separator=cfg.get(
+            "section_separator", DEFAULT_CONFIG.section_separator
+        ),
         components=components,
     )
 
