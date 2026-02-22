@@ -14,17 +14,23 @@ from backend.app.services.normalisation_service import (
 
 
 def import_excel(
-    file_path: str, db: Session, honorific_tokens: Optional[List[str]] = None
+    file_path: str,
+    db: Session,
+    honorific_tokens: Optional[List[str]] = None,
+    display_name: Optional[str] = None,
 ) -> Import:
     workbook = load_workbook(filename=file_path, data_only=True)
     sheet = workbook.active
 
+    # Use the user-facing display name for the record, falling back to file_path
+    record_name = display_name or file_path
+
     # Duplicate filename detection
     duplicate_detected = (
-        db.query(Import).filter(Import.filename == file_path).first() is not None
+        db.query(Import).filter(Import.filename == record_name).first() is not None
     )
 
-    import_record = Import(filename=file_path)
+    import_record = Import(filename=record_name)
     db.add(import_record)
     db.flush()
 

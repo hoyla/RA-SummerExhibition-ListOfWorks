@@ -7,7 +7,9 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import os
+from pathlib import Path
 import shutil
+import uuid
 from typing import List
 from uuid import UUID
 
@@ -35,7 +37,13 @@ router = APIRouter()
 @router.post("/import")
 def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     os.makedirs("uploads", exist_ok=True)
-    file_path = f"uploads/{file.filename}"
+
+    # Sanitise filename: strip path components to prevent traversal,
+    # and prefix with a UUID to prevent collisions.
+    original_name = file.filename or "upload.xlsx"
+    safe_name = Path(original_name).name  # strip any directory components
+    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
+    file_path = os.path.join("uploads", disk_name)
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -44,7 +52,10 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     honorific_tokens = None
     if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
         honorific_tokens = ruleset.config["honorific_tokens"]
-    import_record = import_excel(file_path, db, honorific_tokens=honorific_tokens)
+    # Pass the original filename so the Import record shows the user-facing name
+    import_record = import_excel(
+        file_path, db, honorific_tokens=honorific_tokens, display_name=original_name
+    )
 
     return {"import_id": str(import_record.id)}
 
