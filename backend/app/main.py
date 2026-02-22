@@ -20,34 +20,27 @@ from backend.app.models import ruleset_model
 from backend.app.models import validation_warning_model
 from backend.app.models import audit_log_model
 
-# Create all tables on startup (must be after all model imports)
-Base.metadata.create_all(bind=engine)
-
 # ---------------------------------------------------------------------------
-# Schema migrations (add columns that didn't exist at initial deployment)
+# Run Alembic migrations on startup (replaces Base.metadata.create_all)
 # ---------------------------------------------------------------------------
 
-from sqlalchemy import text as _sql_text  # noqa: E402
+from alembic.config import Config as AlembicConfig
+from alembic import command as alembic_command
+from sqlalchemy import inspect as sa_inspect
 
-with engine.connect() as _conn:
-    _conn.execute(
-        _sql_text(
-            "ALTER TABLE rulesets ADD COLUMN IF NOT EXISTS config_type TEXT NOT NULL DEFAULT 'template'"
-        )
-    )
-    _conn.execute(
-        _sql_text(
-            "ALTER TABLE rulesets ADD COLUMN IF NOT EXISTS is_builtin BOOLEAN NOT NULL DEFAULT false"
-        )
-    )
-    _conn.execute(_sql_text("ALTER TABLE rulesets ADD COLUMN IF NOT EXISTS slug TEXT"))
-    # Migrate: rename legacy 'active' rulesets to 'Default' so they appear as templates
-    _conn.execute(
-        _sql_text(
-            "UPDATE rulesets SET name = 'Default' WHERE name = 'active' AND config_type = 'template'"
-        )
-    )
-    _conn.commit()
+_alembic_cfg = AlembicConfig(
+    str(Path(__file__).resolve().parent.parent.parent / "alembic.ini")
+)
+
+# If the DB already has tables but no alembic_version table, stamp it first
+# so that upgrade() doesn't re-create existing tables.
+_inspector = sa_inspect(engine)
+_has_alembic = "alembic_version" in _inspector.get_table_names()
+_has_tables = "imports" in _inspector.get_table_names()
+if _has_tables and not _has_alembic:
+    alembic_command.stamp(_alembic_cfg, "head")
+
+alembic_command.upgrade(_alembic_cfg, "head")
 
 from backend.app.api import import_routes
 
