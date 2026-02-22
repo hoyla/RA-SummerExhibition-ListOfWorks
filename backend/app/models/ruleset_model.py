@@ -13,6 +13,9 @@ class Ruleset(Base):
 
     name = Column(Text, nullable=False)
 
+    # 'template' | 'normalisation'
+    config_type = Column(Text, nullable=False, server_default="template")
+
     version = Column(Integer, nullable=False, server_default="1")
 
     config = Column(JSONB, nullable=False)
@@ -26,6 +29,12 @@ class Ruleset(Base):
     )
 
     archived = Column(Boolean, nullable=False, server_default="false")
+
+    # True for seed templates committed to the repository
+    is_builtin = Column(Boolean, nullable=False, server_default="false")
+
+    # Identifier used for seed deduplication (e.g. 'ra-default')
+    slug = Column(Text, nullable=True)
 
     __table_args__ = (
         Index("idx_rulesets_hash", "config_hash"),

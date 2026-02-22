@@ -106,19 +106,17 @@ def resolve_export_config(
     Resolve an export Ruleset from the database.
 
     - If ruleset_id provided: return that Ruleset (or None if not found)
-    - Else: return the most recent non-archived Ruleset
-    - If none exist: return None
+    - Else: return None (callers should fall back to DEFAULT_CONFIG)
     """
 
     if ruleset_id:
-        return db.query(Ruleset).filter(Ruleset.id == ruleset_id).first()
+        return (
+            db.query(Ruleset)
+            .filter(Ruleset.id == ruleset_id, Ruleset.config_type == "template")
+            .first()
+        )
 
-    return (
-        db.query(Ruleset)
-        .filter(Ruleset.archived == False)
-        .order_by(Ruleset.created_at.desc())
-        .first()
-    )
+    return None
 
 
 # ---------------------------------------------------------------------------

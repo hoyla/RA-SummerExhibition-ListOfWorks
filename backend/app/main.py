@@ -1,6 +1,7 @@
 import logging
 import time
 import json
+import hashlib
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -22,6 +23,32 @@ from backend.app.models import audit_log_model
 
 # Create all tables on startup (must be after all model imports)
 Base.metadata.create_all(bind=engine)
+
+# ---------------------------------------------------------------------------
+# Schema migrations (add columns that didn't exist at initial deployment)
+# ---------------------------------------------------------------------------
+
+from sqlalchemy import text as _sql_text  # noqa: E402
+
+with engine.connect() as _conn:
+    _conn.execute(
+        _sql_text(
+            "ALTER TABLE rulesets ADD COLUMN IF NOT EXISTS config_type TEXT NOT NULL DEFAULT 'template'"
+        )
+    )
+    _conn.execute(
+        _sql_text(
+            "ALTER TABLE rulesets ADD COLUMN IF NOT EXISTS is_builtin BOOLEAN NOT NULL DEFAULT false"
+        )
+    )
+    _conn.execute(_sql_text("ALTER TABLE rulesets ADD COLUMN IF NOT EXISTS slug TEXT"))
+    # Migrate: rename legacy 'active' rulesets to 'Default' so they appear as templates
+    _conn.execute(
+        _sql_text(
+            "UPDATE rulesets SET name = 'Default' WHERE name = 'active' AND config_type = 'template'"
+        )
+    )
+    _conn.commit()
 
 from backend.app.api import import_routes
 
@@ -57,6 +84,54 @@ def _setup_logging() -> None:
 
 _setup_logging()
 logger = logging.getLogger("catalogue")
+
+
+# ---------------------------------------------------------------------------
+# Seed built-in templates from backend/seed_templates/*.json
+# ---------------------------------------------------------------------------
+
+
+def _seed_builtin_templates() -> None:
+    from backend.app.db import SessionLocal as _SessionLocal
+    from backend.app.models.ruleset_model import Ruleset as _Ruleset
+
+    _seed_dir = (
+        Path(__file__).resolve().parent.parent.parent / "backend" / "seed_templates"
+    )
+    if not _seed_dir.exists():
+        return
+
+    db = _SessionLocal()
+    try:
+        for f in sorted(_seed_dir.glob("*.json")):
+            slug = f.stem
+            if db.query(_Ruleset).filter(_Ruleset.slug == slug).first():
+                continue
+            with open(f, encoding="utf-8") as fp:
+                seed = json.load(fp)
+            name = seed.pop("_name", slug)
+            cfg_hash = hashlib.sha256(
+                json.dumps(seed, sort_keys=True).encode()
+            ).hexdigest()
+            db.add(
+                _Ruleset(
+                    name=name,
+                    config=seed,
+                    config_hash=cfg_hash,
+                    config_type="template",
+                    is_builtin=True,
+                    slug=slug,
+                )
+            )
+        db.commit()
+    except Exception as exc:  # pragma: no cover
+        logger.error("Seed error: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
+_seed_builtin_templates()
 
 
 # ---------------------------------------------------------------------------

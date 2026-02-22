@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Query
 from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 import hashlib
@@ -604,86 +604,26 @@ def set_work_excluded(
     return {"work_id": str(work_id), "include_in_export": not new_excluded}
 
 
+def _get_normalisation_row(db: Session):
+    """Return the global normalisation config row, or None."""
+    return (
+        db.query(Ruleset)
+        .filter(Ruleset.config_type == "normalisation")
+        .order_by(Ruleset.created_at.desc())
+        .first()
+    )
+
+
 @router.get("/config")
 def get_config(db: Session = Depends(get_db)):
-    """Return the active export configuration (or built-in defaults)."""
-    ruleset = resolve_export_config(db)
-    cfg = ruleset.config if ruleset else {}
+    """Return global normalisation config (honorific tokens only)."""
+    row = _get_normalisation_row(db)
     return {
-        "currency_symbol": cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
-        "section_style": cfg.get("section_style", DEFAULT_CONFIG.section_style),
-        "entry_style": cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
-        "edition_prefix": cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
-        "edition_brackets": cfg.get(
-            "edition_brackets", DEFAULT_CONFIG.edition_brackets
-        ),
-        "cat_no_style": cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
-        "artist_style": cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
-        "honorifics_style": cfg.get(
-            "honorifics_style", DEFAULT_CONFIG.honorifics_style
-        ),
-        "honorifics_lowercase": cfg.get(
-            "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
-        ),
-        "title_style": cfg.get("title_style", DEFAULT_CONFIG.title_style),
-        "price_style": cfg.get("price_style", DEFAULT_CONFIG.price_style),
-        "medium_style": cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
-        "artwork_style": cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
-        "thousands_separator": cfg.get(
-            "thousands_separator", DEFAULT_CONFIG.thousands_separator
-        ),
-        "decimal_places": cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
-        "honorific_tokens": cfg.get("honorific_tokens", DEFAULT_HONORIFIC_TOKENS),
-        "leading_separator": cfg.get(
-            "leading_separator", DEFAULT_CONFIG.leading_separator
-        ),
-        "trailing_separator": cfg.get(
-            "trailing_separator", DEFAULT_CONFIG.trailing_separator
-        ),
-        "final_sep_from_last_component": cfg.get(
-            "final_sep_from_last_component",
-            DEFAULT_CONFIG.final_sep_from_last_component,
-        ),
-        "components": [
-            (
-                {
-                    "field": c["field"],
-                    "separator_after": c.get("separator_after", "tab"),
-                    "omit_sep_when_empty": c.get("omit_sep_when_empty", True),
-                    "enabled": c.get("enabled", True),
-                    "max_line_chars": c.get("max_line_chars", None),
-                    "next_component_position": c.get(
-                        "next_component_position", "end_of_text"
-                    ),
-                    "balance_lines": c.get("balance_lines", False),
-                }
-                if isinstance(c, dict)
-                else {
-                    "field": c.field,
-                    "separator_after": c.separator_after,
-                    "omit_sep_when_empty": c.omit_sep_when_empty,
-                    "enabled": c.enabled,
-                    "max_line_chars": c.max_line_chars,
-                    "next_component_position": c.next_component_position,
-                    "balance_lines": c.balance_lines,
-                }
-            )
-            for c in cfg.get(
-                "components",
-                [
-                    {
-                        "field": c.field,
-                        "separator_after": c.separator_after,
-                        "omit_sep_when_empty": c.omit_sep_when_empty,
-                        "enabled": c.enabled,
-                        "max_line_chars": c.max_line_chars,
-                        "next_component_position": c.next_component_position,
-                        "balance_lines": c.balance_lines,
-                    }
-                    for c in DEFAULT_COMPONENTS
-                ],
-            )
-        ],
+        "honorific_tokens": (
+            row.config.get("honorific_tokens", DEFAULT_HONORIFIC_TOKENS)
+            if row
+            else DEFAULT_HONORIFIC_TOKENS
+        )
     }
 
 
@@ -697,18 +637,15 @@ class ComponentConfigIn(BaseModel):
     balance_lines: bool = False
 
 
-class ConfigIn(BaseModel):
+class NormalisationIn(BaseModel):
     honorific_tokens: list[str] = [
-        "RA",
-        "PRA",
-        "PPRA",
-        "HON",
-        "HONRA",
-        "ELECT",
-        "EX",
-        "OFFICIO",
+        "RA", "PRA", "PPRA", "HON", "HONRA", "ELECT", "EX", "OFFICIO",
     ]
-    currency_symbol: str = "£"
+
+
+class TemplateBodyIn(BaseModel):
+    name: str
+    currency_symbol: str = "\u00a3"
     section_style: str = "SectionTitle"
     entry_style: str = "CatalogueEntry"
     edition_prefix: str = "edition of"
@@ -737,110 +674,218 @@ class ConfigIn(BaseModel):
     ]
 
 
+class TemplateOut(BaseModel):
+    id: str
+    name: str
+    created_at: str
+    is_builtin: bool
+
+
 @router.put("/config")
-def put_config(body: ConfigIn, db: Session = Depends(get_db)):
-    """Save (replace) the active export configuration."""
-    config_dict = body.model_dump()
+def put_config(body: NormalisationIn, db: Session = Depends(get_db)):
+    """Save global normalisation config."""
+    config_dict = {"honorific_tokens": body.honorific_tokens}
     config_hash = hashlib.sha256(
         json.dumps(config_dict, sort_keys=True).encode()
     ).hexdigest()
-    # Archive previous active rulesets
-    db.query(Ruleset).filter(Ruleset.archived == False).update({"archived": True})
-    ruleset = Ruleset(name="active", config=config_dict, config_hash=config_hash)
-    db.add(ruleset)
+    row = _get_normalisation_row(db)
+    if row:
+        row.config = config_dict
+        row.config_hash = config_hash
+    else:
+        row = Ruleset(
+            name="global_normalisation",
+            config=config_dict,
+            config_hash=config_hash,
+            config_type="normalisation",
+            is_builtin=False,
+        )
+        db.add(row)
     db.commit()
     return config_dict
 
 
+# ---------------------------------------------------------------------------
+# Export templates CRUD
+# ---------------------------------------------------------------------------
+
+
+@router.get("/templates", response_model=List[TemplateOut])
+def list_templates(db: Session = Depends(get_db)):
+    """List all non-archived export templates."""
+    rows = (
+        db.query(Ruleset)
+        .filter(Ruleset.archived == False, Ruleset.config_type == "template")
+        .order_by(Ruleset.created_at.asc())
+        .all()
+    )
+    return [
+        TemplateOut(
+            id=str(r.id),
+            name=r.name,
+            created_at=r.created_at.isoformat(),
+            is_builtin=r.is_builtin,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/templates/{template_id}")
+def get_template(template_id: UUID, db: Session = Depends(get_db)):
+    """Return full config for one template."""
+    r = (
+        db.query(Ruleset)
+        .filter(Ruleset.id == template_id, Ruleset.archived == False)
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    return {"id": str(r.id), "name": r.name, "created_at": r.created_at.isoformat(),
+            "is_builtin": r.is_builtin, **r.config}
+
+
+@router.post("/templates", status_code=status.HTTP_201_CREATED)
+def create_template(body: TemplateBodyIn, db: Session = Depends(get_db)):
+    """Create a new export template."""
+    config_dict = body.model_dump(exclude={"name"})
+    config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
+    r = Ruleset(
+        name=body.name, config=config_dict, config_hash=config_hash,
+        config_type="template", is_builtin=False,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return TemplateOut(id=str(r.id), name=r.name, created_at=r.created_at.isoformat(), is_builtin=False)
+
+
+@router.put("/templates/{template_id}")
+def update_template(template_id: UUID, body: TemplateBodyIn, db: Session = Depends(get_db)):
+    """Update an existing export template."""
+    r = (
+        db.query(Ruleset)
+        .filter(Ruleset.id == template_id, Ruleset.archived == False)
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    if r.is_builtin:
+        raise HTTPException(status_code=403,
+                            detail="Cannot edit a built-in template \u2014 duplicate it first")
+    config_dict = body.model_dump(exclude={"name"})
+    r.config = config_dict
+    r.name = body.name
+    r.config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
+    db.commit()
+    db.refresh(r)
+    return TemplateOut(id=str(r.id), name=r.name,
+                      created_at=r.created_at.isoformat(), is_builtin=r.is_builtin)
+
+
+@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_template(template_id: UUID, db: Session = Depends(get_db)):
+    """Soft-delete an export template."""
+    r = (
+        db.query(Ruleset)
+        .filter(Ruleset.id == template_id, Ruleset.archived == False)
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    if r.is_builtin:
+        raise HTTPException(status_code=403, detail="Cannot delete a built-in template")
+    r.archived = True
+    db.commit()
+    return None
+
+
+@router.post("/templates/{template_id}/duplicate", status_code=status.HTTP_201_CREATED)
+def duplicate_template(template_id: UUID, db: Session = Depends(get_db)):
+    """Clone a template under a new name."""
+    r = db.query(Ruleset).filter(Ruleset.id == template_id).first()
+    if not r:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    new_r = Ruleset(
+        name=f"Copy of {r.name}",
+        config=dict(r.config),
+        config_hash=r.config_hash,
+        config_type="template",
+        is_builtin=False,
+    )
+    db.add(new_r)
+    db.commit()
+    db.refresh(new_r)
+    return TemplateOut(id=str(new_r.id), name=new_r.name,
+                      created_at=new_r.created_at.isoformat(), is_builtin=False)
+
+
+# ---------------------------------------------------------------------------
+# Helper: convert a Ruleset row (or None) to an ExportConfig
+# ---------------------------------------------------------------------------
+
+
+def _ruleset_to_export_config(ruleset) -> ExportConfig:
+    """Convert a Ruleset DB row (or None) to an ExportConfig, falling back to defaults."""
+    if not ruleset:
+        return DEFAULT_CONFIG
+    cfg = ruleset.config
+    raw_components = cfg.get(
+        "components",
+        [
+            {
+                "field": c.field, "separator_after": c.separator_after,
+                "omit_sep_when_empty": c.omit_sep_when_empty, "enabled": c.enabled,
+                "max_line_chars": c.max_line_chars,
+                "next_component_position": c.next_component_position,
+                "balance_lines": c.balance_lines,
+            }
+            for c in DEFAULT_COMPONENTS
+        ],
+    )
+    components = [
+        ComponentConfig(
+            field=c["field"] if isinstance(c, dict) else c.field,
+            separator_after=c.get("separator_after", "tab") if isinstance(c, dict) else c.separator_after,
+            omit_sep_when_empty=c.get("omit_sep_when_empty", True) if isinstance(c, dict) else c.omit_sep_when_empty,
+            enabled=c.get("enabled", True) if isinstance(c, dict) else c.enabled,
+            max_line_chars=c.get("max_line_chars") if isinstance(c, dict) else c.max_line_chars,
+            next_component_position=c.get("next_component_position", "end_of_text") if isinstance(c, dict) else c.next_component_position,
+            balance_lines=c.get("balance_lines", False) if isinstance(c, dict) else c.balance_lines,
+        )
+        for c in raw_components
+    ]
+    return ExportConfig(
+        currency_symbol=cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
+        section_style=cfg.get("section_style", DEFAULT_CONFIG.section_style),
+        entry_style=cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
+        edition_prefix=cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
+        edition_brackets=cfg.get("edition_brackets", DEFAULT_CONFIG.edition_brackets),
+        cat_no_style=cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
+        artist_style=cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
+        honorifics_style=cfg.get("honorifics_style", DEFAULT_CONFIG.honorifics_style),
+        honorifics_lowercase=cfg.get("honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase),
+        title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
+        price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
+        medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
+        artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
+        thousands_separator=cfg.get("thousands_separator", DEFAULT_CONFIG.thousands_separator),
+        decimal_places=cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
+        leading_separator=cfg.get("leading_separator", DEFAULT_CONFIG.leading_separator),
+        trailing_separator=cfg.get("trailing_separator", DEFAULT_CONFIG.trailing_separator),
+        final_sep_from_last_component=cfg.get(
+            "final_sep_from_last_component", DEFAULT_CONFIG.final_sep_from_last_component
+        ),
+        components=components,
+    )
+
+
 @router.get("/imports/{import_id}/export-tags")
-def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
-    ruleset = resolve_export_config(db)
-    config = DEFAULT_CONFIG
-    if ruleset:
-        cfg = ruleset.config
-        raw_components = cfg.get(
-            "components",
-            [
-                {
-                    "field": c.field,
-                    "separator_after": c.separator_after,
-                    "omit_sep_when_empty": c.omit_sep_when_empty,
-                    "enabled": c.enabled,
-                    "max_line_chars": c.max_line_chars,
-                    "next_component_position": c.next_component_position,
-                    "balance_lines": c.balance_lines,
-                }
-                for c in DEFAULT_COMPONENTS
-            ],
-        )
-        components = [
-            ComponentConfig(
-                field=c["field"] if isinstance(c, dict) else c.field,
-                separator_after=(
-                    c.get("separator_after", "tab")
-                    if isinstance(c, dict)
-                    else c.separator_after
-                ),
-                omit_sep_when_empty=(
-                    c.get("omit_sep_when_empty", True)
-                    if isinstance(c, dict)
-                    else c.omit_sep_when_empty
-                ),
-                enabled=(c.get("enabled", True) if isinstance(c, dict) else c.enabled),
-                max_line_chars=(
-                    c.get("max_line_chars", None)
-                    if isinstance(c, dict)
-                    else c.max_line_chars
-                ),
-                next_component_position=(
-                    c.get("next_component_position", "end_of_text")
-                    if isinstance(c, dict)
-                    else c.next_component_position
-                ),
-                balance_lines=(
-                    c.get("balance_lines", False)
-                    if isinstance(c, dict)
-                    else c.balance_lines
-                ),
-            )
-            for c in raw_components
-        ]
-        config = ExportConfig(
-            currency_symbol=cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
-            section_style=cfg.get("section_style", DEFAULT_CONFIG.section_style),
-            entry_style=cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
-            edition_prefix=cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
-            edition_brackets=cfg.get(
-                "edition_brackets", DEFAULT_CONFIG.edition_brackets
-            ),
-            cat_no_style=cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
-            artist_style=cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
-            honorifics_style=cfg.get(
-                "honorifics_style", DEFAULT_CONFIG.honorifics_style
-            ),
-            honorifics_lowercase=cfg.get(
-                "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
-            ),
-            title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
-            price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
-            medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
-            artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
-            thousands_separator=cfg.get(
-                "thousands_separator", DEFAULT_CONFIG.thousands_separator
-            ),
-            decimal_places=cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
-            leading_separator=cfg.get(
-                "leading_separator", DEFAULT_CONFIG.leading_separator
-            ),
-            trailing_separator=cfg.get(
-                "trailing_separator", DEFAULT_CONFIG.trailing_separator
-            ),
-            final_sep_from_last_component=cfg.get(
-                "final_sep_from_last_component",
-                DEFAULT_CONFIG.final_sep_from_last_component,
-            ),
-            components=components,
-        )
+def export_indesign_tags(
+    import_id: UUID,
+    template_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    config = _ruleset_to_export_config(resolve_export_config(db, template_id))
     output = render_import_as_tagged_text(import_id, db, config)
     return Response(
         content=escape_for_mac_roman(output).encode("mac_roman"),
@@ -850,96 +895,13 @@ def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
 
 @router.get("/imports/{import_id}/sections/{section_id}/export-tags")
 def export_section_indesign_tags(
-    import_id: UUID, section_id: UUID, db: Session = Depends(get_db)
+    import_id: UUID,
+    section_id: UUID,
+    template_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
 ):
     """Export InDesign Tagged Text for a single section only."""
-    ruleset = resolve_export_config(db)
-    config = DEFAULT_CONFIG
-    if ruleset:
-        cfg = ruleset.config
-        raw_components = cfg.get(
-            "components",
-            [
-                {
-                    "field": c.field,
-                    "separator_after": c.separator_after,
-                    "omit_sep_when_empty": c.omit_sep_when_empty,
-                    "enabled": c.enabled,
-                    "max_line_chars": c.max_line_chars,
-                    "next_component_position": c.next_component_position,
-                    "balance_lines": c.balance_lines,
-                }
-                for c in DEFAULT_COMPONENTS
-            ],
-        )
-        components = [
-            ComponentConfig(
-                field=c["field"] if isinstance(c, dict) else c.field,
-                separator_after=(
-                    c.get("separator_after", "tab")
-                    if isinstance(c, dict)
-                    else c.separator_after
-                ),
-                omit_sep_when_empty=(
-                    c.get("omit_sep_when_empty", True)
-                    if isinstance(c, dict)
-                    else c.omit_sep_when_empty
-                ),
-                enabled=(c.get("enabled", True) if isinstance(c, dict) else c.enabled),
-                max_line_chars=(
-                    c.get("max_line_chars", None)
-                    if isinstance(c, dict)
-                    else c.max_line_chars
-                ),
-                next_component_position=(
-                    c.get("next_component_position", "end_of_text")
-                    if isinstance(c, dict)
-                    else c.next_component_position
-                ),
-                balance_lines=(
-                    c.get("balance_lines", False)
-                    if isinstance(c, dict)
-                    else c.balance_lines
-                ),
-            )
-            for c in raw_components
-        ]
-        config = ExportConfig(
-            currency_symbol=cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
-            section_style=cfg.get("section_style", DEFAULT_CONFIG.section_style),
-            entry_style=cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
-            edition_prefix=cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
-            edition_brackets=cfg.get(
-                "edition_brackets", DEFAULT_CONFIG.edition_brackets
-            ),
-            cat_no_style=cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
-            artist_style=cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
-            honorifics_style=cfg.get(
-                "honorifics_style", DEFAULT_CONFIG.honorifics_style
-            ),
-            honorifics_lowercase=cfg.get(
-                "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
-            ),
-            title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
-            price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
-            medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
-            artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
-            thousands_separator=cfg.get(
-                "thousands_separator", DEFAULT_CONFIG.thousands_separator
-            ),
-            decimal_places=cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
-            leading_separator=cfg.get(
-                "leading_separator", DEFAULT_CONFIG.leading_separator
-            ),
-            trailing_separator=cfg.get(
-                "trailing_separator", DEFAULT_CONFIG.trailing_separator
-            ),
-            final_sep_from_last_component=cfg.get(
-                "final_sep_from_last_component",
-                DEFAULT_CONFIG.final_sep_from_last_component,
-            ),
-            components=components,
-        )
+    config = _ruleset_to_export_config(resolve_export_config(db, template_id))
     output = render_import_as_tagged_text(import_id, db, config, section_id=section_id)
     return Response(
         content=escape_for_mac_roman(output).encode("mac_roman"),

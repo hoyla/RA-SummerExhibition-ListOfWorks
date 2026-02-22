@@ -106,10 +106,12 @@ function navigate(hash) { location.hash = hash; }
 
 function _highlightNav() {
   const hash = location.hash || '#/';
-  const isSettings = hash === '#/settings';
-  document.querySelectorAll('.site-nav a').forEach(a => {
-    const wantsSettings = a.getAttribute('href') === '#/settings';
-    a.classList.toggle('active', wantsSettings === isSettings);
+  document.querySelectorAll('.site-nav a:not([target])').forEach(a => {
+    const href = a.getAttribute('href');
+    const active = href === '#/'
+      ? (hash === '#/' || hash === '')
+      : (hash === href || hash.startsWith(href + '/'));
+    a.classList.toggle('active', active);
   });
 }
 
@@ -117,10 +119,13 @@ function router() {
   _syncHeader();
   _highlightNav();
   const hash = location.hash || '#/';
-  const m = hash.match(/^#\/import\/([^/]+)/);
-  if (m) renderDetail(m[1]);
-  else if (hash === '#/settings') renderSettings();
-  else    renderList();
+  const importMatch = hash.match(/^#\/import\/([^/]+)/);
+  const tmplEditMatch = hash.match(/^#\/templates\/([^/]+)\/edit$/);
+  if (importMatch)        renderDetail(importMatch[1]);
+  else if (tmplEditMatch) renderTemplateEdit(tmplEditMatch[1]);
+  else if (hash === '#/templates') renderTemplates();
+  else if (hash === '#/settings')  renderSettings();
+  else                             renderList();
 }
 
 window.addEventListener('hashchange', router);
@@ -137,13 +142,11 @@ async function renderSettings() {
   try { cfg = await api('GET', '/config'); }
   catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
 
-  // Load display prefs
-  let dispRaw = {};
-  try { dispRaw = JSON.parse(localStorage.getItem('ra_display_cfg') || '{}'); } catch {}
-  const dispMirror = dispRaw.mirror !== false;
-  const dispCurr   = dispRaw.currency_symbol    ?? cfg.currency_symbol    ?? '£';
-  const dispSep    = dispRaw.thousands_separator ?? cfg.thousands_separator ?? ',';
-  const dispDp     = dispRaw.decimal_places      ?? cfg.decimal_places     ?? 0;
+  // Load display prefs from localStorage
+  const dispCfg = _getDisplayCfg();
+  const dispCurr = dispCfg.currency_symbol;
+  const dispSep  = dispCfg.thousands_separator;
+  const dispDp   = dispCfg.decimal_places;
 
   const sepOpts = (val) => [
     [',', ', &nbsp; 1,000'],
@@ -155,77 +158,9 @@ async function renderSettings() {
     ['0', '0 &nbsp;&mdash;&nbsp; 1,500'],
     ['2', '2 &nbsp;&mdash;&nbsp; 1,500.00'],
   ].map(([v, label]) => `<option value="${v}"${String(val) === v ? ' selected' : ''}>${label}</option>`).join('');
-  const _sepOpts = (val) => [
-    ['none',         'none'],
-    ['space',        'space'],
-    ['tab',          'tab'],
-    ['right_tab',    'right-indent tab (uses tab stop)'],
-    ['soft_return',  'soft return (\\n)'],
-    ['hard_return',  'hard return'],
-  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
-
   const honorificTokensValue = Array.isArray(cfg.honorific_tokens)
     ? cfg.honorific_tokens.join(', ')
     : (cfg.honorific_tokens ?? 'RA, PRA, PPRA, HON, HONRA, ELECT, EX, OFFICIO');
-
-  const COMP_LABELS = {
-    work_number: 'Work Number', artist: 'Artist', title: 'Title',
-    edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
-  };
-  const defaultComponents = [
-    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-  ];
-  // Merge: if a saved config is missing a known component, append it with defaults
-  const savedComponents = cfg.components ?? defaultComponents;
-  const savedFields = new Set(savedComponents.map(c => c.field));
-  const mergedComponents = [
-    ...savedComponents,
-    ...defaultComponents.filter(c => !savedFields.has(c.field)),
-  ];
-  const componentRowsHTML = mergedComponents.map(c => {
-    const label = COMP_LABELS[c.field] ?? c.field;
-    const enabled = c.enabled ?? true;
-    const maxChars = c.max_line_chars ?? '';
-    const nextPos = c.next_component_position ?? 'end_of_text';
-    const balance = c.balance_lines ?? false;
-    const posDisabled = maxChars === '' || maxChars === null ? 'disabled' : '';
-    const balDisabled = posDisabled;
-    return `
-    <div class="component-row" data-field="${esc(c.field)}" style="opacity:${enabled ? 1 : 0.45}">
-      <div class="component-main">
-        <div class="component-handle">
-          <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up">▲</button>
-          <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down">▼</button>
-        </div>
-        <span class="component-label">${esc(label)}</span>
-        <select class="component-sep">${_sepOpts(c.separator_after)}</select>
-        <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}> omit when empty</label>
-        <label class="component-toggle" title="Include this component in the export">
-          <input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
-            onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> include
-        </label>
-      </div>
-      <div class="component-wrap-opts">
-        <label>max chars/line <input type="number" class="component-max-chars" min="1" style="width:4.5em"
-          value="${maxChars}" placeholder="none"
-          oninput="const r=this.closest('.component-row');r.querySelector('.component-next-pos').disabled=!this.value;r.querySelector('.component-balance').disabled=!this.value"></label>
-        <label>next component at
-          <select class="component-next-pos" ${posDisabled}>
-            <option value="end_of_text" ${nextPos==='end_of_text'?'selected':''}>end of text</option>
-            <option value="end_of_first_line" ${nextPos==='end_of_first_line'?'selected':''}>end of first line</option>
-          </select>
-          <span class="form-hint" style="display:inline">(soft returns used for line breaks within field)</span>
-        </label>
-        <label class="inline-check"><input type="checkbox" class="component-balance" ${balance?'checked':''} ${balDisabled}> balance lines</label>
-      </div>
-    </div>`;
-  }).join('');
 
   app.innerHTML = `
     <h2 class="page-heading">Settings</h2>
@@ -243,137 +178,11 @@ async function renderSettings() {
       </div>
     </section>
 
-    <h3 class="settings-group-heading">Export</h3>
-    <p class="settings-group-desc">Saved to the server and applied to all InDesign tagged-text exports.</p>
-    <section class="panel">
-      <h4 class="panel-subheading">Formatting</h4>
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Currency symbol</label>
-          <input id="cfg-currency" type="text" value="${esc(cfg.currency_symbol)}" style="max-width:80px">
-        </div>
-        <div class="form-row">
-          <label>Thousands separator</label>
-          <select id="cfg-thousands-sep">
-            <option value=","  ${cfg.thousands_separator === ','  ? 'selected' : ''}>, &nbsp; 1,000</option>
-            <option value="."  ${cfg.thousands_separator === '.'  ? 'selected' : ''}>. &nbsp; 1.000</option>
-            <option value=" "  ${cfg.thousands_separator === ' '  ? 'selected' : ''}>space &nbsp; 1 000</option>
-            <option value=""   ${cfg.thousands_separator === ''   ? 'selected' : ''}>none &nbsp; 1000</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Decimal places</label>
-          <select id="cfg-decimal-places">
-            <option value="0" ${cfg.decimal_places === 0 ? 'selected' : ''}>0 &nbsp;&mdash;&nbsp; 1,500</option>
-            <option value="2" ${cfg.decimal_places === 2 ? 'selected' : ''}>2 &nbsp;&mdash;&nbsp; 1,500.00</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Edition prefix</label>
-          <input id="cfg-edition-prefix" type="text" value="${esc(cfg.edition_prefix)}">
-          <span class="form-hint">e.g. &ldquo;edition of&rdquo; &rarr; &ldquo;edition of 10 at &pound;500&rdquo;</span>
-        </div>
-        <div class="form-row">
-          <label>Edition brackets</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" id="cfg-edition-brackets"${cfg.edition_brackets !== false ? ' checked' : ''}>
-            Wrap edition info in brackets
-          </label>
-          <span class="form-hint">e.g. &ldquo;(edition of 10 at &pound;500)&rdquo; vs &ldquo;edition of 10 at &pound;500&rdquo;</span>
-        </div>
-      </div>
-    </section>
-    <section class="panel">
-      <h4 class="panel-subheading">InDesign Paragraph Styles</h4>
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Section heading</label>
-          <input id="cfg-section-style" type="text" value="${esc(cfg.section_style)}">
-          <span class="form-hint">Applied to section / room headings</span>
-        </div>
-        <div class="form-row">
-          <label>Entry paragraph</label>
-          <input id="cfg-entry-style" type="text" value="${esc(cfg.entry_style)}">
-          <span class="form-hint">Applied to each catalogue entry row</span>
-        </div>
-      </div>
-    </section>
-    <section class="panel">
-      <h4 class="panel-subheading">InDesign Character Styles</h4>
-      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Leave blank to output plain text for that field.</p>
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Cat number</label>
-          <input id="cfg-cat-no-style" type="text" value="${esc(cfg.cat_no_style)}">
-        </div>
-        <div class="form-row">
-          <label>Artist name</label>
-          <input id="cfg-artist-style" type="text" value="${esc(cfg.artist_style)}">
-        </div>
-        <div class="form-row">
-          <label>Honorifics</label>
-          <div class="form-row-controls">
-            <input id="cfg-honorifics-style" type="text" value="${esc(cfg.honorifics_style)}">
-            <label class="inline-check"><input id="cfg-honorifics-lowercase" type="checkbox" ${cfg.honorifics_lowercase ? 'checked' : ''}> force lowercase</label>
-          </div>
-          <span class="form-hint">Appended after artist name with a space. Use lowercase for small-caps character styles.</span>
-        </div>
-        <div class="form-row">
-          <label>Title</label>
-          <input id="cfg-title-style" type="text" value="${esc(cfg.title_style)}">
-        </div>
-        <div class="form-row">
-          <label>Price</label>
-          <input id="cfg-price-style" type="text" value="${esc(cfg.price_style)}">
-        </div>
-        <div class="form-row">
-          <label>Medium</label>
-          <input id="cfg-medium-style" type="text" value="${esc(cfg.medium_style ?? '')}">
-        </div>
-        <div class="form-row">
-          <label>Artwork number</label>
-          <input id="cfg-artwork-style" type="text" value="${esc(cfg.artwork_style ?? '')}">
-        </div>
-      </div>
-    </section>
-    <section class="panel">
-      <h4 class="panel-subheading">Entry Layout</h4>
-      <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Drag to reorder with the arrows. The separator fires after each non-empty component. Right-align tab = <code>\y</code>, soft return = <code>\n</code> in InDesign tagged text.</p>
-      <div class="form-row" style="margin-bottom:12px">
-        <label>Leading separator</label>
-        <select id="cfg-leading-sep">${_sepOpts(cfg.leading_separator ?? 'none')}</select>
-        <span class="form-hint">Inserted before the first component</span>
-      </div>
-      <div id="cfg-components" class="component-list">${componentRowsHTML}</div>
-      <div class="form-row" style="margin-top:12px">
-        <label>Trailing separator</label>
-        <select id="cfg-trailing-sep">${_sepOpts(cfg.trailing_separator ?? 'none')}</select>
-        <span class="form-hint">Inserted after the last component</span>
-      </div>
-      <div class="form-row" style="margin-top:8px">
-        <label class="inline-check" style="text-transform:none;font-size:13px">
-          <input type="checkbox" id="cfg-final-sep-from-last"
-            ${(cfg.final_sep_from_last_component ?? false) ? 'checked' : ''}>
-          When last component is omitted, adopt its separator for the final non-empty field
-        </label>
-      </div>
-    </section>
-
     <h3 class="settings-group-heading">Preview</h3>
     <p class="settings-group-desc">Controls how values appear in this browser view only &mdash; stored locally, never sent to the server.</p>
     <section class="panel">
       <h4 class="panel-subheading">HTML Preview Formatting</h4>
-      <div class="settings-form" style="margin-bottom:14px">
-        <div class="form-row" style="grid-column:1/-1">
-          <label class="inline-check" style="text-transform:none;font-weight:500">
-            <input type="checkbox" id="cfg-display-mirror"${dispMirror ? ' checked' : ''}
-                   onchange="document.getElementById('display-custom').style.display=this.checked?'none':'grid'">
-            Mirror currency &amp; price formatting from export settings
-          </label>
-          <p class="form-hint" style="margin:4px 0 0;grid-column:1/-1">When checked, the currency symbol, thousands separator and decimal places below are taken from the export settings above. Component order, inclusion, separators and character styles are never reflected in the preview.</p>
-        </div>
-      </div>
-      <div id="display-custom" class="settings-form" style="display:${dispMirror ? 'none' : 'grid'}">
+      <div class="settings-form">
         <div class="form-row">
           <label>Currency symbol</label>
           <input id="disp-currency" type="text" value="${esc(dispCurr)}" style="max-width:80px">
@@ -396,59 +205,17 @@ async function renderSettings() {
 }
 
 async function saveSettings() {
-  const rawTokens = (document.getElementById('cfg-honorific-tokens')?.value ?? '');
+  const rawTokens = document.getElementById('cfg-honorific-tokens')?.value ?? '';
   const honorific_tokens = rawTokens.split(',').map(t => t.trim()).filter(Boolean);
-  const components = Array.from(
-    document.querySelectorAll('#cfg-components .component-row')
-  ).map(row => {
-    const rawMax = row.querySelector('.component-max-chars')?.value;
-    return {
-      field: row.dataset.field,
-      separator_after: row.querySelector('.component-sep')?.value ?? 'none',
-      omit_sep_when_empty: row.querySelector('.component-omit-sep')?.checked ?? true,
-      enabled: row.querySelector('.component-enabled')?.checked ?? true,
-      max_line_chars: rawMax ? parseInt(rawMax, 10) : null,
-      next_component_position: row.querySelector('.component-next-pos')?.value ?? 'end_of_text',
-      balance_lines: row.querySelector('.component-balance')?.checked ?? false,
-    };
-  });
-  const body = {
-    honorific_tokens,
-    leading_separator:   document.getElementById('cfg-leading-sep')?.value  ?? 'none',
-    trailing_separator:  document.getElementById('cfg-trailing-sep')?.value ?? 'none',
-    final_sep_from_last_component: document.getElementById('cfg-final-sep-from-last')?.checked ?? false,
-    components,
-    section_style:       (document.getElementById('cfg-section-style')?.value    ?? '').trim() || 'SectionTitle',
-    entry_style:         (document.getElementById('cfg-entry-style')?.value      ?? '').trim() || 'CatalogueEntry',
-    currency_symbol:     (document.getElementById('cfg-currency')?.value         ?? '').trim() || '£',
-    edition_prefix:      (document.getElementById('cfg-edition-prefix')?.value   ?? '').trim() || 'edition of',
-    edition_brackets:    document.getElementById('cfg-edition-brackets')?.checked ?? true,
-    cat_no_style:        (document.getElementById('cfg-cat-no-style')?.value     ?? '').trim(),
-    artist_style:        (document.getElementById('cfg-artist-style')?.value     ?? '').trim(),
-    honorifics_style:    (document.getElementById('cfg-honorifics-style')?.value ?? '').trim(),
-    honorifics_lowercase: document.getElementById('cfg-honorifics-lowercase')?.checked ?? false,
-    title_style:         (document.getElementById('cfg-title-style')?.value      ?? '').trim(),
-    price_style:         (document.getElementById('cfg-price-style')?.value      ?? '').trim(),
-    medium_style:        (document.getElementById('cfg-medium-style')?.value     ?? '').trim(),
-    artwork_style:       (document.getElementById('cfg-artwork-style')?.value    ?? '').trim(),
-    thousands_separator: (document.getElementById('cfg-thousands-sep')?.value    ?? ','),
-    decimal_places:      Number(document.getElementById('cfg-decimal-places')?.value ?? '0'),
-  };
   const statusEl = document.getElementById('settings-status');
   if (!statusEl) return;
   statusEl.textContent = 'Saving\u2026';
   statusEl.className = 'status-msg';
   try {
-    await api('PUT', '/config', body);
-    // Save display prefs to localStorage
-    const mirror = document.getElementById('cfg-display-mirror')?.checked !== false
-                && document.getElementById('cfg-display-mirror') !== null
-                ? document.getElementById('cfg-display-mirror').checked
-                : true;
+    await api('PUT', '/config', { honorific_tokens });
     _saveDisplayCfg(
-      mirror,
-      (document.getElementById('disp-currency')?.value       ?? '').trim() || '£',
-      (document.getElementById('disp-thousands-sep')?.value  ?? ','),
+      (document.getElementById('disp-currency')?.value      ?? '').trim() || '\u00a3',
+      document.getElementById('disp-thousands-sep')?.value  ?? ',',
       Number(document.getElementById('disp-decimal-places')?.value ?? '0'),
     );
     statusEl.textContent = '\u2713 Saved';
@@ -470,6 +237,344 @@ function moveComponent(btn, dir) {
     list.insertBefore(row, row.previousElementSibling);
   } else if (dir === 1 && row.nextElementSibling) {
     list.insertBefore(row.nextElementSibling, row);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Templates list page
+// ---------------------------------------------------------------------------
+
+async function renderTemplates() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<p class="loading" style="padding:40px 0">Loading templates&hellip;</p>';
+  let templates;
+  try { templates = await api('GET', '/templates'); }
+  catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+
+  const rows = templates.map(t => {
+    const created = t.created_at ? new Date(t.created_at).toLocaleDateString('en-GB') : '';
+    const builtinBadge = t.is_builtin
+      ? '<span class="badge badge-builtin">built-in</span>'
+      : '';
+    const editBtn = `<a class="btn btn-sm" href="#/templates/${esc(t.id)}/edit">Edit</a>`;
+    const dupBtn  = `<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}')">Duplicate</button>`;
+    const delBtn  = t.is_builtin
+      ? ''
+      : `<button class="btn btn-sm btn-danger" onclick="deleteTemplate('${esc(t.id)}','${esc(t.name)}')">Delete</button>`;
+    return `<tr class="template-row">
+      <td>${esc(t.name)} ${builtinBadge}</td>
+      <td>${esc(created)}</td>
+      <td class="table-actions">${editBtn} ${dupBtn} ${delBtn}</td>
+    </tr>`;
+  }).join('');
+
+  app.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <h2 class="page-heading" style="margin:0">Export Templates</h2>
+      <a class="btn btn-primary" href="#/templates/new/edit">+ New Template</a>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Templates define InDesign export settings. Choose one each time you export.</p>
+    <section class="panel" style="padding:0;overflow:hidden">
+      <table class="data-table" style="width:100%">
+        <thead><tr><th>Name</th><th>Created</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" style="padding:20px;color:var(--muted)">No templates yet.</td></tr>'}</tbody>
+      </table>
+    </section>`;
+}
+
+async function duplicateTemplate(id) {
+  try {
+    const created = await api('POST', `/templates/${id}/duplicate`);
+    location.hash = `#/templates/${created.id}/edit`;
+  } catch (e) {
+    alert(`Could not duplicate: ${e.message}`);
+  }
+}
+
+async function deleteTemplate(id, name) {
+  if (!confirm(`Delete template "${name}"? This cannot be undone.`)) return;
+  try {
+    await api('DELETE', `/templates/${id}`);
+    renderTemplates();
+  } catch (e) {
+    alert(`Could not delete: ${e.message}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Template edit page
+// ---------------------------------------------------------------------------
+
+async function renderTemplateEdit(id) {
+  const app = document.getElementById('app');
+  app.innerHTML = '<p class="loading" style="padding:40px 0">Loading&hellip;</p>';
+
+  const isNew = id === 'new';
+  let cfg = {};
+  let isBuiltin = false;
+
+  if (!isNew) {
+    try { cfg = await api('GET', `/templates/${id}`); }
+    catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    isBuiltin = cfg.is_builtin ?? false;
+  }
+
+  // helpers
+  const _sepOpts = (val) => [
+    ['none',         'none'],
+    ['space',        'space'],
+    ['tab',          'tab'],
+    ['right_tab',    'right-indent tab (uses tab stop)'],
+    ['soft_return',  'soft return (\\n)'],
+    ['hard_return',  'hard return'],
+  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
+
+  const sepOpts = (val) => [
+    [',', ', &nbsp; 1,000'],
+    ['.', '. &nbsp; 1.000'],
+    [' ', 'space &nbsp; 1 000'],
+    ['',  'none &nbsp; 1000'],
+  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
+
+  const dpOpts = (val) => [
+    ['0', '0 &mdash; 1,500'],
+    ['2', '2 &mdash; 1,500.00'],
+  ].map(([v, label]) => `<option value="${v}"${String(val) === v ? ' selected' : ''}>${label}</option>`).join('');
+
+  // components
+  const COMP_LABELS = {
+    work_number: 'Work Number', artist: 'Artist', title: 'Title',
+    edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
+  };
+  const defaultComponents = [
+    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+  ];
+  const savedComponents = cfg.components ?? defaultComponents;
+  const savedFields = new Set(savedComponents.map(c => c.field));
+  const mergedComponents = [
+    ...savedComponents,
+    ...defaultComponents.filter(c => !savedFields.has(c.field)),
+  ];
+
+  const ro = isBuiltin ? ' readonly disabled' : '';
+  const roCheck = isBuiltin ? ' disabled' : '';
+
+  const componentRowsHTML = mergedComponents.map(c => {
+    const label = COMP_LABELS[c.field] ?? c.field;
+    const enabled = c.enabled ?? true;
+    const maxChars = c.max_line_chars ?? '';
+    const nextPos = c.next_component_position ?? 'end_of_text';
+    const balance = c.balance_lines ?? false;
+    const posDisabled = (maxChars === '' || maxChars === null) ? 'disabled' : '';
+    const balDisabled = posDisabled;
+    return `
+    <div class="component-row" data-field="${esc(c.field)}" style="opacity:${enabled ? 1 : 0.45}">
+      <div class="component-main">
+        <div class="component-handle">
+          <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up"${isBuiltin ? ' disabled' : ''}>▲</button>
+          <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down"${isBuiltin ? ' disabled' : ''}>▼</button>
+        </div>
+        <span class="component-label">${esc(label)}</span>
+        <select class="component-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(c.separator_after)}</select>
+        <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}${roCheck}> omit when empty</label>
+        <label class="component-toggle" title="Include this component in the export">
+          <input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}${roCheck}
+            onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> include
+        </label>
+      </div>
+      <div class="component-wrap-opts">
+        <label>max chars/line <input type="number" class="component-max-chars" min="1" style="width:4.5em"
+          value="${maxChars}" placeholder="none"${ro}
+          oninput="const r=this.closest('.component-row');r.querySelector('.component-next-pos').disabled=!this.value;r.querySelector('.component-balance').disabled=!this.value"></label>
+        <label>next component at
+          <select class="component-next-pos" ${posDisabled}${isBuiltin ? ' disabled' : ''}>
+            <option value="end_of_text" ${nextPos==='end_of_text'?'selected':''}>end of text</option>
+            <option value="end_of_first_line" ${nextPos==='end_of_first_line'?'selected':''}>end of first line</option>
+          </select>
+        </label>
+        <label class="inline-check"><input type="checkbox" class="component-balance" ${balance?'checked':''}${roCheck} ${balDisabled}> balance lines</label>
+      </div>
+    </div>`;
+  }).join('');
+
+  const backLink = `<a href="#/templates" style="font-size:13px;color:var(--muted)">&larr; Back to templates</a>`;
+  const heading = isNew ? 'New Template' : esc(cfg.name ?? 'Edit Template');
+  const builtinNote = isBuiltin
+    ? `<div class="info-banner" style="margin-bottom:16px;padding:10px 14px;background:var(--bg-alt);border-radius:6px;font-size:13px;color:var(--muted)">
+        <strong>Built-in template</strong> &mdash; read-only. <button class="btn btn-sm" onclick="duplicateTemplate('${esc(id)}')">Duplicate to edit</button>
+       </div>`
+    : '';
+  const saveBtn = isBuiltin
+    ? ''
+    : `<button class="btn btn-primary" onclick="saveTemplate('${isNew ? 'new' : esc(id)}')">Save Template</button>`;
+
+  app.innerHTML = `
+    <div style="margin-bottom:4px">${backLink}</div>
+    <h2 class="page-heading">${heading}</h2>
+    ${builtinNote}
+
+    ${isNew ? `<section class="panel"><div class="settings-form"><div class="form-row">
+      <label>Template name</label>
+      <input id="tmpl-name" type="text" placeholder="e.g. Summer Exhibition 2025">
+    </div></div></section>` : ''}
+    ${!isNew ? `<section class="panel"><div class="settings-form"><div class="form-row">
+      <label>Template name</label>
+      <input id="tmpl-name" type="text" value="${esc(cfg.name ?? '')}"${ro}>
+    </div></div></section>` : ''}
+
+    <h3 class="settings-group-heading">Formatting</h3>
+    <section class="panel">
+      <div class="settings-form">
+        <div class="form-row">
+          <label>Currency symbol</label>
+          <input id="tmpl-currency" type="text" value="${esc(cfg.currency_symbol ?? '\u00a3')}" style="max-width:80px"${ro}>
+        </div>
+        <div class="form-row">
+          <label>Thousands separator</label>
+          <select id="tmpl-thousands-sep"${isBuiltin ? ' disabled' : ''}>${sepOpts(cfg.thousands_separator ?? ',')}</select>
+        </div>
+        <div class="form-row">
+          <label>Decimal places</label>
+          <select id="tmpl-decimal-places"${isBuiltin ? ' disabled' : ''}>${dpOpts(cfg.decimal_places ?? 0)}</select>
+        </div>
+        <div class="form-row">
+          <label>Edition prefix</label>
+          <input id="tmpl-edition-prefix" type="text" value="${esc(cfg.edition_prefix ?? 'edition of')}"${ro}>
+          <span class="form-hint">e.g. &ldquo;edition of&rdquo; &rarr; &ldquo;edition of 10 at &pound;500&rdquo;</span>
+        </div>
+        <div class="form-row">
+          <label>Edition brackets</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" id="tmpl-edition-brackets"${cfg.edition_brackets !== false ? ' checked' : ''}${roCheck}>
+            Wrap edition info in brackets
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <h3 class="settings-group-heading">InDesign Paragraph Styles</h3>
+    <section class="panel">
+      <div class="settings-form">
+        <div class="form-row">
+          <label>Section heading</label>
+          <input id="tmpl-section-style" type="text" value="${esc(cfg.section_style ?? 'SectionTitle')}"${ro}>
+        </div>
+        <div class="form-row">
+          <label>Entry paragraph</label>
+          <input id="tmpl-entry-style" type="text" value="${esc(cfg.entry_style ?? 'CatalogueEntry')}"${ro}>
+        </div>
+      </div>
+    </section>
+
+    <h3 class="settings-group-heading">InDesign Character Styles</h3>
+    <section class="panel">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Leave blank to output plain text for that field.</p>
+      <div class="settings-form">
+        <div class="form-row"><label>Cat number</label><input id="tmpl-cat-no-style" type="text" value="${esc(cfg.cat_no_style ?? '')}"${ro}></div>
+        <div class="form-row"><label>Artist name</label><input id="tmpl-artist-style" type="text" value="${esc(cfg.artist_style ?? '')}"${ro}></div>
+        <div class="form-row">
+          <label>Honorifics</label>
+          <div class="form-row-controls">
+            <input id="tmpl-honorifics-style" type="text" value="${esc(cfg.honorifics_style ?? '')}"${ro}>
+            <label class="inline-check"><input id="tmpl-honorifics-lowercase" type="checkbox" ${cfg.honorifics_lowercase ? 'checked' : ''}${roCheck}> force lowercase</label>
+          </div>
+        </div>
+        <div class="form-row"><label>Title</label><input id="tmpl-title-style" type="text" value="${esc(cfg.title_style ?? '')}"${ro}></div>
+        <div class="form-row"><label>Price</label><input id="tmpl-price-style" type="text" value="${esc(cfg.price_style ?? '')}"${ro}></div>
+        <div class="form-row"><label>Medium</label><input id="tmpl-medium-style" type="text" value="${esc(cfg.medium_style ?? '')}"${ro}></div>
+        <div class="form-row"><label>Artwork number</label><input id="tmpl-artwork-style" type="text" value="${esc(cfg.artwork_style ?? '')}"${ro}></div>
+      </div>
+    </section>
+
+    <h3 class="settings-group-heading">Entry Layout</h3>
+    <section class="panel">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Drag to reorder. Separator fires after each non-empty component. Right-align tab = <code>\y</code>, soft return = <code>\n</code>.</p>
+      <div class="form-row" style="margin-bottom:12px">
+        <label>Leading separator</label>
+        <select id="tmpl-leading-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(cfg.leading_separator ?? 'none')}</select>
+      </div>
+      <div id="tmpl-components" class="component-list">${componentRowsHTML}</div>
+      <div class="form-row" style="margin-top:12px">
+        <label>Trailing separator</label>
+        <select id="tmpl-trailing-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(cfg.trailing_separator ?? 'none')}</select>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <label class="inline-check" style="text-transform:none;font-size:13px">
+          <input type="checkbox" id="tmpl-final-sep-from-last"
+            ${(cfg.final_sep_from_last_component ?? false) ? 'checked' : ''}${roCheck}>
+          When last component is omitted, adopt its separator for the final non-empty field
+        </label>
+      </div>
+    </section>
+
+    <div class="form-actions" style="padding-bottom:20px">
+      ${saveBtn}
+      <span id="tmpl-status" class="status-msg"></span>
+    </div>`;
+}
+
+async function saveTemplate(id) {
+  const nameEl = document.getElementById('tmpl-name');
+  const name = (nameEl?.value ?? '').trim();
+  if (!name) { alert('Please enter a template name.'); nameEl?.focus(); return; }
+
+  const components = Array.from(
+    document.querySelectorAll('#tmpl-components .component-row')
+  ).map(row => {
+    const rawMax = row.querySelector('.component-max-chars')?.value;
+    return {
+      field: row.dataset.field,
+      separator_after: row.querySelector('.component-sep')?.value ?? 'none',
+      omit_sep_when_empty: row.querySelector('.component-omit-sep')?.checked ?? true,
+      enabled: row.querySelector('.component-enabled')?.checked ?? true,
+      max_line_chars: rawMax ? parseInt(rawMax, 10) : null,
+      next_component_position: row.querySelector('.component-next-pos')?.value ?? 'end_of_text',
+      balance_lines: row.querySelector('.component-balance')?.checked ?? false,
+    };
+  });
+
+  const body = {
+    name,
+    currency_symbol:     (document.getElementById('tmpl-currency')?.value          ?? '').trim() || '\u00a3',
+    thousands_separator:  document.getElementById('tmpl-thousands-sep')?.value      ?? ',',
+    decimal_places:      Number(document.getElementById('tmpl-decimal-places')?.value ?? '0'),
+    edition_prefix:      (document.getElementById('tmpl-edition-prefix')?.value     ?? '').trim() || 'edition of',
+    edition_brackets:     document.getElementById('tmpl-edition-brackets')?.checked ?? true,
+    section_style:       (document.getElementById('tmpl-section-style')?.value      ?? '').trim() || 'SectionTitle',
+    entry_style:         (document.getElementById('tmpl-entry-style')?.value        ?? '').trim() || 'CatalogueEntry',
+    cat_no_style:        (document.getElementById('tmpl-cat-no-style')?.value       ?? '').trim(),
+    artist_style:        (document.getElementById('tmpl-artist-style')?.value       ?? '').trim(),
+    honorifics_style:    (document.getElementById('tmpl-honorifics-style')?.value   ?? '').trim(),
+    honorifics_lowercase: document.getElementById('tmpl-honorifics-lowercase')?.checked ?? false,
+    title_style:         (document.getElementById('tmpl-title-style')?.value        ?? '').trim(),
+    price_style:         (document.getElementById('tmpl-price-style')?.value        ?? '').trim(),
+    medium_style:        (document.getElementById('tmpl-medium-style')?.value       ?? '').trim(),
+    artwork_style:       (document.getElementById('tmpl-artwork-style')?.value      ?? '').trim(),
+    leading_separator:    document.getElementById('tmpl-leading-sep')?.value        ?? 'none',
+    trailing_separator:   document.getElementById('tmpl-trailing-sep')?.value       ?? 'none',
+    final_sep_from_last_component: document.getElementById('tmpl-final-sep-from-last')?.checked ?? false,
+    components,
+  };
+
+  const statusEl = document.getElementById('tmpl-status');
+  if (statusEl) { statusEl.textContent = 'Saving\u2026'; statusEl.className = 'status-msg'; }
+  try {
+    let result;
+    if (id === 'new') {
+      result = await api('POST', '/templates', body);
+      location.hash = `#/templates/${result.id}/edit`;
+    } else {
+      await api('PUT', `/templates/${id}`, body);
+      if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+    }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${esc(e.message)}`; statusEl.className = 'status-msg error'; }
   }
 }
 
@@ -594,24 +699,22 @@ function formatPrice(price_numeric, price_text, cfg) {
 // Display (HTML preview) formatting config — stored in localStorage only
 // ---------------------------------------------------------------------------
 
-function _getDisplayCfg(exportCfg) {
+function _getDisplayCfg() {
   try {
-    const raw = localStorage.getItem('ra_display_cfg');
-    if (!raw) return exportCfg; // default: mirror
-    const d = JSON.parse(raw);
-    if (d.mirror !== false) return exportCfg;
+    const d = JSON.parse(localStorage.getItem('ra_display_cfg') || '{}');
     return {
-      currency_symbol:    d.currency_symbol    ?? exportCfg?.currency_symbol    ?? '£',
-      thousands_separator: d.thousands_separator ?? exportCfg?.thousands_separator ?? ',',
-      decimal_places:     d.decimal_places     ?? exportCfg?.decimal_places     ?? 0,
+      currency_symbol:     d.currency_symbol     ?? '\u00a3',
+      thousands_separator: d.thousands_separator ?? ',',
+      decimal_places:      d.decimal_places      ?? 0,
     };
-  } catch { return exportCfg; }
+  } catch {
+    return { currency_symbol: '\u00a3', thousands_separator: ',', decimal_places: 0 };
+  }
 }
 
-function _saveDisplayCfg(mirror, currency_symbol, thousands_separator, decimal_places) {
+function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places) {
   localStorage.setItem('ra_display_cfg', JSON.stringify(
-    mirror ? { mirror: true }
-           : { mirror: false, currency_symbol, thousands_separator, decimal_places }
+    { currency_symbol, thousands_separator, decimal_places }
   ));
 }
 
@@ -629,12 +732,7 @@ async function renderDetail(importId) {
     <h2 class="page-heading" id="detail-heading">Loading\u2026</h2>
     <section class="panel">
       <h3>Export</h3>
-      <div class="export-buttons">
-        <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','tags','txt')">InDesign Tags (.txt)</button>
-        <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','json','json')">JSON</button>
-        <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','xml','xml')">XML</button>
-        <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','csv','csv')">CSV</button>
-      </div>
+      <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
     </section>
     <section class="panel" id="warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
     <section class="panel">
@@ -642,17 +740,34 @@ async function renderDetail(importId) {
       <div id="sections-container"><p class="loading">Loading\u2026</p></div>
     </section>`;
 
-  const [sections, warnings, exportCfg] = await Promise.all([
-    api('GET', `/imports/${importId}/sections`).catch(e => { return { _error: e.message }; }),
-    api('GET', `/imports/${importId}/warnings`).catch(() => []),
-    api('GET', '/config').catch(() => ({})),
-  ]);
-  const cfg = _getDisplayCfg(exportCfg);
+  const cfg = _getDisplayCfg();
 
-  // Derive a short heading from the first section filename if available
+  const [sections, warnings, templates] = await Promise.all([
+    api('GET', `/imports/${importId}/sections`).catch(e => ({ _error: e.message })),
+    api('GET', `/imports/${importId}/warnings`).catch(() => []),
+    api('GET', '/templates').catch(() => []),
+  ]);
+
+  // Populate template picker
+  const tmplOpts = templates.length
+    ? templates.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')
+    : '<option value="" disabled>No templates \u2014 create one in Templates</option>';
+  const panelEl = document.getElementById(`export-panel-${importId}`);
+  if (panelEl) panelEl.innerHTML = `
+    <div class="export-buttons">
+      <div class="template-row">
+        <label class="export-template-label">Template</label>
+        <select id="tmpl-select-${esc(importId)}"${templates.length ? '' : ' disabled'}>${tmplOpts}</select>
+        <button class="btn btn-secondary" onclick="downloadExportWithTemplate('${esc(importId)}','tags','txt')">InDesign Tags (.txt)</button>
+      </div>
+      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','json','json')">JSON</button>
+      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','xml','xml')">XML</button>
+      <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','csv','csv')">CSV</button>
+    </div>`;
+
   const heading = sections._error
     ? importId
-    : (sections[0] ? `Import \u2013 ${importId.slice(0, 8)}\u2026` : `Import ${importId.slice(0, 8)}\u2026`);
+    : `Import \u2013 ${importId.slice(0, 8)}\u2026`;
   document.getElementById('detail-heading').textContent = heading;
 
   renderWarningsPanel(warnings);
@@ -772,7 +887,7 @@ function renderSections(importId, sections, cfg) {
         <span class="section-name">${esc(section.name)}</span>
         <span class="section-meta">${section.works.length} work${section.works.length !== 1 ? 's' : ''}</span>
         <button type="button" class="btn btn-xs btn-secondary section-export-btn"
-          onclick="event.preventDefault();downloadExport('${esc(importId)}','tags','txt','${esc(section.id)}')">
+          onclick="event.preventDefault();downloadExportWithTemplate('${esc(importId)}','tags','txt','${esc(section.id)}')">
           Export section
         </button>
       </summary>
@@ -1049,11 +1164,18 @@ async function deleteOverride(importId, workId) {
 // Export download
 // ---------------------------------------------------------------------------
 
-async function downloadExport(importId, format, ext, sectionId = null) {
+function downloadExportWithTemplate(importId, format, ext, sectionId = null) {
+  const sel = document.getElementById(`tmpl-select-${importId}`);
+  const tid = sel?.value || null;
+  downloadExport(importId, format, ext, sectionId, tid);
+}
+
+async function downloadExport(importId, format, ext, sectionId = null, templateId = null) {
   try {
-    const path = sectionId
+    let path = sectionId
       ? `/imports/${importId}/sections/${sectionId}/export-${format}`
       : `/imports/${importId}/export-${format}`;
+    if (templateId) path += `?template_id=${encodeURIComponent(templateId)}`;
     const res = await fetch(path, { headers: { 'X-API-Key': _apiKey } });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

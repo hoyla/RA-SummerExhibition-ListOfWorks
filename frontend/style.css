@@ -646,3 +646,44 @@ details.section-block[open] > .section-summary::before {
   color: var(--muted);
   white-space: nowrap;
 }
+
+/* -----------------------------------------------------------------------
+   Templates list
+   ----------------------------------------------------------------------- */
+
+.badge-builtin {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #e8f0fe;
+  color: #1a56a0;
+  border: 1px solid #bbd0f5;
+  vertical-align: middle;
+}
+
+.table-actions {
+  white-space: nowrap;
+  text-align: right;
+  padding-right: 12px !important;
+}
+
+.table-actions .btn + .btn {
+  margin-left: 6px;
+}
+
+.btn-sm {
+  font-size: 12px;
+  padding: 3px 10px;
+  height: auto;
+  line-height: 1.5;
+}
+
+/* Template picker on import detail page */
+.export-template-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
