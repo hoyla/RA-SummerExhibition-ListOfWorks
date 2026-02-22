@@ -639,7 +639,14 @@ class ComponentConfigIn(BaseModel):
 
 class NormalisationIn(BaseModel):
     honorific_tokens: list[str] = [
-        "RA", "PRA", "PPRA", "HON", "HONRA", "ELECT", "EX", "OFFICIO",
+        "RA",
+        "PRA",
+        "PPRA",
+        "HON",
+        "HONRA",
+        "ELECT",
+        "EX",
+        "OFFICIO",
     ]
 
 
@@ -716,7 +723,7 @@ def list_templates(db: Session = Depends(get_db)):
     rows = (
         db.query(Ruleset)
         .filter(Ruleset.archived == False, Ruleset.config_type == "template")
-        .order_by(Ruleset.created_at.asc())
+        .order_by(Ruleset.is_builtin.desc(), Ruleset.name.asc())
         .all()
     )
     return [
@@ -739,28 +746,44 @@ def get_template(template_id: UUID, db: Session = Depends(get_db)):
         .first()
     )
     if not r:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
-    return {"id": str(r.id), "name": r.name, "created_at": r.created_at.isoformat(),
-            "is_builtin": r.is_builtin, **r.config}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+    return {
+        "id": str(r.id),
+        "name": r.name,
+        "created_at": r.created_at.isoformat(),
+        "is_builtin": r.is_builtin,
+        **r.config,
+    }
 
 
 @router.post("/templates", status_code=status.HTTP_201_CREATED)
 def create_template(body: TemplateBodyIn, db: Session = Depends(get_db)):
     """Create a new export template."""
     config_dict = body.model_dump(exclude={"name"})
-    config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
+    config_hash = hashlib.sha256(
+        json.dumps(config_dict, sort_keys=True).encode()
+    ).hexdigest()
     r = Ruleset(
-        name=body.name, config=config_dict, config_hash=config_hash,
-        config_type="template", is_builtin=False,
+        name=body.name,
+        config=config_dict,
+        config_hash=config_hash,
+        config_type="template",
+        is_builtin=False,
     )
     db.add(r)
     db.commit()
     db.refresh(r)
-    return TemplateOut(id=str(r.id), name=r.name, created_at=r.created_at.isoformat(), is_builtin=False)
+    return TemplateOut(
+        id=str(r.id), name=r.name, created_at=r.created_at.isoformat(), is_builtin=False
+    )
 
 
 @router.put("/templates/{template_id}")
-def update_template(template_id: UUID, body: TemplateBodyIn, db: Session = Depends(get_db)):
+def update_template(
+    template_id: UUID, body: TemplateBodyIn, db: Session = Depends(get_db)
+):
     """Update an existing export template."""
     r = (
         db.query(Ruleset)
@@ -768,18 +791,28 @@ def update_template(template_id: UUID, body: TemplateBodyIn, db: Session = Depen
         .first()
     )
     if not r:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
     if r.is_builtin:
-        raise HTTPException(status_code=403,
-                            detail="Cannot edit a built-in template \u2014 duplicate it first")
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot edit a built-in template \u2014 duplicate it first",
+        )
     config_dict = body.model_dump(exclude={"name"})
     r.config = config_dict
     r.name = body.name
-    r.config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
+    r.config_hash = hashlib.sha256(
+        json.dumps(config_dict, sort_keys=True).encode()
+    ).hexdigest()
     db.commit()
     db.refresh(r)
-    return TemplateOut(id=str(r.id), name=r.name,
-                      created_at=r.created_at.isoformat(), is_builtin=r.is_builtin)
+    return TemplateOut(
+        id=str(r.id),
+        name=r.name,
+        created_at=r.created_at.isoformat(),
+        is_builtin=r.is_builtin,
+    )
 
 
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -791,7 +824,9 @@ def delete_template(template_id: UUID, db: Session = Depends(get_db)):
         .first()
     )
     if not r:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
     if r.is_builtin:
         raise HTTPException(status_code=403, detail="Cannot delete a built-in template")
     r.archived = True
@@ -804,7 +839,9 @@ def duplicate_template(template_id: UUID, db: Session = Depends(get_db)):
     """Clone a template under a new name."""
     r = db.query(Ruleset).filter(Ruleset.id == template_id).first()
     if not r:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
     new_r = Ruleset(
         name=f"Copy of {r.name}",
         config=dict(r.config),
@@ -815,8 +852,12 @@ def duplicate_template(template_id: UUID, db: Session = Depends(get_db)):
     db.add(new_r)
     db.commit()
     db.refresh(new_r)
-    return TemplateOut(id=str(new_r.id), name=new_r.name,
-                      created_at=new_r.created_at.isoformat(), is_builtin=False)
+    return TemplateOut(
+        id=str(new_r.id),
+        name=new_r.name,
+        created_at=new_r.created_at.isoformat(),
+        is_builtin=False,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -833,8 +874,10 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
         "components",
         [
             {
-                "field": c.field, "separator_after": c.separator_after,
-                "omit_sep_when_empty": c.omit_sep_when_empty, "enabled": c.enabled,
+                "field": c.field,
+                "separator_after": c.separator_after,
+                "omit_sep_when_empty": c.omit_sep_when_empty,
+                "enabled": c.enabled,
                 "max_line_chars": c.max_line_chars,
                 "next_component_position": c.next_component_position,
                 "balance_lines": c.balance_lines,
@@ -845,12 +888,30 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
     components = [
         ComponentConfig(
             field=c["field"] if isinstance(c, dict) else c.field,
-            separator_after=c.get("separator_after", "tab") if isinstance(c, dict) else c.separator_after,
-            omit_sep_when_empty=c.get("omit_sep_when_empty", True) if isinstance(c, dict) else c.omit_sep_when_empty,
+            separator_after=(
+                c.get("separator_after", "tab")
+                if isinstance(c, dict)
+                else c.separator_after
+            ),
+            omit_sep_when_empty=(
+                c.get("omit_sep_when_empty", True)
+                if isinstance(c, dict)
+                else c.omit_sep_when_empty
+            ),
             enabled=c.get("enabled", True) if isinstance(c, dict) else c.enabled,
-            max_line_chars=c.get("max_line_chars") if isinstance(c, dict) else c.max_line_chars,
-            next_component_position=c.get("next_component_position", "end_of_text") if isinstance(c, dict) else c.next_component_position,
-            balance_lines=c.get("balance_lines", False) if isinstance(c, dict) else c.balance_lines,
+            max_line_chars=(
+                c.get("max_line_chars") if isinstance(c, dict) else c.max_line_chars
+            ),
+            next_component_position=(
+                c.get("next_component_position", "end_of_text")
+                if isinstance(c, dict)
+                else c.next_component_position
+            ),
+            balance_lines=(
+                c.get("balance_lines", False)
+                if isinstance(c, dict)
+                else c.balance_lines
+            ),
         )
         for c in raw_components
     ]
@@ -863,17 +924,26 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
         cat_no_style=cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
         artist_style=cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
         honorifics_style=cfg.get("honorifics_style", DEFAULT_CONFIG.honorifics_style),
-        honorifics_lowercase=cfg.get("honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase),
+        honorifics_lowercase=cfg.get(
+            "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
+        ),
         title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
         price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
         medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
         artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
-        thousands_separator=cfg.get("thousands_separator", DEFAULT_CONFIG.thousands_separator),
+        thousands_separator=cfg.get(
+            "thousands_separator", DEFAULT_CONFIG.thousands_separator
+        ),
         decimal_places=cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
-        leading_separator=cfg.get("leading_separator", DEFAULT_CONFIG.leading_separator),
-        trailing_separator=cfg.get("trailing_separator", DEFAULT_CONFIG.trailing_separator),
+        leading_separator=cfg.get(
+            "leading_separator", DEFAULT_CONFIG.leading_separator
+        ),
+        trailing_separator=cfg.get(
+            "trailing_separator", DEFAULT_CONFIG.trailing_separator
+        ),
         final_sep_from_last_component=cfg.get(
-            "final_sep_from_last_component", DEFAULT_CONFIG.final_sep_from_last_component
+            "final_sep_from_last_component",
+            DEFAULT_CONFIG.final_sep_from_last_component,
         ),
         components=components,
     )
