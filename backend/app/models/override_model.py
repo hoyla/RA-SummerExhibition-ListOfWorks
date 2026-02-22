@@ -24,6 +24,7 @@ class WorkOverride(Base):
     edition_total_override = Column(Integer, nullable=True)
     edition_price_numeric_override = Column(Numeric(12, 2), nullable=True)
 
+    artwork_override = Column(Integer, nullable=True)
     medium_override = Column(Text, nullable=True)
 
     updated_at = Column(

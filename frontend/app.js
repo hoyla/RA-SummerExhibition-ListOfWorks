@@ -917,26 +917,63 @@ async function toggleOverrideForm(importId, workId) {
 
 function showOverrideForm(importId, workId, existing) {
   const val = (f) => esc(existing?.[f] ?? '');
+
+  // Effective current value = override if set, else normalised from cache
+  const w   = _workCache[workId] ?? {};
+  const o   = existing ?? {};
+  const cur = {
+    title_override:                    o.title_override                    ?? w.title                    ?? '',
+    artist_name_override:              o.artist_name_override              ?? w.artist_name               ?? '',
+    artist_honorifics_override:        o.artist_honorifics_override        ?? w.artist_honorifics          ?? '',
+    price_text_override:               o.price_text_override               ?? w.price_text                ?? '',
+    price_numeric_override:            o.price_numeric_override            ?? w.price_numeric              ?? '',
+    edition_total_override:            o.edition_total_override            ?? w.edition_total              ?? '',
+    edition_price_numeric_override:    o.edition_price_numeric_override    ?? w.edition_price_numeric      ?? '',
+    artwork_override:                  o.artwork_override                  ?? w.artwork                    ?? '',
+    medium_override:                   o.medium_override                   ?? w.medium                    ?? '',
+  };
+
+  // Returns a clickable hint that copies the current value into the named input
+  const hint = (field, inputName) => {
+    const v = cur[field];
+    if (v === null || v === undefined || v === '') return '';
+    const safe = esc(String(v));
+    return `<button type="button" class="current-val-hint"
+      onclick="(function(){var el=document.querySelector('#ovf-${esc(workId)} [name=\\'${inputName}\\']');if(el)el.value='${safe.replace(/'/g, "\\'")}';})()">
+      ${safe}</button>`;
+  };
+
   const cell = document.getElementById(`ovc-${workId}`);
   cell.innerHTML = `
     <div class="override-form">
-      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use normalised value</span></h5>
+      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy</span></h5>
       <div class="override-field-form" id="ovf-${esc(workId)}">
         <div class="form-row"><label>Title</label>
+          ${hint('title_override','title_override')}
           <input type="text" name="title_override" value="${val('title_override')}" placeholder="Override title"></div>
         <div class="form-row"><label>Artist</label>
+          ${hint('artist_name_override','artist_name_override')}
           <input type="text" name="artist_name_override" value="${val('artist_name_override')}" placeholder="Override artist"></div>
         <div class="form-row"><label>Honorifics</label>
+          ${hint('artist_honorifics_override','artist_honorifics_override')}
           <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
         <div class="form-row"><label>Price text</label>
+          ${hint('price_text_override','price_text_override')}
           <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
         <div class="form-row"><label>Price numeric</label>
+          ${hint('price_numeric_override','price_numeric_override')}
           <input type="number" step="0.01" min="0" name="price_numeric_override" value="${val('price_numeric_override')}" placeholder="e.g. 1500"></div>
         <div class="form-row"><label>Edition total</label>
+          ${hint('edition_total_override','edition_total_override')}
           <input type="number" min="0" name="edition_total_override" value="${val('edition_total_override')}" placeholder="e.g. 10"></div>
         <div class="form-row"><label>Edition price</label>
+          ${hint('edition_price_numeric_override','edition_price_numeric_override')}
           <input type="number" step="0.01" min="0" name="edition_price_numeric_override" value="${val('edition_price_numeric_override')}" placeholder="e.g. 750"></div>
+        <div class="form-row"><label>Artwork</label>
+          ${hint('artwork_override','artwork_override')}
+          <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
         <div class="form-row"><label>Medium</label>
+          ${hint('medium_override','medium_override')}
           <input type="text" name="medium_override" value="${val('medium_override')}" placeholder="Override medium"></div>
         <div class="form-actions">
           <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
@@ -953,9 +990,10 @@ async function saveOverride(importId, workId) {
   statusEl.textContent = 'Saving\u2026';
   statusEl.className = 'status-msg';
 
-  const numFields = new Set(['price_numeric_override','edition_total_override','edition_price_numeric_override']);
+  const numFields = new Set(['price_numeric_override','edition_total_override','edition_price_numeric_override','artwork_override']);
   const allFields = ['title_override','artist_name_override','artist_honorifics_override',
-    'price_text_override','price_numeric_override','edition_total_override','edition_price_numeric_override','medium_override'];
+    'price_text_override','price_numeric_override','edition_total_override','edition_price_numeric_override',
+    'artwork_override','medium_override'];
 
   const body = {};
   for (const f of allFields) {

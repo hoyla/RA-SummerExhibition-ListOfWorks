@@ -180,6 +180,7 @@ def test_renderer_applies_override_values():
         price_text_override=None,
         edition_total_override=None,
         edition_price_numeric_override=None,
+        artwork_override=None,
         medium_override=None,
     )
 

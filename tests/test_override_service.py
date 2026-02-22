@@ -37,6 +37,7 @@ def _make_override(**kwargs):
         price_text_override=None,
         edition_total_override=None,
         edition_price_numeric_override=None,
+        artwork_override=None,
         medium_override=None,
     )
     defaults.update(kwargs)

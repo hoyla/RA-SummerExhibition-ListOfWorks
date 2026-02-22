@@ -58,6 +58,7 @@ class WorkOverrideOut(BaseModel):
     price_text_override: str | None = None
     edition_total_override: int | None = None
     edition_price_numeric_override: float | None = None
+    artwork_override: int | None = None
     medium_override: str | None = None
 
     model_config = {"from_attributes": True}
@@ -136,6 +137,7 @@ class OverrideIn(BaseModel):
     price_text_override: str | None = None
     edition_total_override: int | None = None
     edition_price_numeric_override: float | None = None
+    artwork_override: int | None = None
     medium_override: str | None = None
 
 
@@ -148,6 +150,7 @@ class OverrideOut(BaseModel):
     price_text_override: str | None
     edition_total_override: int | None
     edition_price_numeric_override: float | None
+    artwork_override: int | None
     medium_override: str | None
 
     model_config = {"from_attributes": True}
@@ -422,6 +425,7 @@ def get_override(import_id: UUID, work_id: UUID, db: Session = Depends(get_db)):
             if override.edition_price_numeric_override is not None
             else None
         ),
+        artwork_override=override.artwork_override,
         medium_override=override.medium_override,
     )
 
@@ -495,6 +499,7 @@ def set_override(
             if override.edition_price_numeric_override is not None
             else None
         ),
+        artwork_override=override.artwork_override,
         medium_override=override.medium_override,
     )
 

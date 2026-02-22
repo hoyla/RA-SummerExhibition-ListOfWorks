@@ -116,7 +116,11 @@ def resolve_effective_work(work, override) -> EffectiveWork:
             if override.edition_price_numeric_override is not None
             else work.edition_price_numeric
         ),
-        artwork=work.artwork,
+        artwork=(
+            override.artwork_override
+            if override.artwork_override is not None
+            else work.artwork
+        ),
         medium=(
             override.medium_override
             if override.medium_override is not None
