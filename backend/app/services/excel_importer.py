@@ -44,8 +44,16 @@ def import_excel(
 
     headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
 
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        row_dict = dict(zip(headers, row))
+    def _cell_value(cell):
+        """Return the cell's value, restoring a leading apostrophe that Excel
+        silently strips when quotePrefix is set on the cell style."""
+        v = cell.value
+        if cell.quotePrefix and isinstance(v, str):
+            v = "'" + v
+        return v
+
+    for row in sheet.iter_rows(min_row=2):
+        row_dict = {h: _cell_value(c) for h, c in zip(headers, row)}
 
         raw_cat_no = row_dict.get("Cat No")
         raw_gallery = row_dict.get("Gallery")
