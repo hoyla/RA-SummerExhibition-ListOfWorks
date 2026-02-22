@@ -1145,7 +1145,7 @@ function renderSections(importId, sections, cfg) {
         <span class="section-name">${esc(section.name)}</span>
         <span class="section-meta">${section.works.length} work${section.works.length !== 1 ? 's' : ''}</span>
         <button type="button" class="btn btn-xs btn-secondary section-export-btn"
-          onclick="event.preventDefault();downloadExportWithTemplate('${esc(importId)}','tags','txt','${esc(section.id)}',this)">
+          onclick="event.preventDefault();downloadExportWithTemplate('${esc(importId)}','tags','txt','${esc(section.id)}',this,'${esc(section.name)}')">
           Export section
         </button>
       </summary>
@@ -1518,13 +1518,14 @@ function _renderDiffPanel(diff) {
 // Export download
 // ---------------------------------------------------------------------------
 
-function downloadExportWithTemplate(importId, format, ext, sectionId = null, btnEl = null) {
+function downloadExportWithTemplate(importId, format, ext, sectionId = null, btnEl = null, sectionName = null) {
   const sel = document.getElementById(`tmpl-select-${importId}`);
   const tid = sel?.value || null;
-  downloadExport(importId, format, ext, sectionId, tid, btnEl);
+  const tname = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : null;
+  downloadExport(importId, format, ext, sectionId, tid, btnEl, sectionName, tname);
 }
 
-async function downloadExport(importId, format, ext, sectionId = null, templateId = null, btnEl = null) {
+async function downloadExport(importId, format, ext, sectionId = null, templateId = null, btnEl = null, sectionName = null, templateName = null) {
   const restore = btnLoading(btnEl, 'Exporting');
   try {
     let path = sectionId
@@ -1544,14 +1545,25 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
       + String(now.getHours()).padStart(2, '0')
       + String(now.getMinutes()).padStart(2, '0')
       + String(now.getSeconds()).padStart(2, '0');
+    // Use section name for section exports, "catalogue" for full exports
+    const slug = sectionName
+      ? sectionName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      : 'catalogue';
     const a = document.createElement('a');
     a.href = url;
-    a.download = `catalogue-${importId.slice(0, 8)}-${ts}.${ext}`;
+    a.download = `${slug}-${importId.slice(0, 8)}-${ts}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Export downloaded', 'success', 2500);
+    // Toast with template info for section exports
+    if (sectionName && templateName) {
+      showToast(`"${sectionName}" exported using template "${templateName}"`, 'success', 3500);
+    } else if (sectionName) {
+      showToast(`"${sectionName}" exported (default settings)`, 'success', 3000);
+    } else {
+      showToast('Export downloaded', 'success', 2500);
+    }
   } catch (err) {
     showToast(`Export failed: ${err.message}`, 'error');
   } finally {
