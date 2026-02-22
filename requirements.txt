@@ -7,3 +7,4 @@ python-multipart
 openpyxl
 aiofiles
 python-dotenv
+httpx  # required by starlette TestClient for tests

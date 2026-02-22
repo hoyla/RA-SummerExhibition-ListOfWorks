@@ -28,10 +28,10 @@ class Ruleset(Base):
         nullable=False,
     )
 
-    archived = Column(Boolean, nullable=False, server_default="false")
+    archived = Column(Boolean, nullable=False, server_default="false", default=False)
 
     # True for seed templates committed to the repository
-    is_builtin = Column(Boolean, nullable=False, server_default="false")
+    is_builtin = Column(Boolean, nullable=False, server_default="false", default=False)
 
     # Identifier used for seed deduplication (e.g. 'ra-default')
     slug = Column(Text, nullable=True)
