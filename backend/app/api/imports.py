@@ -17,6 +17,7 @@ from backend.app.api.deps import get_db
 from backend.app.config import UPLOAD_DIR
 from backend.app.api.schemas import (
     ImportOut,
+    ReimportOut,
     SectionOut,
     WorkOut,
     WorkOverrideOut,
@@ -31,6 +32,7 @@ from backend.app.models.override_model import WorkOverride
 from backend.app.models.validation_warning_model import ValidationWarning
 from backend.app.services.excel_importer import (
     import_excel,
+    reimport_excel,
     ImportError as ExcelImportError,
 )
 from backend.app.services.export_renderer import resolve_export_config
@@ -68,6 +70,57 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     return {"import_id": str(import_record.id)}
+
+
+@router.put("/imports/{import_id}/reimport", response_model=ReimportOut)
+def reimport_upload(
+    import_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Re-import a spreadsheet, preserving overrides matched by Cat No."""
+    # Verify the import exists
+    import_record = db.query(Import).filter(Import.id == import_id).first()
+    if not import_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Import not found",
+        )
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    original_name = file.filename or "upload.xlsx"
+    safe_name = Path(original_name).name
+    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
+    file_path = os.path.join(UPLOAD_DIR, disk_name)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    ruleset = resolve_export_config(db)
+    honorific_tokens = None
+    if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
+        honorific_tokens = ruleset.config["honorific_tokens"]
+
+    try:
+        _record, stats = reimport_excel(
+            import_id,
+            file_path,
+            db,
+            honorific_tokens=honorific_tokens,
+            display_name=original_name,
+        )
+    except ExcelImportError as exc:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    return ReimportOut(
+        import_id=str(import_id),
+        matched=stats["matched"],
+        added=stats["added"],
+        removed=stats["removed"],
+        overrides_preserved=stats["overrides_preserved"],
+    )
 
 
 @router.get("/imports", response_model=List[ImportOut])

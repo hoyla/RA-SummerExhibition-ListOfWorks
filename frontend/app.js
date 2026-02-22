@@ -765,6 +765,42 @@ async function handleDelete(id, filename, btnEl) {
   }
 }
 
+async function handleReimport(importId, file) {
+  const statusEl = document.getElementById('reimport-status');
+  const btn = document.querySelector('#reimport-form .btn-primary');
+  const restore = btnLoading(btn, 'Re-importing');
+  statusEl.textContent = 'Re-importing\u2026';
+  statusEl.className = 'status-msg';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`/imports/${importId}/reimport`, {
+      method: 'PUT', body: form, headers: { 'X-API-Key': _apiKey },
+    });
+    if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
+    if (!res.ok) { const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    const parts = [];
+    if (data.matched)  parts.push(`${data.matched} matched`);
+    if (data.added)    parts.push(`${data.added} added`);
+    if (data.removed)  parts.push(`${data.removed} removed`);
+    if (data.overrides_preserved) parts.push(`${data.overrides_preserved} overrides preserved`);
+    const summary = parts.join(', ') || 'No changes';
+    statusEl.textContent = `\u2713 Re-imported: ${summary}`;
+    statusEl.className = 'status-msg success';
+    showToast(`Re-import complete: ${summary}`, 'success', 5000);
+    document.getElementById('reimport-file').value = '';
+    // Refresh the detail view to show updated data
+    await renderDetail(importId);
+  } catch (err) {
+    statusEl.textContent = `Re-import failed: ${err.message}`;
+    statusEl.className = 'status-msg error';
+    showToast(`Re-import failed: ${err.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
 function formatDate(iso) {
   return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
@@ -819,6 +855,14 @@ async function renderDetail(importId) {
   document.getElementById('app').innerHTML = `
     <div class="breadcrumb"><a href="#/">\u2190 All Imports</a></div>
     <h2 class="page-heading" id="detail-heading">Loading\u2026</h2>
+    <section class="panel reimport-panel">
+      <h3>Update Import</h3>
+      <form id="reimport-form" class="upload-form">
+        <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
+        <button type="submit" class="btn btn-primary">Re-import</button>
+      </form>
+      <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
+    </section>
     <section class="panel">
       <h3>Export</h3>
       <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
@@ -828,6 +872,13 @@ async function renderDetail(importId) {
       <h3>Works</h3>
       <div id="sections-container"><p class="loading">Loading\u2026</p></div>
     </section>`;
+
+  // Wire up re-import form
+  document.getElementById('reimport-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('reimport-file').files[0];
+    if (file) await handleReimport(importId, file);
+  });
 
   const cfg = _getDisplayCfg();
 

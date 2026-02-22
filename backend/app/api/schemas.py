@@ -24,6 +24,14 @@ class ImportOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReimportOut(BaseModel):
+    import_id: str
+    matched: int
+    added: int
+    removed: int
+    overrides_preserved: int
+
+
 # ---------------------------------------------------------------------------
 # Work / Section listing
 # ---------------------------------------------------------------------------
