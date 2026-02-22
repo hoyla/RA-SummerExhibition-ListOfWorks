@@ -955,6 +955,14 @@ function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, e
 let _expandedWorkId = null;
 let _workCache = {}; // workId -> work object, populated when sections render
 
+/** Restore override button text when closing the form. */
+function _restoreOverrideBtn(btn) {
+  if (!btn) return;
+  const hasOv = btn.dataset.hasOverride === '1';
+  btn.textContent = hasOv ? 'Edit \u270e' : 'Edit';
+  btn.className = `btn btn-xs ${hasOv ? 'btn-warning' : 'btn-secondary'}`;
+}
+
 async function renderDetail(importId) {
   _expandedWorkId = null;
   document.getElementById('app').innerHTML = `
@@ -1150,7 +1158,7 @@ function renderSections(importId, sections, cfg) {
           <th>Edition</th>
           <th>Artwork</th>
           <th>Medium</th>
-          <th class="col-status">Include</th>
+          <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
           <th class="col-actions">Override</th>
         </tr></thead>
         <tbody id="tbody-${esc(section.id)}">
@@ -1195,7 +1203,7 @@ function workRowHTML(importId, w, cfg) {
   }
 
   const ovBtnClass = hasOverride ? 'btn-warning' : 'btn-secondary';
-  const ovBtnLabel = hasOverride ? 'Edited' : 'Edit';
+  const ovBtnLabel = hasOverride ? 'Edit \u270e' : 'Edit';
 
   return `
     <tr id="wr-${esc(w.id)}" class="work-row ${included ? '' : 'row-excluded'}">
@@ -1206,14 +1214,13 @@ function workRowHTML(importId, w, cfg) {
       <td>${esc(editionDisplay)}</td>
       <td>${w.artwork != null ? esc(String(w.artwork)) : ''}</td>
       <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
-      <td class="col-status">
-        <button id="excl-${esc(w.id)}" class="btn btn-xs ${included ? 'btn-warning' : 'btn-success'}"
-          onclick="toggleExclude('${esc(importId)}','${esc(w.id)}',${included})">
-          ${included ? 'Exclude' : 'Include'}
-        </button>
+      <td class="col-include">
+        <input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="incl-${esc(w.id)}"
+          ${included ? 'checked' : ''}
+          onchange="toggleInclude('${esc(importId)}','${esc(w.id)}',this)">
       </td>
       <td class="col-actions">
-        <button id="ov-btn-${esc(w.id)}" class="btn btn-xs ${ovBtnClass}"
+        <button id="ov-btn-${esc(w.id)}" class="btn btn-xs ${ovBtnClass}" data-has-override="${hasOverride ? '1' : ''}"
           onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">${ovBtnLabel}</button>
       </td>
     </tr>
@@ -1226,22 +1233,20 @@ function workRowHTML(importId, w, cfg) {
 // Exclude / include
 // ---------------------------------------------------------------------------
 
-async function toggleExclude(importId, workId, currentlyIncluded) {
-  const btn = document.getElementById(`excl-${workId}`);
-  if (!btn) return;
-  btn.disabled = true;
+async function toggleInclude(importId, workId, checkbox) {
+  const nowIncluded = checkbox.checked;
+  checkbox.disabled = true;
   try {
-    const nowExcluding = currentlyIncluded; // we want to flip
-    await api('PATCH', `/imports/${importId}/works/${workId}/exclude?exclude=${nowExcluding}`);
-    const nowIncluded = !nowExcluding;
-    document.getElementById(`wr-${workId}`).className = `work-row ${nowIncluded ? '' : 'row-excluded'}`;
-    btn.textContent = nowIncluded ? 'Exclude' : 'Include';
-    btn.className = `btn btn-xs ${nowIncluded ? 'btn-warning' : 'btn-success'}`;
-    btn.setAttribute('onclick', `toggleExclude('${importId}','${workId}',${nowIncluded})`);
+    await api('PATCH', `/imports/${importId}/works/${workId}/exclude?exclude=${!nowIncluded}`);
+    const row = document.getElementById(`wr-${workId}`);
+    if (row) row.className = `work-row ${nowIncluded ? '' : 'row-excluded'}`;
+    checkbox.className = `include-cb${nowIncluded ? '' : ' excluded'}`;
   } catch (err) {
+    // Revert the checkbox on failure
+    checkbox.checked = !nowIncluded;
     showToast(`Toggle failed: ${err.message}`, 'error');
   } finally {
-    btn.disabled = false;
+    checkbox.disabled = false;
   }
 }
 
@@ -1256,7 +1261,7 @@ async function toggleOverrideForm(importId, workId) {
   // If this row is already open, close it
   if (_expandedWorkId === workId) {
     formRow.style.display = 'none';
-    btn.textContent = 'Edit';
+    _restoreOverrideBtn(btn);
     _expandedWorkId = null;
     return;
   }
@@ -1266,11 +1271,12 @@ async function toggleOverrideForm(importId, workId) {
     const prev    = document.getElementById(`ovr-${_expandedWorkId}`);
     const prevBtn = document.getElementById(`ov-btn-${_expandedWorkId}`);
     if (prev)    prev.style.display = 'none';
-    if (prevBtn) prevBtn.textContent = 'Edit';
+    _restoreOverrideBtn(prevBtn);
   }
 
   _expandedWorkId = workId;
   btn.textContent = 'Close';
+  btn.className = 'btn btn-xs btn-secondary';
   formRow.style.display = '';
   document.getElementById(`ovc-${workId}`).innerHTML = '<p class="loading" style="padding:12px">Loading\u2026</p>';
 
@@ -1383,9 +1389,9 @@ async function saveOverride(importId, workId) {
     showOverrideForm(importId, workId, result);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Saved'; s.className = 'status-msg success'; }
-    // Mark the row button as edited
+    // Mark the row button — form stays open so show Close, but flag the override
     const btn = document.getElementById(`ov-btn-${workId}`);
-    if (btn) { btn.textContent = 'Edited'; btn.className = 'btn btn-xs btn-warning'; }
+    if (btn) { btn.textContent = 'Close'; btn.className = 'btn btn-xs btn-warning'; btn.dataset.hasOverride = '1'; }
   } catch (err) {
     statusEl.textContent = `Error: ${err.message}`;
     statusEl.className = 'status-msg error';
@@ -1402,9 +1408,9 @@ async function deleteOverride(importId, workId) {
     showOverrideForm(importId, workId, null);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Override deleted'; s.className = 'status-msg success'; }
-    // Restore the row button to plain Edit
+    // Restore the row button to plain Edit (override removed)
     const btn = document.getElementById(`ov-btn-${workId}`);
-    if (btn) { btn.textContent = 'Edit'; btn.className = 'btn btn-xs btn-secondary'; }
+    if (btn) { btn.textContent = 'Close'; btn.className = 'btn btn-xs btn-secondary'; btn.dataset.hasOverride = ''; }
   } catch (err) {
     if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.className = 'status-msg error'; }
   }
