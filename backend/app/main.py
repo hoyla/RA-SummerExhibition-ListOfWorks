@@ -17,7 +17,6 @@ from backend.app.models import section_model
 from backend.app.models import work_model
 from backend.app.models import override_model
 from backend.app.models import ruleset_model
-from backend.app.models import export_model
 from backend.app.models import validation_warning_model
 from backend.app.models import audit_log_model
 

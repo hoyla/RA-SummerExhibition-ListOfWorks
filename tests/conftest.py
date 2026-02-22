@@ -30,7 +30,6 @@ import backend.app.models.import_model  # noqa: F401
 import backend.app.models.section_model  # noqa: F401
 import backend.app.models.work_model  # noqa: F401
 import backend.app.models.override_model  # noqa: F401
-import backend.app.models.export_model  # noqa: F401
 import backend.app.models.validation_warning_model  # noqa: F401
 import backend.app.models.audit_log_model  # noqa: F401
 
