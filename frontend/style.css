@@ -406,6 +406,48 @@ details.section-block[open] > .section-summary::before {
 }
 
 /* ------------------------------------------------------------------ */
+/* Warning filter badges (clickable summary row)                       */
+/* ------------------------------------------------------------------ */
+
+.warning-filter-bar { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+
+.warning-filter-btn {
+  /* inherits .badge sizing via class; override to behave as a button */
+  cursor: pointer;
+  border: 1px solid #f0c040;
+  transition: opacity 0.15s, background 0.15s;
+}
+.warning-filter-btn:hover { background: #ffe8a0; }
+
+/* Greyed-out state when a type is hidden */
+.badge-warning.badge-muted {
+  background: #f5f5f5;
+  color: #aaa;
+  border-color: #ccc;
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* Clickable work link inside warnings table */
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ra-dark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--ra-red, #c8102e); }
+
+/* Highlight flash when scrolled to from warnings panel */
+@keyframes row-flash {
+  0%   { background: #fff3cd; }
+  100% { background: transparent; }
+}
+.row-highlight { animation: row-flash 2s ease-out forwards; }
+
 /* Warnings table                                                      */
 /* ------------------------------------------------------------------ */
 

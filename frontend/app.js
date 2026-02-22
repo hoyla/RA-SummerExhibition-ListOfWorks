@@ -654,7 +654,20 @@ async function renderDetail(importId) {
   renderSections(importId, sections, cfg);
 }
 
+// ---------------------------------------------------------------------------
+// Warnings panel state (module-level so filter toggles survive re-renders)
+// ---------------------------------------------------------------------------
+let _warningsAll = [];
+let _hiddenWarningTypes = new Set();
+
 function renderWarningsPanel(warnings) {
+  _warningsAll = warnings;
+  _hiddenWarningTypes = new Set();
+  _buildWarningsPanel();
+}
+
+function _buildWarningsPanel() {
+  const warnings = _warningsAll;
   const panel = document.getElementById('warnings-panel');
   if (!warnings.length) {
     panel.innerHTML = '<p class="no-warnings">\u2713 No validation warnings</p>';
@@ -669,23 +682,33 @@ function renderWarningsPanel(warnings) {
   }
   const summaryBadges = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
-    .map(([type, n]) =>
-      `<span class="badge badge-warning" style="margin-right:6px">${esc(type)}: ${n}</span>`
-    ).join('');
+    .map(([type, n]) => {
+      const muted = _hiddenWarningTypes.has(type);
+      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click to show' : 'Click to hide'}">${esc(type)}: ${n}</button>`;
+    }).join('');
 
-  // Detailed rows — show artist + title instead of UUID
-  const rows = warnings.map(w => {
+  // Detailed rows — filtered by hidden types
+  const visible = warnings.filter(w => !_hiddenWarningTypes.has(w.warning_type));
+  const rows = visible.map(w => {
     const who = [w.cat_no, w.artist_name, w.title].filter(Boolean).join(' \u2013 ');
+    const workCell = (w.work_id && who)
+      ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(w.work_id)}')">${esc(who)}</button>`
+      : (esc(who) || '\u2014');
     return `<tr>
       <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
       <td>${esc(w.message)}</td>
-      <td class="muted col-work">${esc(who) || '\u2014'}</td>
+      <td class="muted col-work">${workCell}</td>
     </tr>`;
   }).join('');
 
+  const hiddenCount = warnings.length - visible.length;
+  const countLabel = hiddenCount > 0
+    ? `${visible.length} shown of ${warnings.length}`
+    : String(warnings.length);
+
   panel.innerHTML = `
-    <h3>\u26a0 Validation Warnings (${warnings.length})</h3>
-    <div style="margin-bottom:12px">${summaryBadges}</div>
+    <h3>\u26a0 Validation Warnings (${countLabel})</h3>
+    <div class="warning-filter-bar">${summaryBadges}</div>
     <details>
       <summary class="warnings-toggle">Show detail</summary>
       <table class="data-table warnings-table" style="margin-top:10px">
@@ -693,6 +716,33 @@ function renderWarningsPanel(warnings) {
         <tbody>${rows}</tbody>
       </table>
     </details>`;
+
+  // Attach badge click handlers after innerHTML
+  panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      if (_hiddenWarningTypes.has(type)) {
+        _hiddenWarningTypes.delete(type);
+      } else {
+        _hiddenWarningTypes.add(type);
+      }
+      _buildWarningsPanel();
+    });
+  });
+}
+
+function scrollToWork(workId) {
+  const row = document.getElementById('wr-' + workId);
+  if (!row) return;
+  // Ensure parent <details> (section block) is open
+  let el = row.parentElement;
+  while (el) {
+    if (el.tagName === 'DETAILS') el.open = true;
+    el = el.parentElement;
+  }
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.add('row-highlight');
+  setTimeout(() => row.classList.remove('row-highlight'), 2000);
 }
 
 function renderSections(importId, sections, cfg) {
