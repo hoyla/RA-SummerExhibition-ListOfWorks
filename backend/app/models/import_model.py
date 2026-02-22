@@ -12,10 +12,9 @@ class Import(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     filename = Column(Text, nullable=False)
+    disk_filename = Column(Text, nullable=True)  # UUID-prefixed name on disk
     notes = Column(Text, nullable=True)
 
     uploaded_at = Column(
-        TIMESTAMP(timezone=True),
-        server_default=func.now(),
-        nullable=False
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

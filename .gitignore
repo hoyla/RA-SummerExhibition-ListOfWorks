@@ -5,8 +5,9 @@ venv/
 __pycache__/
 *.pyc
 
-# Runtime data
-uploads/
+# Runtime data – keep the directory but not the uploaded files
+uploads/*
+!uploads/.gitkeep
 
 # OS
 .DS_Store

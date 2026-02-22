@@ -69,6 +69,10 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
             os.remove(file_path)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
+    # Persist the on-disk filename so we can clean up later
+    import_record.disk_filename = disk_name
+    db.commit()
+
     return {"import_id": str(import_record.id)}
 
 
@@ -113,6 +117,12 @@ def reimport_upload(
         if os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    # Remove the previous upload file if it exists
+    _remove_disk_file(import_record.disk_filename)
+    # Track the new on-disk filename
+    import_record.disk_filename = disk_name
+    db.commit()
 
     return ReimportOut(
         import_id=str(import_id),
@@ -351,6 +361,17 @@ def list_warnings(import_id: UUID, db: Session = Depends(get_db)):
     ]
 
 
+def _remove_disk_file(disk_filename: str | None) -> bool:
+    """Delete an uploaded file from disk. Returns True if a file was removed."""
+    if not disk_filename:
+        return False
+    path = os.path.join(UPLOAD_DIR, disk_filename)
+    if os.path.isfile(path):
+        os.remove(path)
+        return True
+    return False
+
+
 @router.delete("/imports/{import_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_import(import_id: UUID, db: Session = Depends(get_db)):
     import_record = db.query(Import).filter(Import.id == import_id).first()
@@ -361,7 +382,49 @@ def delete_import(import_id: UUID, db: Session = Depends(get_db)):
             detail="Import not found",
         )
 
+    # Remove the uploaded file from disk
+    _remove_disk_file(import_record.disk_filename)
+
     db.delete(import_record)
     db.commit()
 
     return None
+
+
+@router.post("/admin/cleanup-uploads")
+def cleanup_uploads(db: Session = Depends(get_db)):
+    """Remove orphaned files from the uploads directory.
+
+    Any file in UPLOAD_DIR that is not referenced by an Import record's
+    disk_filename will be deleted.
+    """
+    if not os.path.isdir(UPLOAD_DIR):
+        return {"removed": 0, "kept": 0, "files_removed": []}
+
+    # Collect all disk_filenames that are still referenced
+    referenced = {
+        row.disk_filename
+        for row in db.query(Import.disk_filename)
+        .filter(Import.disk_filename.isnot(None))
+        .all()
+    }
+
+    removed_files: list[str] = []
+    kept = 0
+    for entry in os.scandir(UPLOAD_DIR):
+        if not entry.is_file():
+            continue
+        # Never remove .gitkeep
+        if entry.name == ".gitkeep":
+            continue
+        if entry.name in referenced:
+            kept += 1
+        else:
+            os.remove(entry.path)
+            removed_files.append(entry.name)
+
+    return {
+        "removed": len(removed_files),
+        "kept": kept,
+        "files_removed": removed_files,
+    }
