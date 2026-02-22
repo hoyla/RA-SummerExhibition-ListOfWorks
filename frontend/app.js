@@ -171,13 +171,13 @@ async function renderSettings() {
     edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
   };
   const defaultComponents = [
-    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
-    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
-    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
-    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
-    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text'},
-    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
-    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
+    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
   ];
   // Merge: if a saved config is missing a known component, append it with defaults
   const savedComponents = cfg.components ?? defaultComponents;
@@ -191,7 +191,9 @@ async function renderSettings() {
     const enabled = c.enabled ?? true;
     const maxChars = c.max_line_chars ?? '';
     const nextPos = c.next_component_position ?? 'end_of_text';
+    const balance = c.balance_lines ?? false;
     const posDisabled = maxChars === '' || maxChars === null ? 'disabled' : '';
+    const balDisabled = posDisabled;
     return `
     <div class="component-row" data-field="${esc(c.field)}" style="opacity:${enabled ? 1 : 0.45}">
       <div class="component-main">
@@ -210,7 +212,7 @@ async function renderSettings() {
       <div class="component-wrap-opts">
         <label>max chars/line <input type="number" class="component-max-chars" min="1" style="width:4.5em"
           value="${maxChars}" placeholder="none"
-          oninput="const s=this.closest('.component-row').querySelector('.component-next-pos');s.disabled=!this.value"></label>
+          oninput="const r=this.closest('.component-row');r.querySelector('.component-next-pos').disabled=!this.value;r.querySelector('.component-balance').disabled=!this.value"></label>
         <label>next component at
           <select class="component-next-pos" ${posDisabled}>
             <option value="end_of_text" ${nextPos==='end_of_text'?'selected':''}>end of text</option>
@@ -218,6 +220,7 @@ async function renderSettings() {
           </select>
           <span class="form-hint" style="display:inline">(soft returns used for line breaks within field)</span>
         </label>
+        <label class="inline-check"><input type="checkbox" class="component-balance" ${balance?'checked':''} ${balDisabled}> balance lines</label>
       </div>
     </div>`;
   }).join('');
@@ -404,6 +407,7 @@ async function saveSettings() {
       enabled: row.querySelector('.component-enabled')?.checked ?? true,
       max_line_chars: rawMax ? parseInt(rawMax, 10) : null,
       next_component_position: row.querySelector('.component-next-pos')?.value ?? 'end_of_text',
+      balance_lines: row.querySelector('.component-balance')?.checked ?? false,
     };
   });
   const body = {

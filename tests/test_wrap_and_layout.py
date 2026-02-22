@@ -9,6 +9,7 @@ import pytest
 from backend.app.services.export_renderer import (
     ComponentConfig,
     ExportConfig,
+    _balance_wrap_lines,
     _wrap_lines,
     render_import_as_tagged_text,
 )
@@ -367,3 +368,42 @@ def test_final_sep_disabled_no_change():
     artist_idx = entry_para[0].rindex("Artist")
     tail = entry_para[0][artist_idx + len("Artist") :]
     assert "\n" in tail  # soft return still present because feature is off
+
+
+# ---------------------------------------------------------------------------
+# _balance_wrap_lines
+# ---------------------------------------------------------------------------
+
+
+def test_balance_wrap_produces_same_line_count():
+    """Balanced wrap must not add extra lines compared to greedy wrap."""
+    text = "WHAT DO ANIMALS DREAM OF WHEN THEY SLEEP AT NIGHT"
+    greedy = _wrap_lines(text, 20)
+    balanced = _balance_wrap_lines(text, 20)
+    assert len(balanced) == len(greedy)
+
+
+def test_balance_wrap_single_line_unchanged():
+    """Text that fits on one line should be returned unchanged."""
+    assert _balance_wrap_lines("Short text", 40) == ["Short text"]
+
+
+def test_balance_wrap_respects_max_chars():
+    """No balanced line should exceed max_chars characters."""
+    text = "ONE TWO THREE FOUR FIVE SIX SEVEN EIGHT NINE TEN"
+    lines = _balance_wrap_lines(text, 20)
+    assert all(len(line.rstrip()) <= 20 for line in lines)
+
+
+def test_balance_wrap_reduces_last_line_disparity():
+    """Balanced wrap should shorten the last line less than greedy would."""
+    # Greedy at width=28 puts a very short tail on the last line;
+    # balanced should pull words back to even things up.
+    text = "WHAT DO ANIMALS DREAM OF WHEN THEY SLEEP"
+    greedy = _wrap_lines(text, 28)
+    balanced = _balance_wrap_lines(text, 28)
+    if len(greedy) > 1 and len(balanced) > 1:
+        greedy_last = len(greedy[-1].rstrip())
+        balanced_last = len(balanced[-1].rstrip())
+        # Balanced last line should be at least as long as greedy last line
+        assert balanced_last >= greedy_last

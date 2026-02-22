@@ -561,6 +561,7 @@ def get_config(db: Session = Depends(get_db)):
                     "next_component_position": c.get(
                         "next_component_position", "end_of_text"
                     ),
+                    "balance_lines": c.get("balance_lines", False),
                 }
                 if isinstance(c, dict)
                 else {
@@ -570,6 +571,7 @@ def get_config(db: Session = Depends(get_db)):
                     "enabled": c.enabled,
                     "max_line_chars": c.max_line_chars,
                     "next_component_position": c.next_component_position,
+                    "balance_lines": c.balance_lines,
                 }
             )
             for c in cfg.get(
@@ -582,6 +584,7 @@ def get_config(db: Session = Depends(get_db)):
                         "enabled": c.enabled,
                         "max_line_chars": c.max_line_chars,
                         "next_component_position": c.next_component_position,
+                        "balance_lines": c.balance_lines,
                     }
                     for c in DEFAULT_COMPONENTS
                 ],
@@ -597,6 +600,7 @@ class ComponentConfigIn(BaseModel):
     enabled: bool = True
     max_line_chars: int | None = None
     next_component_position: str = "end_of_text"
+    balance_lines: bool = False
 
 
 class ConfigIn(BaseModel):
@@ -670,6 +674,7 @@ def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
                     "enabled": c.enabled,
                     "max_line_chars": c.max_line_chars,
                     "next_component_position": c.next_component_position,
+                    "balance_lines": c.balance_lines,
                 }
                 for c in DEFAULT_COMPONENTS
             ],
@@ -697,6 +702,11 @@ def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
                     c.get("next_component_position", "end_of_text")
                     if isinstance(c, dict)
                     else c.next_component_position
+                ),
+                balance_lines=(
+                    c.get("balance_lines", False)
+                    if isinstance(c, dict)
+                    else c.balance_lines
                 ),
             )
             for c in raw_components
@@ -763,6 +773,7 @@ def export_section_indesign_tags(
                     "enabled": c.enabled,
                     "max_line_chars": c.max_line_chars,
                     "next_component_position": c.next_component_position,
+                    "balance_lines": c.balance_lines,
                 }
                 for c in DEFAULT_COMPONENTS
             ],
@@ -790,6 +801,11 @@ def export_section_indesign_tags(
                     c.get("next_component_position", "end_of_text")
                     if isinstance(c, dict)
                     else c.next_component_position
+                ),
+                balance_lines=(
+                    c.get("balance_lines", False)
+                    if isinstance(c, dict)
+                    else c.balance_lines
                 ),
             )
             for c in raw_components

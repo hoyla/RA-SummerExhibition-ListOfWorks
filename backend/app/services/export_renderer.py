@@ -40,6 +40,7 @@ class ComponentConfig:
         None  # wrap at this many chars per line (None = no wrap)
     )
     next_component_position: str = "end_of_text"  # "end_of_text" | "end_of_first_line"
+    balance_lines: bool = False  # narrow column to equalise line lengths
 
 
 DEFAULT_COMPONENTS: List[ComponentConfig] = [
@@ -85,6 +86,7 @@ class ExportConfig:
                 c.enabled,
                 c.max_line_chars,
                 c.next_component_position,
+                c.balance_lines,
             )
             for c in DEFAULT_COMPONENTS
         ]
@@ -301,6 +303,27 @@ def _wrap_lines(text: str, max_chars: int) -> list:
     return lines
 
 
+def _balance_wrap_lines(text: str, max_chars: int) -> list:
+    """
+    Wrap *text* at *max_chars* to get the target line count N, then
+    binary-search for the narrowest column that still yields N lines.
+    This prevents disproportionately short final lines.
+    """
+    lines = _wrap_lines(text, max_chars)
+    n = len(lines)
+    if n <= 1:
+        return lines
+    lo = max(1, -(-len(text) // n))  # ceil(len/n)
+    hi = max_chars
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if len(_wrap_lines(text, mid)) > n:
+            lo = mid + 1
+        else:
+            hi = mid
+    return _wrap_lines(text, lo)
+
+
 def _field_char_style(config: "ExportConfig", field: str) -> str:
     """Return the character style name for a given component field."""
     return {
@@ -463,7 +486,10 @@ def render_import_as_tagged_text(
                 )
                 if should_wrap:
                     raw = _raw_text_for_field(comp.field, w)
-                    wrapped = _wrap_lines(raw, comp.max_line_chars) if raw else []
+                    _wrap_fn = (
+                        _balance_wrap_lines if comp.balance_lines else _wrap_lines
+                    )
+                    wrapped = _wrap_fn(raw, comp.max_line_chars) if raw else []
                     style = _field_char_style(config, comp.field)
                     eff_sep = (
                         final_sep_override
