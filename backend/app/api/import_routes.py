@@ -553,6 +553,10 @@ def get_config(db: Session = Depends(get_db)):
                     "separator_after": c.get("separator_after", "tab"),
                     "omit_sep_when_empty": c.get("omit_sep_when_empty", True),
                     "enabled": c.get("enabled", True),
+                    "max_line_chars": c.get("max_line_chars", None),
+                    "next_component_position": c.get(
+                        "next_component_position", "end_of_text"
+                    ),
                 }
                 if isinstance(c, dict)
                 else {
@@ -560,6 +564,8 @@ def get_config(db: Session = Depends(get_db)):
                     "separator_after": c.separator_after,
                     "omit_sep_when_empty": c.omit_sep_when_empty,
                     "enabled": c.enabled,
+                    "max_line_chars": c.max_line_chars,
+                    "next_component_position": c.next_component_position,
                 }
             )
             for c in cfg.get(
@@ -570,6 +576,8 @@ def get_config(db: Session = Depends(get_db)):
                         "separator_after": c.separator_after,
                         "omit_sep_when_empty": c.omit_sep_when_empty,
                         "enabled": c.enabled,
+                        "max_line_chars": c.max_line_chars,
+                        "next_component_position": c.next_component_position,
                     }
                     for c in DEFAULT_COMPONENTS
                 ],
@@ -583,6 +591,8 @@ class ComponentConfigIn(BaseModel):
     separator_after: str = "tab"
     omit_sep_when_empty: bool = True
     enabled: bool = True
+    max_line_chars: int | None = None
+    next_component_position: str = "end_of_text"
 
 
 class ConfigIn(BaseModel):
@@ -653,6 +663,8 @@ def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
                     "separator_after": c.separator_after,
                     "omit_sep_when_empty": c.omit_sep_when_empty,
                     "enabled": c.enabled,
+                    "max_line_chars": c.max_line_chars,
+                    "next_component_position": c.next_component_position,
                 }
                 for c in DEFAULT_COMPONENTS
             ],
@@ -671,6 +683,16 @@ def export_indesign_tags(import_id: UUID, db: Session = Depends(get_db)):
                     else c.omit_sep_when_empty
                 ),
                 enabled=(c.get("enabled", True) if isinstance(c, dict) else c.enabled),
+                max_line_chars=(
+                    c.get("max_line_chars", None)
+                    if isinstance(c, dict)
+                    else c.max_line_chars
+                ),
+                next_component_position=(
+                    c.get("next_component_position", "end_of_text")
+                    if isinstance(c, dict)
+                    else c.next_component_position
+                ),
             )
             for c in raw_components
         ]
@@ -730,6 +752,8 @@ def export_section_indesign_tags(
                     "separator_after": c.separator_after,
                     "omit_sep_when_empty": c.omit_sep_when_empty,
                     "enabled": c.enabled,
+                    "max_line_chars": c.max_line_chars,
+                    "next_component_position": c.next_component_position,
                 }
                 for c in DEFAULT_COMPONENTS
             ],
@@ -748,6 +772,16 @@ def export_section_indesign_tags(
                     else c.omit_sep_when_empty
                 ),
                 enabled=(c.get("enabled", True) if isinstance(c, dict) else c.enabled),
+                max_line_chars=(
+                    c.get("max_line_chars", None)
+                    if isinstance(c, dict)
+                    else c.max_line_chars
+                ),
+                next_component_position=(
+                    c.get("next_component_position", "end_of_text")
+                    if isinstance(c, dict)
+                    else c.next_component_position
+                ),
             )
             for c in raw_components
         ]

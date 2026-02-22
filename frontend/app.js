@@ -171,10 +171,13 @@ async function renderSettings() {
     edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
   };
   const defaultComponents = [
-    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true},{field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true},
-    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true},{field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true},
-    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false},
-    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true},{field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true},
+    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
+    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
+    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
+    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
+    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text'},
+    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
+    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text'},
   ];
   // Merge: if a saved config is missing a known component, append it with defaults
   const savedComponents = cfg.components ?? defaultComponents;
@@ -186,16 +189,33 @@ async function renderSettings() {
   const componentRowsHTML = mergedComponents.map(c => {
     const label = COMP_LABELS[c.field] ?? c.field;
     const enabled = c.enabled ?? true;
+    const maxChars = c.max_line_chars ?? '';
+    const nextPos = c.next_component_position ?? 'end_of_text';
+    const posDisabled = maxChars === '' || maxChars === null ? 'disabled' : '';
     return `
     <div class="component-row" data-field="${esc(c.field)}" style="opacity:${enabled ? 1 : 0.45}">
-      <div class="component-handle">
-        <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up">▲</button>
-        <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down">▼</button>
+      <div class="component-main">
+        <div class="component-handle">
+          <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up">▲</button>
+          <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down">▼</button>
+        </div>
+        <label class="inline-check component-label"><input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
+          onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> ${esc(label)}</label>
+        <select class="component-sep">${_sepOpts(c.separator_after)}</select>
+        <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}> omit when empty</label>
       </div>
-      <label class="inline-check component-label"><input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
-        onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> ${esc(label)}</label>
-      <select class="component-sep">${_sepOpts(c.separator_after)}</select>
-      <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}> omit when empty</label>
+      <div class="component-wrap-opts">
+        <label>max chars/line <input type="number" class="component-max-chars" min="1" style="width:4.5em"
+          value="${maxChars}" placeholder="none"
+          oninput="const s=this.closest('.component-row').querySelector('.component-next-pos');s.disabled=!this.value"></label>
+        <label>next component at
+          <select class="component-next-pos" ${posDisabled}>
+            <option value="end_of_text" ${nextPos==='end_of_text'?'selected':''}>end of text</option>
+            <option value="end_of_first_line" ${nextPos==='end_of_first_line'?'selected':''}>end of first line</option>
+          </select>
+          <span class="form-hint" style="display:inline">(soft returns used for line breaks within field)</span>
+        </label>
+      </div>
     </div>`;
   }).join('');
 
@@ -364,12 +384,17 @@ async function saveSettings() {
   const honorific_tokens = rawTokens.split(',').map(t => t.trim()).filter(Boolean);
   const components = Array.from(
     document.querySelectorAll('#cfg-components .component-row')
-  ).map(row => ({
-    field: row.dataset.field,
-    separator_after: row.querySelector('.component-sep')?.value ?? 'none',
-    omit_sep_when_empty: row.querySelector('.component-omit-sep')?.checked ?? true,
-    enabled: row.querySelector('.component-enabled')?.checked ?? true,
-  }));
+  ).map(row => {
+    const rawMax = row.querySelector('.component-max-chars')?.value;
+    return {
+      field: row.dataset.field,
+      separator_after: row.querySelector('.component-sep')?.value ?? 'none',
+      omit_sep_when_empty: row.querySelector('.component-omit-sep')?.checked ?? true,
+      enabled: row.querySelector('.component-enabled')?.checked ?? true,
+      max_line_chars: rawMax ? parseInt(rawMax, 10) : null,
+      next_component_position: row.querySelector('.component-next-pos')?.value ?? 'end_of_text',
+    };
+  });
   const body = {
     honorific_tokens,
     leading_separator:   document.getElementById('cfg-leading-sep')?.value  ?? 'none',

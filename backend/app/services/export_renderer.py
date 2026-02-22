@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 import csv
 import io
 import json
@@ -36,6 +36,10 @@ class ComponentConfig:
         True  # suppress the separator when this component has no value
     )
     enabled: bool = True  # when False the component is excluded from export entirely
+    max_line_chars: Optional[int] = (
+        None  # wrap at this many chars per line (None = no wrap)
+    )
+    next_component_position: str = "end_of_text"  # "end_of_text" | "end_of_first_line"
 
 
 DEFAULT_COMPONENTS: List[ComponentConfig] = [
@@ -74,7 +78,12 @@ class ExportConfig:
     components: List[ComponentConfig] = field(
         default_factory=lambda: [
             ComponentConfig(
-                c.field, c.separator_after, c.omit_sep_when_empty, c.enabled
+                c.field,
+                c.separator_after,
+                c.omit_sep_when_empty,
+                c.enabled,
+                c.max_line_chars,
+                c.next_component_position,
             )
             for c in DEFAULT_COMPONENTS
         ]
@@ -222,6 +231,99 @@ def escape_for_mac_roman(text: str) -> str:
     return "".join(out)
 
 
+# Opening punctuation that must not be left stranded at the end of a line.
+_OPEN_PUNCT = set("'\"\u2018\u201c([")
+# Closing punctuation that must not appear at the start of a line.
+_CLOSE_PUNCT = set("'\",;:.!?)]\u2019\u201d")
+# Dashes after which we do not want to break.
+_NO_BREAK_AFTER = {"\u2013", "\u2014"}  # en-dash, em-dash
+
+
+def _wrap_lines(text: str, max_chars: int) -> list:
+    """
+    Split *text* into lines of at most *max_chars* characters, always breaking
+    at a space boundary and honouring punctuation attachment rules:
+
+    - Opening quotes/brackets (', ", (, [, …) must not end a line.
+    - Closing quotes/punctuation (',  ", ,, ;, :, …) must not start a line.
+    - En-dash and em-dash must not immediately precede a line break.
+
+    The space at the break point stays on the current line (trailing), so the
+    next line never starts with a space.
+
+    If no suitable space exists within the limit the line is hard-broken at
+    max_chars with no space adjustment.
+    """
+    lines = []
+    remaining = text
+
+    while len(remaining) > max_chars:
+        # Last space in [0, max_chars-1] so that remaining[:candidate+1] <= max_chars
+        candidate = remaining.rfind(" ", 0, max_chars)
+
+        if candidate < 0:
+            # No space within limit — hard break
+            lines.append(remaining[:max_chars])
+            remaining = remaining[max_chars:]
+            continue
+
+        # Walk the candidate backwards until we find a clean break point
+        for _ in range(max_chars):  # bounded to prevent infinite loop
+            char_before = remaining[candidate - 1] if candidate > 0 else ""
+            char_after = (
+                remaining[candidate + 1] if candidate + 1 < len(remaining) else ""
+            )
+            bad = (
+                char_before in _OPEN_PUNCT
+                or char_before in _NO_BREAK_AFTER
+                or char_after in _CLOSE_PUNCT
+            )
+            if not bad:
+                break
+            prev = remaining.rfind(" ", 0, candidate)
+            if prev < 0:
+                candidate = -1  # no clean break available
+                break
+            candidate = prev
+
+        if candidate < 0:
+            # Fallback: hard break
+            lines.append(remaining[:max_chars])
+            remaining = remaining[max_chars:]
+        else:
+            # Include the space on the current line; next line starts clean
+            lines.append(remaining[: candidate + 1])
+            remaining = remaining[candidate + 1 :]
+
+    if remaining:
+        lines.append(remaining)
+    return lines
+
+
+def _field_char_style(config: "ExportConfig", field: str) -> str:
+    """Return the character style name for a given component field."""
+    return {
+        "work_number": config.cat_no_style,
+        "artist": config.artist_style,
+        "title": config.title_style,
+        "edition": "",
+        "artwork": config.artwork_style,
+        "price": config.price_style,
+        "medium": config.medium_style,
+    }.get(field, "")
+
+
+def _raw_text_for_field(field: str, w: dict) -> str:
+    """Return the un-styled raw text for a component field from a work dict."""
+    mapping = {
+        "work_number": lambda: str(w["number"]) if w["number"] else "",
+        "title": lambda: w["title"] or "",
+        "medium": lambda: w["medium"] or "",
+        "artwork": lambda: str(w["artwork"]) if w["artwork"] else "",
+    }
+    return mapping[field]() if field in mapping else ""
+
+
 def _sep(name: str, entry_style: str = "") -> str:
     """Return the InDesign tagged-text string for a named separator."""
     if name == "none":
@@ -330,15 +432,73 @@ def render_import_as_tagged_text(
             # Build entry from ordered components
             entry = f"<ParaStyle:{config.entry_style}>"
             entry += _sep(config.leading_separator, config.entry_style)
-            for comp in config.components:
-                if not comp.enabled:
+
+            enabled_comps = [c for c in config.components if c.enabled]
+            skip_fields = set()
+
+            for idx, comp in enumerate(enabled_comps):
+                if comp.field in skip_fields:
                     continue
+
                 val = comp_values.get(comp.field, "")
-                if val:
-                    entry += val
-                    entry += _sep(comp.separator_after, config.entry_style)
-                elif not comp.omit_sep_when_empty:
-                    entry += _sep(comp.separator_after, config.entry_style)
+
+                # -- Wrapped / "end of first line" mode --
+                should_wrap = (
+                    comp.max_line_chars
+                    and comp.next_component_position == "end_of_first_line"
+                )
+                if should_wrap:
+                    raw = _raw_text_for_field(comp.field, w)
+                    lines = _wrap_lines(raw, comp.max_line_chars) if raw else []
+                    style = _field_char_style(config, comp.field)
+
+                    if len(lines) <= 1:
+                        # Title fits on one line — normal behaviour
+                        if val:
+                            entry += val
+                            entry += _sep(comp.separator_after, config.entry_style)
+                        elif not comp.omit_sep_when_empty:
+                            entry += _sep(comp.separator_after, config.entry_style)
+                    else:
+                        # Multi-line: find the next enabled component (NC)
+                        nc = (
+                            enabled_comps[idx + 1]
+                            if idx + 1 < len(enabled_comps)
+                            else None
+                        )
+                        if nc:
+                            skip_fields.add(nc.field)
+                            nc_val = comp_values.get(nc.field, "")
+                        else:
+                            nc_val = ""
+
+                        # First line of TC, then sep-after-TC, then NC
+                        entry += _cs(style, lines[0])
+                        entry += _sep(comp.separator_after, config.entry_style)
+                        entry += nc_val  # NC inserted inline (empty string if no NC)
+
+                        # Remaining lines of TC, all in one reopened char style block
+                        rest = "\n".join(lines[1:])
+                        if style:
+                            entry += f"<CharStyle:{style}>\n{rest}<CharStyle:>"
+                        else:
+                            entry += "\n" + rest
+
+                        # Sep-after-NC closes the whole block
+                        if nc:
+                            if nc_val:
+                                entry += _sep(nc.separator_after, config.entry_style)
+                            elif not nc.omit_sep_when_empty:
+                                entry += _sep(nc.separator_after, config.entry_style)
+
+                # -- Normal mode --
+                else:
+                    if val:
+                        entry += val
+                        entry += _sep(comp.separator_after, config.entry_style)
+                    elif not comp.omit_sep_when_empty:
+                        entry += _sep(comp.separator_after, config.entry_style)
+
             entry += _sep(config.trailing_separator, config.entry_style)
 
             lines.append(entry)
