@@ -12,6 +12,7 @@ from uuid import UUID
 from backend.app.api.deps import get_db
 from backend.app.api.schemas import TemplateBodyIn, TemplateOut
 from backend.app.models.ruleset_model import Ruleset
+from backend.app.models.audit_log_model import AuditLog
 
 router = APIRouter()
 
@@ -72,6 +73,14 @@ def create_template(body: TemplateBodyIn, db: Session = Depends(get_db)):
         is_builtin=False,
     )
     db.add(r)
+    db.flush()
+    db.add(
+        AuditLog(
+            template_id=r.id,
+            action="template_created",
+            new_value=r.name,
+        )
+    )
     db.commit()
     db.refresh(r)
     return TemplateOut(
@@ -98,12 +107,21 @@ def update_template(
             status_code=403,
             detail="Cannot edit a built-in template \u2014 duplicate it first",
         )
+    old_name = r.name
     config_dict = body.model_dump(exclude={"name"})
     r.config = config_dict
     r.name = body.name
     r.config_hash = hashlib.sha256(
         json.dumps(config_dict, sort_keys=True).encode()
     ).hexdigest()
+    db.add(
+        AuditLog(
+            template_id=r.id,
+            action="template_updated",
+            old_value=old_name,
+            new_value=r.name,
+        )
+    )
     db.commit()
     db.refresh(r)
     return TemplateOut(
@@ -129,6 +147,13 @@ def delete_template(template_id: UUID, db: Session = Depends(get_db)):
     if r.is_builtin:
         raise HTTPException(status_code=403, detail="Cannot delete a built-in template")
     r.archived = True
+    db.add(
+        AuditLog(
+            template_id=r.id,
+            action="template_deleted",
+            old_value=r.name,
+        )
+    )
     db.commit()
     return None
 
@@ -149,6 +174,15 @@ def duplicate_template(template_id: UUID, db: Session = Depends(get_db)):
         is_builtin=False,
     )
     db.add(new_r)
+    db.flush()
+    db.add(
+        AuditLog(
+            template_id=new_r.id,
+            action="template_duplicated",
+            old_value=r.name,
+            new_value=new_r.name,
+        )
+    )
     db.commit()
     db.refresh(new_r)
     return TemplateOut(

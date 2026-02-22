@@ -13,26 +13,35 @@ from backend.app.api.schemas import AuditLogOut
 from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.import_model import Import
 from backend.app.models.work_model import Work
+from backend.app.models.ruleset_model import Ruleset
 
 router = APIRouter()
 
 
 def _build_audit_response(logs: list[AuditLog], db: Session) -> List[AuditLogOut]:
-    """Enrich audit log rows with denormalised work context."""
+    """Enrich audit log rows with denormalised work and template context."""
     work_ids = list({log.work_id for log in logs if log.work_id})
     work_map: dict = {}
     if work_ids:
         works = db.query(Work).filter(Work.id.in_(work_ids)).all()
         work_map = {str(w.id): w for w in works}
 
+    template_ids = list({log.template_id for log in logs if log.template_id})
+    template_map: dict = {}
+    if template_ids:
+        templates = db.query(Ruleset).filter(Ruleset.id.in_(template_ids)).all()
+        template_map = {str(t.id): t for t in templates}
+
     result = []
     for log in logs:
         w = work_map.get(str(log.work_id)) if log.work_id else None
+        t = template_map.get(str(log.template_id)) if log.template_id else None
         result.append(
             AuditLogOut(
                 id=str(log.id),
-                import_id=str(log.import_id),
+                import_id=str(log.import_id) if log.import_id else None,
                 work_id=str(log.work_id) if log.work_id else None,
+                template_id=str(log.template_id) if log.template_id else None,
                 action=log.action,
                 field=log.field,
                 old_value=log.old_value,
@@ -41,6 +50,7 @@ def _build_audit_response(logs: list[AuditLog], db: Session) -> List[AuditLogOut
                 cat_no=str(w.raw_cat_no) if w and w.raw_cat_no is not None else None,
                 artist_name=w.artist_name if w else None,
                 title=w.title if w else None,
+                template_name=t.name if t else None,
             )
         )
     return result

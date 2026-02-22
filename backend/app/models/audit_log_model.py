@@ -11,10 +11,11 @@ class AuditLog(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    # Null for template-level actions
     import_id = Column(
         UUID(as_uuid=True),
         ForeignKey("imports.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
 
     # Null for import-level actions
@@ -24,7 +25,15 @@ class AuditLog(Base):
         nullable=True,
     )
 
-    # e.g. 'override_set', 'override_deleted', 'work_excluded', 'work_included'
+    # Null for non-template actions
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("rulesets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # e.g. 'override_set', 'override_deleted', 'work_excluded', 'work_included',
+    #      'template_created', 'template_updated', 'template_deleted', 'template_duplicated'
     action = Column(Text, nullable=False)
 
     # Field name that changed, null for non-field actions
@@ -42,4 +51,5 @@ class AuditLog(Base):
     __table_args__ = (
         Index("idx_audit_logs_import", "import_id"),
         Index("idx_audit_logs_work", "work_id"),
+        Index("idx_audit_logs_template", "template_id"),
     )

@@ -199,6 +199,10 @@ function _auditActionLabel(action) {
     work_excluded: 'Work excluded',
     work_included: 'Work included',
     reimport: 'Re-import',
+    template_created: 'Template created',
+    template_updated: 'Template updated',
+    template_deleted: 'Template deleted',
+    template_duplicated: 'Template duplicated',
   };
   return labels[action] || action;
 }
@@ -208,9 +212,14 @@ function _auditLogTable(logs) {
 
   const rows = logs.map(log => {
     const who = [log.cat_no, log.artist_name, log.title].filter(Boolean).join(' \u2013 ');
-    const workCell = log.work_id
-      ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${esc(who || log.work_id.slice(0, 8) + '\u2026')}</button>`
-      : '<span class="muted">\u2014</span>';
+    let workCell;
+    if (log.work_id) {
+      workCell = `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${esc(who || log.work_id.slice(0, 8) + '\u2026')}</button>`;
+    } else if (log.template_name) {
+      workCell = `<span class="muted">${esc(log.template_name)}</span>`;
+    } else {
+      workCell = '<span class="muted">\u2014</span>';
+    }
 
     let change = '';
     if (log.action === 'reimport') {
@@ -267,26 +276,44 @@ async function renderAuditLog() {
       return;
     }
 
-    // Group by import_id for readability
+    // Split into template-level and import-level entries
+    const templateLogs = logs.filter(l => !l.import_id);
+    const importLogs = logs.filter(l => l.import_id);
+
+    // Group import logs by import_id
     const byImport = new Map();
-    for (const log of logs) {
+    for (const log of importLogs) {
       if (!byImport.has(log.import_id)) byImport.set(log.import_id, []);
       byImport.get(log.import_id).push(log);
     }
 
-    let html = '';
-    for (const [importId, importLogs] of byImport) {
+    let html = `<p class="muted" style="margin-bottom:12px">${logs.length} entries</p>`;
+
+    // Template events section
+    if (templateLogs.length) {
+      html += `
+        <details class="section-block" open>
+          <summary class="section-summary">
+            <span class="section-name">Template changes</span>
+            <span class="section-meta">${templateLogs.length} entr${templateLogs.length !== 1 ? 'ies' : 'y'}</span>
+          </summary>
+          ${_auditLogTable(templateLogs)}
+        </details>`;
+    }
+
+    // Import event sections
+    for (const [importId, iLogs] of byImport) {
       html += `
         <details class="section-block" open>
           <summary class="section-summary">
             <span class="section-name">Import <code class="import-id" title="${esc(importId)}">${esc(importId.slice(0, 8))}&hellip;</code></span>
-            <span class="section-meta">${importLogs.length} entr${importLogs.length !== 1 ? 'ies' : 'y'}</span>
+            <span class="section-meta">${iLogs.length} entr${iLogs.length !== 1 ? 'ies' : 'y'}</span>
             <a href="#/import/${esc(importId)}" class="btn btn-xs btn-secondary" style="margin-left:auto" onclick="event.stopPropagation()">View import</a>
           </summary>
-          ${_auditLogTable(importLogs)}
+          ${_auditLogTable(iLogs)}
         </details>`;
     }
-    container.innerHTML = `<p class="muted" style="margin-bottom:12px">${logs.length} entries across ${byImport.size} import${byImport.size !== 1 ? 's' : ''}</p>` + html;
+    container.innerHTML = html;
   } catch (err) {
     document.getElementById('audit-global').innerHTML = `<p class="error">${esc(err.message)}</p>`;
   }

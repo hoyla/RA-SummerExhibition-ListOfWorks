@@ -20,6 +20,7 @@ from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
 from backend.app.models.override_model import WorkOverride
 from backend.app.models.audit_log_model import AuditLog
+from backend.app.models.ruleset_model import Ruleset
 
 
 # ---------------------------------------------------------------------------
@@ -316,3 +317,134 @@ class TestAuditIntegration:
         assert len(data) >= 1
         actions = [d["action"] for d in data]
         assert "work_excluded" in actions
+
+
+# =========================================================================== #
+# Template audit logging
+# =========================================================================== #
+
+_TEMPLATE_BODY = {
+    "name": "Test Template",
+    "currency_symbol": "£",
+    "section_style": "SectionTitle",
+    "entry_style": "CatalogueEntry",
+    "edition_prefix": "edition of",
+    "edition_brackets": True,
+    "cat_no_style": "CatNo",
+    "artist_style": "ArtistName",
+    "honorifics_style": "Honorifics",
+    "honorifics_lowercase": False,
+    "title_style": "WorkTitle",
+    "price_style": "Price",
+    "medium_style": "Medium",
+    "artwork_style": "Artwork",
+    "thousands_separator": ",",
+    "decimal_places": 0,
+    "leading_separator": "none",
+    "trailing_separator": "none",
+    "final_sep_from_last_component": False,
+    "components": [
+        {"field": "work_number", "separator_after": "tab"},
+        {"field": "artist", "separator_after": "tab"},
+        {"field": "title", "separator_after": "tab"},
+        {"field": "price", "separator_after": "none"},
+    ],
+}
+
+
+class TestTemplateAuditLog:
+    """Verify that template CRUD operations create audit entries."""
+
+    def test_create_template_logs(self, client, db_session):
+        r = client.post("/templates", json=_TEMPLATE_BODY)
+        assert r.status_code == 201
+        tid = r.json()["id"]
+
+        logs = (
+            db_session.query(AuditLog)
+            .filter(AuditLog.template_id == _uuid.UUID(tid))
+            .all()
+        )
+        assert len(logs) == 1
+        assert logs[0].action == "template_created"
+        assert logs[0].new_value == "Test Template"
+        assert logs[0].import_id is None
+
+    def test_update_template_logs(self, client, db_session):
+        r = client.post("/templates", json=_TEMPLATE_BODY)
+        tid = r.json()["id"]
+
+        updated = {**_TEMPLATE_BODY, "name": "Renamed"}
+        client.put(f"/templates/{tid}", json=updated)
+
+        logs = (
+            db_session.query(AuditLog)
+            .filter(
+                AuditLog.template_id == _uuid.UUID(tid),
+                AuditLog.action == "template_updated",
+            )
+            .all()
+        )
+        assert len(logs) == 1
+        assert logs[0].old_value == "Test Template"
+        assert logs[0].new_value == "Renamed"
+
+    def test_delete_template_logs(self, client, db_session):
+        r = client.post("/templates", json=_TEMPLATE_BODY)
+        tid = r.json()["id"]
+
+        client.delete(f"/templates/{tid}")
+
+        logs = (
+            db_session.query(AuditLog)
+            .filter(
+                AuditLog.template_id == _uuid.UUID(tid),
+                AuditLog.action == "template_deleted",
+            )
+            .all()
+        )
+        assert len(logs) == 1
+        assert logs[0].old_value == "Test Template"
+
+    def test_duplicate_template_logs(self, client, db_session):
+        r = client.post("/templates", json=_TEMPLATE_BODY)
+        tid = r.json()["id"]
+
+        dup = client.post(f"/templates/{tid}/duplicate")
+        assert dup.status_code == 201
+        new_tid = dup.json()["id"]
+
+        logs = (
+            db_session.query(AuditLog)
+            .filter(
+                AuditLog.template_id == _uuid.UUID(new_tid),
+                AuditLog.action == "template_duplicated",
+            )
+            .all()
+        )
+        assert len(logs) == 1
+        assert logs[0].old_value == "Test Template"
+        assert logs[0].new_value == "Copy of Test Template"
+
+    def test_template_events_in_global_log(self, client, db_session):
+        """Template events appear in the global audit-log endpoint."""
+        client.post("/templates", json=_TEMPLATE_BODY)
+
+        r = client.get("/audit-log")
+        data = r.json()
+        assert len(data) >= 1
+        tmpl_entries = [d for d in data if d["action"] == "template_created"]
+        assert len(tmpl_entries) == 1
+        assert tmpl_entries[0]["import_id"] is None
+        assert tmpl_entries[0]["template_name"] == "Test Template"
+
+    def test_template_name_enrichment(self, client, db_session):
+        """Global audit log enriches template_name from the Ruleset row."""
+        r = client.post("/templates", json=_TEMPLATE_BODY)
+        tid = r.json()["id"]
+
+        resp = client.get("/audit-log")
+        data = resp.json()
+        tmpl = [d for d in data if d["template_id"] == tid]
+        assert len(tmpl) == 1
+        assert tmpl[0]["template_name"] == "Test Template"
