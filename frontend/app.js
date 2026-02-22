@@ -180,12 +180,117 @@ function router() {
   if (importMatch)        renderDetail(importMatch[1]);
   else if (tmplEditMatch) renderTemplateEdit(tmplEditMatch[1]);
   else if (hash === '#/templates') renderTemplates();
+  else if (hash === '#/audit')     renderAuditLog();
   else if (hash === '#/settings')  renderSettings();
   else                             renderList();
 }
 
 window.addEventListener('hashchange', router);
 window.addEventListener('DOMContentLoaded', () => { _syncHeader(); router(); });
+
+// ---------------------------------------------------------------------------
+// Audit log viewer (shared helper + per-import panel + global page)
+// ---------------------------------------------------------------------------
+
+function _auditActionLabel(action) {
+  const labels = {
+    override_set: 'Override set',
+    override_deleted: 'Override deleted',
+    work_excluded: 'Work excluded',
+    work_included: 'Work included',
+    reimport: 'Re-import',
+  };
+  return labels[action] || action;
+}
+
+function _auditLogTable(logs) {
+  if (!logs.length) return '<p class="muted">No audit log entries.</p>';
+
+  const rows = logs.map(log => {
+    const who = [log.cat_no, log.artist_name, log.title].filter(Boolean).join(' \u2013 ');
+    const workCell = log.work_id
+      ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${esc(who || log.work_id.slice(0, 8) + '\u2026')}</button>`
+      : '<span class="muted">\u2014</span>';
+
+    let change = '';
+    if (log.action === 'reimport') {
+      change = esc(log.new_value || '');
+    } else if (log.field) {
+      const parts = [];
+      if (log.old_value != null) parts.push(`<span class="audit-old">${esc(log.old_value)}</span>`);
+      parts.push('\u2192');
+      if (log.new_value != null) parts.push(`<span class="audit-new">${esc(log.new_value)}</span>`);
+      else parts.push('<span class="muted">(cleared)</span>');
+      change = `<code>${esc(log.field)}</code>: ${parts.join(' ')}`;
+    }
+
+    return `<tr>
+      <td class="col-ts muted">${esc(formatDate(log.created_at))}</td>
+      <td><span class="badge badge-audit">${esc(_auditActionLabel(log.action))}</span></td>
+      <td>${workCell}</td>
+      <td>${change}</td>
+    </tr>`;
+  }).join('');
+
+  return `<table class="data-table audit-table">
+    <thead><tr><th class="col-ts">Time</th><th>Action</th><th>Work</th><th>Change</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderAuditPanel(logs) {
+  const panel = document.getElementById('audit-panel');
+  if (!panel) return;
+  if (!logs.length) {
+    panel.innerHTML = '<p class="muted" style="padding:4px 0">No audit log entries yet.</p>';
+    return;
+  }
+  panel.innerHTML = `
+    <details>
+      <summary class="section-summary"><span class="section-name">Audit Log</span>
+        <span class="section-meta">${logs.length} entr${logs.length !== 1 ? 'ies' : 'y'}</span>
+      </summary>
+      ${_auditLogTable(logs)}
+    </details>`;
+}
+
+async function renderAuditLog() {
+  document.getElementById('app').innerHTML = `
+    <h2 class="page-heading">Audit Log</h2>
+    <section class="panel" id="audit-global"><p class="loading">Loading\u2026</p></section>`;
+
+  try {
+    const logs = await api('GET', '/audit-log?limit=500');
+    const container = document.getElementById('audit-global');
+    if (!logs.length) {
+      container.innerHTML = '<p class="muted">No audit log entries.</p>';
+      return;
+    }
+
+    // Group by import_id for readability
+    const byImport = new Map();
+    for (const log of logs) {
+      if (!byImport.has(log.import_id)) byImport.set(log.import_id, []);
+      byImport.get(log.import_id).push(log);
+    }
+
+    let html = '';
+    for (const [importId, importLogs] of byImport) {
+      html += `
+        <details class="section-block" open>
+          <summary class="section-summary">
+            <span class="section-name">Import <code class="import-id" title="${esc(importId)}">${esc(importId.slice(0, 8))}&hellip;</code></span>
+            <span class="section-meta">${importLogs.length} entr${importLogs.length !== 1 ? 'ies' : 'y'}</span>
+            <a href="#/import/${esc(importId)}" class="btn btn-xs btn-secondary" style="margin-left:auto" onclick="event.stopPropagation()">View import</a>
+          </summary>
+          ${_auditLogTable(importLogs)}
+        </details>`;
+    }
+    container.innerHTML = `<p class="muted" style="margin-bottom:12px">${logs.length} entries across ${byImport.size} import${byImport.size !== 1 ? 's' : ''}</p>` + html;
+  } catch (err) {
+    document.getElementById('audit-global').innerHTML = `<p class="error">${esc(err.message)}</p>`;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Settings page
@@ -871,7 +976,8 @@ async function renderDetail(importId) {
     <section class="panel">
       <h3>Works</h3>
       <div id="sections-container"><p class="loading">Loading\u2026</p></div>
-    </section>`;
+    </section>
+    <section class="panel" id="audit-panel"><p class="loading">Loading audit log\u2026</p></section>`;
 
   // Wire up re-import form
   document.getElementById('reimport-form').addEventListener('submit', async (e) => {
@@ -882,10 +988,11 @@ async function renderDetail(importId) {
 
   const cfg = _getDisplayCfg();
 
-  const [sections, warnings, templates] = await Promise.all([
+  const [sections, warnings, templates, auditLogs] = await Promise.all([
     api('GET', `/imports/${importId}/sections`).catch(e => ({ _error: e.message })),
     api('GET', `/imports/${importId}/warnings`).catch(() => []),
     api('GET', '/templates').catch(() => []),
+    api('GET', `/imports/${importId}/audit-log`).catch(() => []),
   ]);
 
   // Populate template picker
@@ -917,6 +1024,7 @@ async function renderDetail(importId) {
     return;
   }
   renderSections(importId, sections, cfg);
+  renderAuditPanel(auditLogs);
 }
 
 // ---------------------------------------------------------------------------

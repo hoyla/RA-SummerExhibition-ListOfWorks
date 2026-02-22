@@ -508,6 +508,12 @@ details.section-block[open] > .section-summary::before {
   white-space: nowrap;
 }
 .badge-warning { background: #fff3cd; color: #8a6000; border: 1px solid #f0c040; }
+.badge-audit { background: #e8f0fe; color: #1a56db; border: 1px solid #a4c3f5; }
+
+/* Audit log */
+.audit-table .col-ts { width: 140px; font-size: 12px; }
+.audit-old { text-decoration: line-through; color: #c0392b; }
+.audit-new { color: #27ae60; font-weight: 600; }
 
 /* Honorifics shown inline in the works table — signals a separate character style */
 .honorifics-pill {

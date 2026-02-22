@@ -122,6 +122,26 @@ class ValidationWarningOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Audit log
+# ---------------------------------------------------------------------------
+
+
+class AuditLogOut(BaseModel):
+    id: str
+    import_id: str
+    work_id: str | None
+    action: str
+    field: str | None
+    old_value: str | None
+    new_value: str | None
+    created_at: str
+    # Denormalised work context (if the work still exists)
+    cat_no: str | None = None
+    artist_name: str | None = None
+    title: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Overrides
 # ---------------------------------------------------------------------------
 
