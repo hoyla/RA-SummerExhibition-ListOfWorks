@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from backend.app.config import LOG_LEVEL
+from backend.app.config import LOG_LEVEL, CORS_ORIGINS
 from backend.app.db import engine, Base
 
 from backend.app.models import import_model
@@ -143,6 +143,22 @@ _seed_builtin_templates()
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Catalogue Tool", version="1.0.0")
+
+
+# ---------------------------------------------------------------------------
+# CORS middleware (only added when CORS_ORIGINS is configured)
+# ---------------------------------------------------------------------------
+
+if CORS_ORIGINS:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=True,
+    )
 
 
 # ---------------------------------------------------------------------------

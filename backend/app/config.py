@@ -19,3 +19,9 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # Directory where uploaded Excel files are stored.
 UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "uploads")
+
+# Comma-separated list of allowed CORS origins.
+# Leave empty to disallow cross-origin requests (same-origin only).
+CORS_ORIGINS: list[str] = [
+    o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
+]

@@ -14,6 +14,7 @@ from typing import List
 from uuid import UUID
 
 from backend.app.api.deps import get_db
+from backend.app.config import UPLOAD_DIR
 from backend.app.api.schemas import (
     ImportOut,
     SectionOut,
@@ -36,14 +37,14 @@ router = APIRouter()
 
 @router.post("/import")
 def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    os.makedirs("uploads", exist_ok=True)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
     # Sanitise filename: strip path components to prevent traversal,
     # and prefix with a UUID to prevent collisions.
     original_name = file.filename or "upload.xlsx"
     safe_name = Path(original_name).name  # strip any directory components
     disk_name = f"{uuid.uuid4().hex}_{safe_name}"
-    file_path = os.path.join("uploads", disk_name)
+    file_path = os.path.join(UPLOAD_DIR, disk_name)
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
