@@ -192,11 +192,10 @@ async function renderSettings() {
         <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up">▲</button>
         <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down">▼</button>
       </div>
-      <span class="component-label">${esc(label)}</span>
+      <label class="inline-check component-label"><input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
+        onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> ${esc(label)}</label>
       <select class="component-sep">${_sepOpts(c.separator_after)}</select>
       <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}> omit when empty</label>
-      <label class="inline-check"><input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}
-        onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> include</label>
     </div>`;
   }).join('');
 
