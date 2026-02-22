@@ -203,6 +203,8 @@ async function renderSettings() {
   const dispCurr = dispCfg.currency_symbol;
   const dispSep  = dispCfg.thousands_separator;
   const dispDp   = dispCfg.decimal_places;
+  const dispEdPrefix   = dispCfg.edition_prefix;
+  const dispEdBrackets = dispCfg.edition_brackets;
 
   const sepOpts = (val) => [
     [',', ', &nbsp; 1,000'],
@@ -251,6 +253,18 @@ async function renderSettings() {
           <label>Decimal places</label>
           <select id="disp-decimal-places">${dpOpts(dispDp)}</select>
         </div>
+        <div class="form-row">
+          <label>Edition prefix</label>
+          <input id="disp-edition-prefix" type="text" value="${esc(dispEdPrefix)}" style="max-width:200px">
+          <span class="form-hint">e.g. &ldquo;edition of&rdquo; &rarr; &ldquo;edition of 10 at &pound;500&rdquo;</span>
+        </div>
+        <div class="form-row">
+          <label>Edition brackets</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" id="disp-edition-brackets"${dispEdBrackets ? ' checked' : ''}>
+            Wrap edition info in brackets
+          </label>
+        </div>
       </div>
     </section>
 
@@ -273,6 +287,8 @@ async function saveSettings() {
       (document.getElementById('disp-currency')?.value      ?? '').trim() || '\u00a3',
       document.getElementById('disp-thousands-sep')?.value  ?? ',',
       Number(document.getElementById('disp-decimal-places')?.value ?? '0'),
+      (document.getElementById('disp-edition-prefix')?.value ?? '').trim() || 'edition of',
+      document.getElementById('disp-edition-brackets')?.checked ?? true,
     );
     statusEl.textContent = '\u2713 Saved';
     statusEl.className = 'status-msg success';
@@ -777,15 +793,17 @@ function _getDisplayCfg() {
       currency_symbol:     d.currency_symbol     ?? '\u00a3',
       thousands_separator: d.thousands_separator ?? ',',
       decimal_places:      d.decimal_places      ?? 0,
+      edition_prefix:      d.edition_prefix      ?? 'edition of',
+      edition_brackets:    d.edition_brackets    ?? true,
     };
   } catch {
-    return { currency_symbol: '\u00a3', thousands_separator: ',', decimal_places: 0 };
+    return { currency_symbol: '\u00a3', thousands_separator: ',', decimal_places: 0, edition_prefix: 'edition of', edition_brackets: true };
   }
 }
 
-function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places) {
+function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets) {
   localStorage.setItem('ra_display_cfg', JSON.stringify(
-    { currency_symbol, thousands_separator, decimal_places }
+    { currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets }
   ));
 }
 
