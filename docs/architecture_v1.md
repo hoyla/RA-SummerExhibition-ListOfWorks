@@ -23,12 +23,13 @@ Excel Upload
 | Layer      | Technology                        |
 | ---------- | --------------------------------- |
 | API        | Python 3.12, FastAPI, Uvicorn     |
-| ORM        | SQLAlchemy                        |
+| ORM        | SQLAlchemy 2.0                    |
+| Migrations | Alembic                           |
 | Validation | Pydantic v2                       |
 | Database   | PostgreSQL 16                     |
 | Frontend   | Vanilla JS SPA, served by FastAPI |
 | Deployment | Docker / docker-compose           |
-| Testing    | pytest (114 tests)                |
+| Testing    | pytest (172 tests)                |
 
 ---
 
@@ -112,6 +113,21 @@ Principles: deterministic, idempotent, raw data never mutated.
 
 ---
 
+## 4.1 Spreadsheet Validation
+
+`backend/app/services/excel_importer.py`
+
+Before importing, the header row is validated:
+
+- **Required columns** (`Cat No`, `Title`, `Artist`) — missing any → 400 error
+  with a "did you mean?" suggestion when a close match exists.
+- **Optional columns** (`Gallery`, `Price`, `Edition`, `Artwork`, `Medium`) —
+  missing → import proceeds but a `missing_column` validation warning is stored.
+- **Non-Excel files** and corrupt/empty spreadsheets → 400 with a clear message.
+- **Header-only spreadsheets** → import succeeds with an `empty_spreadsheet` warning.
+
+---
+
 ## 5. Override Service
 
 `backend/app/services/override_service.py`
@@ -168,32 +184,48 @@ Structured JSON output with sections → works hierarchy, also available.
 
 ## 7. API
 
-`backend/app/api/import_routes.py`
+Routes are split across focused modules under `backend/app/api/`:
 
-All routes under `/api/`. Protected by API key if `API_KEY` env var is set.
+- `imports.py` — upload, list, sections, preview, warnings, delete
+- `overrides.py` — per-work override CRUD and exclude toggle
+- `exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
+- `templates.py` — export template CRUD and duplication
+- `normalisation_config.py` — global normalisation config
+- `schemas.py` — centralised Pydantic request/response models
+- `deps.py` — shared dependencies (DB session)
+- `import_routes.py` — thin aggregation hub that includes all sub-routers
 
-| Method | Path                                           | Description                               |
-| ------ | ---------------------------------------------- | ----------------------------------------- |
-| POST   | `/api/imports`                                 | Upload Excel file                         |
-| GET    | `/api/imports`                                 | List all imports                          |
-| DELETE | `/api/imports/{id}`                            | Delete import and all data                |
-| GET    | `/api/imports/{id}/sections`                   | List sections with works                  |
-| GET    | `/api/imports/{id}/warnings`                   | Validation warnings for the import        |
-| GET    | `/api/imports/{id}/preview`                    | Lightweight preview of all works          |
-| PUT    | `/api/imports/{id}/works/{wid}/override`       | Set/update work override                  |
-| DELETE | `/api/imports/{id}/works/{wid}/override`       | Remove override                           |
-| PATCH  | `/api/imports/{id}/works/{wid}/exclude`        | Exclude or re-include a work              |
-| GET    | `/api/imports/{id}/export-tags`                | Export full import as Tagged Text         |
-| GET    | `/api/imports/{id}/export-json`                | Export full import as JSON                |
-| GET    | `/api/imports/{id}/sections/{sid}/export-tags` | Export single section as Tagged Text      |
-| GET    | `/api/config`                                  | Get global normalisation config           |
-| PUT    | `/api/config`                                  | Save global normalisation config          |
-| GET    | `/api/templates`                               | List non-archived export templates        |
-| GET    | `/api/templates/{id}`                          | Get full config of a template             |
-| POST   | `/api/templates`                               | Create a new export template              |
-| PUT    | `/api/templates/{id}`                          | Update a template (non-builtin only)      |
-| DELETE | `/api/templates/{id}`                          | Soft-delete a template (non-builtin only) |
-| POST   | `/api/templates/{id}/duplicate`                | Clone a template                          |
+All routes under `/`. Protected by API key if `API_KEY` env var is set.
+CORS middleware is enabled when `CORS_ORIGINS` env var is set.
+
+| Method | Path                                       | Description                               |
+| ------ | ------------------------------------------ | ----------------------------------------- |
+| POST   | `/import`                                  | Upload Excel file                         |
+| GET    | `/imports`                                 | List all imports                          |
+| DELETE | `/imports/{id}`                            | Delete import and all data                |
+| GET    | `/imports/{id}/sections`                   | List sections with works                  |
+| GET    | `/imports/{id}/warnings`                   | Validation warnings for the import        |
+| GET    | `/imports/{id}/preview`                    | Lightweight preview of all works          |
+| PUT    | `/imports/{id}/works/{wid}/override`       | Set/update work override                  |
+| GET    | `/imports/{id}/works/{wid}/override`       | Get current override                      |
+| DELETE | `/imports/{id}/works/{wid}/override`       | Remove override                           |
+| PATCH  | `/imports/{id}/works/{wid}/exclude`        | Exclude or re-include a work              |
+| GET    | `/imports/{id}/export-tags`                | Export full import as Tagged Text         |
+| GET    | `/imports/{id}/export-json`                | Export full import as JSON                |
+| GET    | `/imports/{id}/export-xml`                 | Export full import as XML                 |
+| GET    | `/imports/{id}/export-csv`                 | Export full import as CSV                 |
+| GET    | `/imports/{id}/sections/{sid}/export-tags` | Export single section as Tagged Text      |
+| GET    | `/imports/{id}/sections/{sid}/export-json` | Export single section as JSON             |
+| GET    | `/imports/{id}/sections/{sid}/export-xml`  | Export single section as XML              |
+| GET    | `/imports/{id}/sections/{sid}/export-csv`  | Export single section as CSV              |
+| GET    | `/config`                                  | Get global normalisation config           |
+| PUT    | `/config`                                  | Save global normalisation config          |
+| GET    | `/templates`                               | List non-archived export templates        |
+| GET    | `/templates/{id}`                          | Get full config of a template             |
+| POST   | `/templates`                               | Create a new export template              |
+| PUT    | `/templates/{id}`                          | Update a template (non-builtin only)      |
+| DELETE | `/templates/{id}`                          | Soft-delete a template (non-builtin only) |
+| POST   | `/templates/{id}/duplicate`                | Clone a template                          |
 
 ---
 
@@ -205,14 +237,27 @@ All routes under `/api/`. Protected by API key if `API_KEY` env var is set.
 - Section browser with collapsible sections
 - Works table (work number, artist, title, price, edition, artwork, medium, include flag)
 - Inline override editor per work
-- Validation warnings panel per import
+- Validation warnings panel per import (with filterable badge summary)
 - Export buttons (full import and per-section) with template selector
 - Templates page: list, create, edit, duplicate, delete (built-in templates are read-only)
-- Config page: manage normalisation honorific tokens
+- Config page: manage normalisation honorific tokens and display preferences
+- Toast notifications for all async operations (replaces browser alerts)
+- Button loading states with spinners during API calls
 
 ---
 
-## 9. Design Principles
+## 9. Database Migrations
+
+`backend/alembic/` — Alembic migration framework.
+
+- On startup, `alembic upgrade head` runs automatically.
+- Existing databases without an `alembic_version` table are auto-stamped at the
+  baseline revision before upgrading.
+- Schema changes should be added as new Alembic revisions.
+
+---
+
+## 10. Design Principles
 
 - Raw data is sacred and never mutated
 - Normalisation is deterministic and idempotent

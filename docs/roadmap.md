@@ -81,7 +81,43 @@
 - Global normalisation config endpoint (`GET/PUT /api/config`)
 - Configurable honorific token list persisted to the database
 - Config UI page
-- Route integration tests using SQLite in-memory + StaticPool (114 tests total)
+- Route integration tests using SQLite in-memory + StaticPool
+
+---
+
+## Phase 9 – Production Hardening & Code Quality ✅
+
+- Split monolithic `import_routes.py` (1015 lines) into 7 focused modules
+- Fixed N+1 override queries in export renderer with batch loading
+- Secured upload path (filename sanitisation + UUID prefix)
+- Pinned all dependency versions in `requirements.txt`
+- Consolidated Pydantic schemas into `schemas.py`
+- Removed unused `Export` model and database table
+- Added CORS middleware (configurable via `CORS_ORIGINS`)
+- Centralised upload path via `UPLOAD_DIR` config
+- Alembic database migrations (auto-upgrade on startup, auto-stamp for existing DBs)
+- 39 new route-level integration tests (172 tests total)
+
+---
+
+## Phase 10 – Frontend Polish ✅
+
+- Toast notification system (slide-in/out, auto-dismiss, error/success/info)
+- Replaced all `alert()` calls with non-blocking toast notifications
+- Button loading states with spinners during async operations
+- Prevent double-clicks with disabled state during API calls
+- Success feedback toasts for delete and export operations
+
+---
+
+## Phase 11 – Spreadsheet Validation ✅
+
+- Validate required columns on upload (`Cat No`, `Title`, `Artist`)
+- Clear 400 error with "did you mean?" fuzzy-match suggestions for misspelled columns
+- Reject non-Excel, corrupt, and empty files with clear error messages
+- Validation warnings for missing optional columns
+- Warning for header-only spreadsheets (no data rows)
+- 19 new tests for validation logic (172 tests total)
 
 ---
 
@@ -90,6 +126,4 @@
 - Role-based access (read-only vs editorial vs admin)
 - Cloud storage for uploaded Excel files
 - Structured audit log viewer in UI
-- Duplicate import detection
-- CSV export format
 - Print-preview rendering

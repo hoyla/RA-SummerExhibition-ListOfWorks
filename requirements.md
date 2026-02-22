@@ -26,6 +26,12 @@ The system must:
 4. The upload timestamp must be recorded.
 5. All raw column values must be preserved exactly as received.
 6. Imports can be deleted, cascading to all sections, works, overrides, and warnings.
+7. Uploaded files must be validated before import:
+   - Required columns (`Cat No`, `Title`, `Artist`) must be present.
+   - Missing required columns must produce a clear error with "did you mean?" suggestions.
+   - Non-Excel, corrupt, or empty files must be rejected with a clear error.
+   - Missing optional columns must produce validation warnings (not errors).
+   - Header-only spreadsheets (no data rows) must produce a warning.
 
 ---
 
@@ -104,21 +110,36 @@ The system must normalise the following fields deterministically:
 
 ### 2.6 API Endpoints
 
-The system must provide (all under `/api/`):
+The system must provide:
 
-| Method | Path                            | Description                          |
-| ------ | ------------------------------- | ------------------------------------ |
-| POST   | `/api/imports`                  | Upload Excel file                    |
-| GET    | `/api/imports`                  | List all imports                     |
-| DELETE | `/api/imports/{id}`             | Delete import and all data           |
-| GET    | `/api/imports/{id}/sections`    | List sections with works             |
-| PUT    | `/api/works/{id}/override`      | Set/update work override             |
-| DELETE | `/api/works/{id}/override`      | Remove override                      |
-| GET    | `/api/imports/{id}/export`      | Export full import as Tagged Text    |
-| GET    | `/api/imports/{id}/export-json` | Export full import as JSON           |
-| GET    | `/api/sections/{id}/export`     | Export single section as Tagged Text |
-| GET    | `/api/config`                   | Get current export config            |
-| POST   | `/api/config`                   | Save export config                   |
+| Method | Path                                       | Description                               |
+| ------ | ------------------------------------------ | ----------------------------------------- |
+| POST   | `/import`                                  | Upload Excel file                         |
+| GET    | `/imports`                                 | List all imports                          |
+| DELETE | `/imports/{id}`                            | Delete import and all data                |
+| GET    | `/imports/{id}/sections`                   | List sections with works                  |
+| GET    | `/imports/{id}/warnings`                   | Validation warnings for the import        |
+| GET    | `/imports/{id}/preview`                    | Lightweight preview of all works          |
+| PUT    | `/imports/{id}/works/{wid}/override`       | Set/update work override                  |
+| GET    | `/imports/{id}/works/{wid}/override`       | Get current override                      |
+| DELETE | `/imports/{id}/works/{wid}/override`       | Remove override                           |
+| PATCH  | `/imports/{id}/works/{wid}/exclude`        | Exclude or re-include a work              |
+| GET    | `/imports/{id}/export-tags`                | Export full import as Tagged Text         |
+| GET    | `/imports/{id}/export-json`                | Export full import as JSON                |
+| GET    | `/imports/{id}/export-xml`                 | Export full import as XML                 |
+| GET    | `/imports/{id}/export-csv`                 | Export full import as CSV                 |
+| GET    | `/imports/{id}/sections/{sid}/export-tags` | Export single section as Tagged Text      |
+| GET    | `/imports/{id}/sections/{sid}/export-json` | Export single section as JSON             |
+| GET    | `/imports/{id}/sections/{sid}/export-xml`  | Export single section as XML              |
+| GET    | `/imports/{id}/sections/{sid}/export-csv`  | Export single section as CSV              |
+| GET    | `/config`                                  | Get global normalisation config           |
+| PUT    | `/config`                                  | Save global normalisation config          |
+| GET    | `/templates`                               | List non-archived export templates        |
+| GET    | `/templates/{id}`                          | Get full config of a template             |
+| POST   | `/templates`                               | Create a new export template              |
+| PUT    | `/templates/{id}`                          | Update a template (non-builtin only)      |
+| DELETE | `/templates/{id}`                          | Soft-delete a template (non-builtin only) |
+| POST   | `/templates/{id}/duplicate`                | Clone a template                          |
 
 ---
 
@@ -176,7 +197,9 @@ The system must provide a browser-based single-page application that allows:
 
 ## 5. Constraints
 
-- Excel structure must match the expected column schema.
+- Excel structure must match the expected column schema
+  (required: `Cat No`, `Title`, `Artist`; optional: `Gallery`, `Price`, `Edition`, `Artwork`, `Medium`).
+- Uploads with missing required columns are rejected with a clear error message.
 - No inline formatting logic inside the export layer.
 - Override values must be explicit nulls, not inferred from empty strings.
 
@@ -196,6 +219,4 @@ The system must provide a browser-based single-page application that allows:
 - Role-based access (read-only vs editorial vs admin).
 - Cloud storage for uploaded Excel files.
 - Structured audit log viewer in UI.
-- Duplicate import detection.
-- CSV export format.
 - Print-preview rendering.
