@@ -258,29 +258,29 @@ def test_section_separator_paragraph():
     assert "Gallery I" in output
     assert "Gallery II" in output
     # No column/frame/page break markers
-    assert "<cNextXFrame:" not in output
+    assert "<cnxc:" not in output
 
 
 def test_section_separator_column_break():
     db = _two_section_db()
     cfg = ExportConfig(section_separator="column_break")
     output = render_import_as_tagged_text("imp1", db, config=cfg)
-    assert "<cNextXFrame:Column>" in output
-    assert "<cNextXFrame:TextFrame>" not in output
+    assert "<cnxc:Column>" in output
+    assert "<cnxc:Frame>" not in output
 
 
 def test_section_separator_frame_break():
     db = _two_section_db()
     cfg = ExportConfig(section_separator="frame_break")
     output = render_import_as_tagged_text("imp1", db, config=cfg)
-    assert "<cNextXFrame:TextFrame>" in output
+    assert "<cnxc:Frame>" in output
 
 
 def test_section_separator_page_break():
     db = _two_section_db()
     cfg = ExportConfig(section_separator="page_break")
     output = render_import_as_tagged_text("imp1", db, config=cfg)
-    assert "<cNextXFrame:Page>" in output
+    assert "<cnxc:Page>" in output
 
 
 def test_section_separator_none():
@@ -288,7 +288,7 @@ def test_section_separator_none():
     db = _two_section_db()
     cfg = ExportConfig(section_separator="none")
     output = render_import_as_tagged_text("imp1", db, config=cfg)
-    assert "<cNextXFrame:" not in output
+    assert "<cnxc:" not in output
 
 
 def test_section_separator_not_before_first():
@@ -297,4 +297,4 @@ def test_section_separator_not_before_first():
     cfg = ExportConfig(section_separator="column_break")
     output = render_import_as_tagged_text("imp1", db, config=cfg)
     # Column break should appear exactly once (before section 2 only)
-    assert output.count("<cNextXFrame:Column>") == 1
+    assert output.count("<cnxc:Column>") == 1

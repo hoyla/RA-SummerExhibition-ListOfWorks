@@ -374,11 +374,11 @@ def _section_sep(name: str) -> str:
     if name == "none":
         return ""
     if name == "column_break":
-        return "\r<cNextXFrame:Column>\r"
+        return "\r<cnxc:Column>\r"
     if name == "frame_break":
-        return "\r<cNextXFrame:TextFrame>\r"
+        return "\r<cnxc:Frame>\r"
     if name == "page_break":
-        return "\r<cNextXFrame:Page>\r"
+        return "\r<cnxc:Page>\r"
     # Default: paragraph (blank line)
     return "\r"
 
