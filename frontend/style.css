@@ -515,6 +515,25 @@ details.section-block[open] > .section-summary::before {
 .audit-old { text-decoration: line-through; color: #c0392b; }
 .audit-new { color: #27ae60; font-weight: 600; }
 
+/* Export diff viewer */
+.diff-result { margin-top: 12px; padding: 12px 14px; border-radius: 6px; border: 1px solid #ddd; background: #fafafa; }
+.diff-ok { background: #f0faf0; border-color: #b5e8b5; }
+.diff-info { background: #eef5ff; border-color: #a4c3f5; }
+.diff-summary { font-weight: 600; margin: 0 0 6px; }
+.diff-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.badge-added   { background: #e6f7e6; color: #1a7a1a; border: 1px solid #8fd68f; }
+.badge-removed { background: #fde8e8; color: #a31515; border: 1px solid #f5a4a4; }
+.badge-changed { background: #fff6e0; color: #7a5300; border: 1px solid #f0c040; }
+.badge-unchanged { background: #f0f0f0; color: #666; border: 1px solid #ccc; }
+.diff-heading { font-size: 14px; margin: 14px 0 4px; }
+.diff-table { font-size: 13px; }
+.diff-table td, .diff-table th { padding: 4px 8px; }
+.diff-catno { font-weight: 600; }
+.diff-old { text-decoration: line-through; color: #c0392b; }
+.diff-new { color: #27ae60; font-weight: 600; }
+.diff-row-added td { background: #f0faf0; }
+.diff-row-removed td { background: #fde8e8; text-decoration: line-through; color: #999; }
+
 /* Honorifics shown inline in the works table — signals a separate character style */
 .honorifics-pill {
   display: inline-block;

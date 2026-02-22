@@ -23,6 +23,10 @@ from backend.app.services.export_renderer import (
     resolve_export_config,
     escape_for_mac_roman,
 )
+from backend.app.services.export_diff_service import (
+    save_export_snapshot,
+    compute_diff,
+)
 
 router = APIRouter()
 
@@ -129,6 +133,7 @@ def export_indesign_tags(
 ):
     config = _ruleset_to_export_config(resolve_export_config(db, template_id))
     output = render_import_as_tagged_text(import_id, db, config)
+    save_export_snapshot(import_id, template_id, db)
     return Response(
         content=escape_for_mac_roman(output).encode("mac_roman"),
         media_type="text/plain",
@@ -145,6 +150,7 @@ def export_section_indesign_tags(
     """Export InDesign Tagged Text for a single section only."""
     config = _ruleset_to_export_config(resolve_export_config(db, template_id))
     output = render_import_as_tagged_text(import_id, db, config, section_id=section_id)
+    # Section-level exports don't snapshot (full-import only)
     return Response(
         content=escape_for_mac_roman(output).encode("mac_roman"),
         media_type="text/plain",
@@ -154,16 +160,34 @@ def export_section_indesign_tags(
 @router.get("/imports/{import_id}/export-json")
 def export_json(import_id: UUID, db: Session = Depends(get_db)):
     output = render_import_as_json(import_id, db)
+    save_export_snapshot(import_id, None, db)
     return Response(content=output, media_type="application/json")
 
 
 @router.get("/imports/{import_id}/export-xml")
 def export_xml(import_id: UUID, db: Session = Depends(get_db)):
     output = render_import_as_xml(import_id, db)
+    save_export_snapshot(import_id, None, db)
     return Response(content=output, media_type="application/xml")
 
 
 @router.get("/imports/{import_id}/export-csv")
 def export_csv(import_id: UUID, db: Session = Depends(get_db)):
     output = render_import_as_csv(import_id, db)
+    save_export_snapshot(import_id, None, db)
     return Response(content=output, media_type="text/csv")
+
+
+# ---------------------------------------------------------------------------
+# Export diff
+# ---------------------------------------------------------------------------
+
+
+@router.get("/imports/{import_id}/export-diff")
+def get_export_diff(
+    import_id: UUID,
+    template_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Compare current export data against the last exported snapshot."""
+    return compute_diff(import_id, template_id, db)

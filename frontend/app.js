@@ -1010,7 +1010,9 @@ async function renderDetail(importId) {
       <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','json','json',null,null,this)">JSON</button>
       <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','xml','xml',null,null,this)">XML</button>
       <button class="btn btn-secondary" onclick="downloadExport('${esc(importId)}','csv','csv',null,null,this)">CSV</button>
-    </div>`;
+      <button class="btn btn-secondary btn-diff" onclick="showExportDiff('${esc(importId)}',this)">Show changes since last export</button>
+    </div>
+    <div id="diff-panel-${esc(importId)}"></div>`;
 
   const heading = sections._error
     ? importId
@@ -1406,6 +1408,104 @@ async function deleteOverride(importId, workId) {
   } catch (err) {
     if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.className = 'status-msg error'; }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Export diff viewer
+// ---------------------------------------------------------------------------
+
+async function showExportDiff(importId, btnEl) {
+  const sel = document.getElementById(`tmpl-select-${importId}`);
+  const tid = sel?.value || null;
+  const panel = document.getElementById(`diff-panel-${importId}`);
+  if (!panel) return;
+
+  // Toggle off if already showing
+  if (panel.dataset.visible === '1') {
+    panel.innerHTML = '';
+    panel.dataset.visible = '';
+    return;
+  }
+
+  const restore = btnLoading(btnEl, 'Loading');
+  try {
+    let path = `/imports/${importId}/export-diff`;
+    if (tid) path += `?template_id=${encodeURIComponent(tid)}`;
+    const diff = await api('GET', path);
+    panel.dataset.visible = '1';
+    panel.innerHTML = _renderDiffPanel(diff);
+  } catch (err) {
+    panel.innerHTML = `<p class="error" style="margin-top:8px">${esc(err.message)}</p>`;
+  } finally {
+    restore();
+  }
+}
+
+function _renderDiffPanel(diff) {
+  if (!diff.previous_exported_at) {
+    return `<div class="diff-result diff-info">
+      <p><strong>No previous export found.</strong> All ${diff.added.length} work${diff.added.length !== 1 ? 's' : ''} will be new.</p>
+    </div>`;
+  }
+
+  if (!diff.has_changes) {
+    return `<div class="diff-result diff-ok">
+      <p>\u2713 No changes since last export <span class="muted">(${esc(formatDate(diff.previous_exported_at))})</span></p>
+    </div>`;
+  }
+
+  const parts = [];
+  parts.push(`<div class="diff-result">`);
+  parts.push(`<p class="diff-summary">Changes since last export <span class="muted">(${esc(formatDate(diff.previous_exported_at))})</span>:</p>`);
+
+  // Summary badges
+  const badges = [];
+  if (diff.added.length)   badges.push(`<span class="badge badge-added">${diff.added.length} added</span>`);
+  if (diff.removed.length) badges.push(`<span class="badge badge-removed">${diff.removed.length} removed</span>`);
+  if (diff.changed.length) badges.push(`<span class="badge badge-changed">${diff.changed.length} changed</span>`);
+  if (diff.unchanged_count) badges.push(`<span class="badge badge-unchanged">${diff.unchanged_count} unchanged</span>`);
+  parts.push(`<div class="diff-badges">${badges.join(' ')}</div>`);
+
+  // Changed works — field-level detail
+  if (diff.changed.length) {
+    parts.push('<h4 class="diff-heading">Changed works</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Section</th><th>Field</th><th>Previous</th><th>Current</th></tr></thead><tbody>');
+    for (const w of diff.changed) {
+      const rowspan = w.fields.length;
+      w.fields.forEach((f, i) => {
+        parts.push('<tr>');
+        if (i === 0) parts.push(`<td rowspan="${rowspan}" class="diff-catno">${esc(w.cat_no)}</td><td rowspan="${rowspan}">${esc(w.section)}</td>`);
+        parts.push(`<td><code>${esc(f.field)}</code></td>`);
+        parts.push(`<td class="diff-old">${f.old != null ? esc(String(f.old)) : '<span class="muted">\u2014</span>'}</td>`);
+        parts.push(`<td class="diff-new">${f.new != null ? esc(String(f.new)) : '<span class="muted">\u2014</span>'}</td>`);
+        parts.push('</tr>');
+      });
+    }
+    parts.push('</tbody></table>');
+  }
+
+  // Added works
+  if (diff.added.length) {
+    parts.push('<h4 class="diff-heading">Added works</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Section</th><th>Artist</th><th>Title</th><th>Price</th></tr></thead><tbody>');
+    for (const w of diff.added) {
+      parts.push(`<tr class="diff-row-added"><td>${esc(w.cat_no ?? '\u2014')}</td><td>${esc(w.section)}</td><td>${esc(w.artist ?? '')}</td><td>${esc(w.title ?? '')}</td><td>${esc(w.price_text ?? '')}</td></tr>`);
+    }
+    parts.push('</tbody></table>');
+  }
+
+  // Removed works
+  if (diff.removed.length) {
+    parts.push('<h4 class="diff-heading">Removed works</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Section</th><th>Artist</th><th>Title</th><th>Price</th></tr></thead><tbody>');
+    for (const w of diff.removed) {
+      parts.push(`<tr class="diff-row-removed"><td>${esc(w.cat_no ?? '\u2014')}</td><td>${esc(w.section)}</td><td>${esc(w.artist ?? '')}</td><td>${esc(w.title ?? '')}</td><td>${esc(w.price_text ?? '')}</td></tr>`);
+    }
+    parts.push('</tbody></table>');
+  }
+
+  parts.push('</div>');
+  return parts.join('');
 }
 
 // ---------------------------------------------------------------------------
