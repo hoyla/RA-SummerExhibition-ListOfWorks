@@ -8,6 +8,13 @@
 - Line endings: CR (`\r`) — one per paragraph
 - MIME type: `text/plain`
 
+**Why ASCII-MAC?** InDesign's Tagged Text importer on macOS requires the file to
+declare its encoding via the header token. `<ASCII-MAC>` with Mac Roman bytes is
+the only combination reliably recognised. UTF-8 (`<UNICODE-UTF8>`) and Windows
+codepage 1252 (`<ASCII-WIN>`) were both tested and rejected by InDesign without
+error. Characters that don't exist in Mac Roman are passed through as InDesign's
+`<0x####>` numeric escape, which InDesign resolves correctly on import.
+
 ---
 
 ## File Structure

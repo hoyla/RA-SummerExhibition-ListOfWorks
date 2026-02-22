@@ -98,6 +98,36 @@ venv/bin/python -m pytest tests/ -q
 
 ---
 
+## Database Migrations
+
+This project uses SQLAlchemy's `create_all` rather than Alembic. New tables are
+created automatically on startup, but **new columns added to existing tables
+require a manual `ALTER TABLE`**.
+
+If you pull an update that adds a column, run the corresponding command against
+your running database before or after restarting the app. Example:
+
+```bash
+docker compose exec db psql -U catalogue -d catalogue -c \
+  "ALTER TABLE works ADD COLUMN IF NOT EXISTS my_column TEXT;"
+```
+
+### Backfilling computed columns
+
+When a new normalised column is added, existing rows won't have it populated
+until re-imported. You can backfill directly from the raw column instead:
+
+```bash
+# Example: backfill artwork from raw_artwork
+docker compose exec db psql -U catalogue -d catalogue -c \
+  "UPDATE works SET artwork = raw_artwork::integer WHERE raw_artwork ~ '^\d+$';"
+```
+
+The general pattern is: cast the raw value to the target type where it parses
+cleanly; rows with unparseable values stay `NULL`, which is correct.
+
+---
+
 ## Environment Variables
 
 | Variable            | Default                   | Description                               |
