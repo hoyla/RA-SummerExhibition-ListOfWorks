@@ -44,7 +44,9 @@ async function api(method, path, body) {
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try { const j = await res.json(); msg = j.detail || JSON.stringify(j); } catch {}
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.httpStatus = res.status;
+    throw err;
   }
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('application/json')) return res.json();
@@ -611,6 +613,7 @@ function _saveDisplayCfg(mirror, currency_symbol, thousands_separator, decimal_p
 // ---------------------------------------------------------------------------
 
 let _expandedWorkId = null;
+let _workCache = {}; // workId -> work object, populated when sections render
 
 async function renderDetail(importId) {
   _expandedWorkId = null;
@@ -751,6 +754,11 @@ function renderSections(importId, sections, cfg) {
     container.innerHTML = '<p class="muted">No sections found.</p>';
     return;
   }
+  // Populate work cache so the override form can show normalised values
+  _workCache = {};
+  for (const section of sections) {
+    for (const w of section.works) { _workCache[w.id] = w; }
+  }
   container.innerHTML = sections.map(section => `
     <details class="section-block" open>
       <summary class="section-summary">
@@ -782,32 +790,50 @@ function renderSections(importId, sections, cfg) {
 
 function workRowHTML(importId, w, cfg) {
   const included = w.include_in_export !== false;
-  const honorifics = w.artist_honorifics
-    ? ` <span class="honorifics-pill">${esc(w.artist_honorifics)}</span>`
+  const hasOverride = !!w.override;
+
+  // Resolve effective values (override takes precedence)
+  const o = w.override;
+  const eff = {
+    title:                o?.title_override           ?? w.title,
+    artist_name:          o?.artist_name_override     ?? w.artist_name,
+    artist_honorifics:    o?.artist_honorifics_override ?? w.artist_honorifics,
+    price_numeric:        o?.price_numeric_override   ?? w.price_numeric,
+    price_text:           o?.price_text_override      ?? w.price_text,
+    edition_total:        o?.edition_total_override   ?? w.edition_total,
+    edition_price_numeric: o?.edition_price_numeric_override ?? w.edition_price_numeric,
+    medium:               o?.medium_override          ?? w.medium,
+  };
+
+  const honorifics = eff.artist_honorifics
+    ? ` <span class="honorifics-pill">${esc(eff.artist_honorifics)}</span>`
     : '';
-  const priceDisplay = formatPrice(w.price_numeric, w.price_text, cfg);
+  const priceDisplay = formatPrice(eff.price_numeric, eff.price_text, cfg);
 
   // Edition: mimic the export renderer format
   const prefix = cfg?.edition_prefix ?? 'edition of';
   const brackets = cfg?.edition_brackets !== false;
   let editionDisplay = '';
-  if (w.edition_total && w.edition_price_numeric) {
-    const inner = `${prefix} ${w.edition_total} at ${formatPrice(w.edition_price_numeric, null, cfg)}`;
+  if (eff.edition_total && eff.edition_price_numeric) {
+    const inner = `${prefix} ${eff.edition_total} at ${formatPrice(eff.edition_price_numeric, null, cfg)}`;
     editionDisplay = brackets ? `(${inner})` : inner;
-  } else if (w.edition_total) {
-    const inner = `${prefix} ${w.edition_total}`;
+  } else if (eff.edition_total) {
+    const inner = `${prefix} ${eff.edition_total}`;
     editionDisplay = brackets ? `(${inner})` : inner;
   }
+
+  const ovBtnClass = hasOverride ? 'btn-warning' : 'btn-secondary';
+  const ovBtnLabel = hasOverride ? 'Edited' : 'Edit';
 
   return `
     <tr id="wr-${esc(w.id)}" class="work-row ${included ? '' : 'row-excluded'}">
       <td class="col-no">${esc(w.raw_cat_no ?? '')}</td>
-      <td>${esc(w.artist_name ?? '')}${honorifics}</td>
-      <td>${esc(w.title ?? '')}</td>
+      <td class="${hasOverride && o?.artist_name_override ? 'cell-overridden' : ''}">${esc(eff.artist_name ?? '')}${honorifics}</td>
+      <td class="${hasOverride && o?.title_override ? 'cell-overridden' : ''}">${esc(eff.title ?? '')}</td>
       <td>${esc(priceDisplay)}</td>
       <td>${esc(editionDisplay)}</td>
       <td>${w.artwork != null ? esc(String(w.artwork)) : ''}</td>
-      <td class="col-medium">${esc(w.medium ?? '')}</td>
+      <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
       <td class="col-status">
         <button id="excl-${esc(w.id)}" class="btn btn-xs ${included ? 'btn-warning' : 'btn-success'}"
           onclick="toggleExclude('${esc(importId)}','${esc(w.id)}',${included})">
@@ -815,8 +841,8 @@ function workRowHTML(importId, w, cfg) {
         </button>
       </td>
       <td class="col-actions">
-        <button id="ov-btn-${esc(w.id)}" class="btn btn-xs btn-secondary"
-          onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">Edit</button>
+        <button id="ov-btn-${esc(w.id)}" class="btn btn-xs ${ovBtnClass}"
+          onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">${ovBtnLabel}</button>
       </td>
     </tr>
     <tr id="ovr-${esc(w.id)}" class="override-form-row" style="display:none">
@@ -880,7 +906,7 @@ async function toggleOverrideForm(importId, workId) {
   try {
     existing = await api('GET', `/imports/${importId}/works/${workId}/override`);
   } catch (err) {
-    if (!err.message.startsWith('404') && !err.message.includes('404')) {
+    if (err.httpStatus !== 404) {
       document.getElementById(`ovc-${workId}`).innerHTML = `<p class="error" style="padding:12px">${esc(err.message)}</p>`;
       return;
     }
@@ -942,9 +968,14 @@ async function saveOverride(importId, workId) {
 
   try {
     const result = await api('PUT', `/imports/${importId}/works/${workId}/override`, body);
+    // Update cache so the form re-renders with normalised hints intact
+    if (_workCache[workId]) _workCache[workId].override = result;
     showOverrideForm(importId, workId, result);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Saved'; s.className = 'status-msg success'; }
+    // Mark the row button as edited
+    const btn = document.getElementById(`ov-btn-${workId}`);
+    if (btn) { btn.textContent = 'Edited'; btn.className = 'btn btn-xs btn-warning'; }
   } catch (err) {
     statusEl.textContent = `Error: ${err.message}`;
     statusEl.className = 'status-msg error';
@@ -956,9 +987,14 @@ async function deleteOverride(importId, workId) {
   const statusEl = document.getElementById(`ovs-${workId}`);
   try {
     await api('DELETE', `/imports/${importId}/works/${workId}/override`);
+    // Remove from cache
+    if (_workCache[workId]) _workCache[workId].override = null;
     showOverrideForm(importId, workId, null);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Override deleted'; s.className = 'status-msg success'; }
+    // Restore the row button to plain Edit
+    const btn = document.getElementById(`ov-btn-${workId}`);
+    if (btn) { btn.textContent = 'Edit'; btn.className = 'btn btn-xs btn-secondary'; }
   } catch (err) {
     if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.className = 'status-msg error'; }
   }

@@ -49,6 +49,20 @@ class ImportOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# Embedded override snapshot attached to each WorkOut
+class WorkOverrideOut(BaseModel):
+    title_override: str | None = None
+    artist_name_override: str | None = None
+    artist_honorifics_override: str | None = None
+    price_numeric_override: float | None = None
+    price_text_override: str | None = None
+    edition_total_override: int | None = None
+    edition_price_numeric_override: float | None = None
+    medium_override: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # New Pydantic model for work output
 class WorkOut(BaseModel):
     id: str
@@ -64,6 +78,7 @@ class WorkOut(BaseModel):
     artwork: int | None
     medium: str | None
     include_in_export: bool
+    override: WorkOverrideOut | None = None
 
     model_config = {"from_attributes": True}
 
@@ -198,15 +213,56 @@ def list_sections(import_id: UUID, db: Session = Depends(get_db)):
         .all()
     )
 
+    # Fetch all works for this import in one query
+    all_works = (
+        db.query(Work)
+        .filter(Work.import_id == import_id)
+        .order_by(Work.section_id, Work.position_in_section)
+        .all()
+    )
+
+    # Batch-fetch all overrides in one query and build a lookup map
+    work_ids = [w.id for w in all_works]
+    overrides_raw = (
+        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all()
+        if work_ids
+        else []
+    )
+    override_map = {str(o.work_id): o for o in overrides_raw}
+
+    # Group works by section_id
+    works_by_section: dict = {}
+    for w in all_works:
+        key = str(w.section_id)
+        works_by_section.setdefault(key, []).append(w)
+
     result: List[SectionOut] = []
 
     for section in sections:
-        works = (
-            db.query(Work)
-            .filter(Work.section_id == section.id)
-            .order_by(Work.position_in_section.asc())
-            .all()
-        )
+        works = works_by_section.get(str(section.id), [])
+        ovr = override_map.get
+
+        def _ovr_out(o) -> WorkOverrideOut | None:
+            if o is None:
+                return None
+            return WorkOverrideOut(
+                title_override=o.title_override,
+                artist_name_override=o.artist_name_override,
+                artist_honorifics_override=o.artist_honorifics_override,
+                price_numeric_override=(
+                    float(o.price_numeric_override)
+                    if o.price_numeric_override is not None
+                    else None
+                ),
+                price_text_override=o.price_text_override,
+                edition_total_override=o.edition_total_override,
+                edition_price_numeric_override=(
+                    float(o.edition_price_numeric_override)
+                    if o.edition_price_numeric_override is not None
+                    else None
+                ),
+                medium_override=o.medium_override,
+            )
 
         work_items = [
             WorkOut(
@@ -229,6 +285,7 @@ def list_sections(import_id: UUID, db: Session = Depends(get_db)):
                 artwork=w.artwork,
                 medium=w.medium,
                 include_in_export=bool(w.include_in_export),
+                override=_ovr_out(ovr(str(w.id))),
             )
             for w in works
         ]

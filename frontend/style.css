@@ -441,6 +441,9 @@ details.section-block[open] > .section-summary::before {
 }
 .link-btn:hover { color: var(--ra-red, #c8102e); }
 
+/* Cells showing an overridden value — italic + subtle tint */
+.cell-overridden { font-style: italic; color: #5c6a8a; }
+
 /* Highlight flash when scrolled to from warnings panel */
 @keyframes row-flash {
   0%   { background: #fff3cd; }
