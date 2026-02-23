@@ -99,6 +99,8 @@ def _seed_builtin_templates() -> None:
     db = _SessionLocal()
     try:
         for f in sorted(_seed_dir.glob("*.json")):
+            if f.name == "known-artists.json":
+                continue
             slug = f.stem
             with open(f, encoding="utf-8") as fp:
                 seed = json.load(fp)
