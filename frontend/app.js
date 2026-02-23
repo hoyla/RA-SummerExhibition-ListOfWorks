@@ -1496,6 +1496,18 @@ function showOverrideForm(importId, workId, existing) {
     </div>`;
 }
 
+/** Re-render the visible work row cells after an override save/delete. */
+function _refreshWorkRow(importId, workId) {
+  const w = _workCache[workId];
+  if (!w) return;
+  const cfg = _getDisplayCfg();
+  const tmp = document.createElement('tbody');
+  tmp.innerHTML = workRowHTML(importId, w, cfg);
+  const newRow = tmp.querySelector(`#wr-${CSS.escape(workId)}`);
+  const oldRow = document.getElementById(`wr-${workId}`);
+  if (oldRow && newRow) oldRow.replaceWith(newRow);
+}
+
 async function saveOverride(importId, workId) {
   const formEl = document.getElementById(`ovf-${workId}`);
   const statusEl = document.getElementById(`ovs-${workId}`);
@@ -1520,6 +1532,7 @@ async function saveOverride(importId, workId) {
     const result = await api('PUT', `/imports/${importId}/works/${workId}/override`, body);
     // Update cache so the form re-renders with normalised hints intact
     if (_workCache[workId]) _workCache[workId].override = result;
+    _refreshWorkRow(importId, workId);
     showOverrideForm(importId, workId, result);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Saved'; s.className = 'status-msg success'; }
@@ -1539,6 +1552,7 @@ async function deleteOverride(importId, workId) {
     await api('DELETE', `/imports/${importId}/works/${workId}/override`);
     // Remove from cache
     if (_workCache[workId]) _workCache[workId].override = null;
+    _refreshWorkRow(importId, workId);
     showOverrideForm(importId, workId, null);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Override deleted'; s.className = 'status-msg success'; }
