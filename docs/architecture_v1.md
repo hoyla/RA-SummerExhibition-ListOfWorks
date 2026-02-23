@@ -2,10 +2,14 @@
 
 ## 1. System Overview
 
-The Catalogue Tool ingests Royal Academy exhibition catalogue Excel files,
+The Catalogue Tool ingests Royal Academy exhibition catalogue data,
 applies editorial overrides, and generates InDesign-ready Tagged Text exports.
+It supports two products:
 
-Data flow:
+1. **List of Works (LoW)** — structured catalogue entries grouped by gallery section.
+2. **Artists' Index** — alphabetical artist listing with catalogue number references.
+
+### List of Works Data Flow
 
 ```
 Excel Upload
@@ -13,7 +17,18 @@ Excel Upload
   → Sections
   → Works (raw + normalised fields)
   → [Editorial Overrides]
-  → Export Layer  →  InDesign Tagged Text / JSON
+  → Export Layer  →  InDesign Tagged Text / JSON / XML / CSV
+```
+
+### Artists' Index Data Flow
+
+```
+Excel Upload
+  → Import Record (immutable)
+  → IndexArtists (parsed from multi-artist cells)
+  → IndexCatNumbers (per artist)
+  → [Editorial Overrides]
+  → Export Layer  →  InDesign Tagged Text (letter-grouped)
 ```
 
 ---
@@ -29,7 +44,7 @@ Excel Upload
 | Database   | PostgreSQL 16                     |
 | Frontend   | Vanilla JS SPA, served by FastAPI |
 | Deployment | Docker / docker-compose           |
-| Testing    | pytest (172 tests)                |
+| Testing    | pytest (448 tests)                |
 
 ---
 
@@ -85,8 +100,14 @@ Records all mutating API calls for traceability.
 
 ### Ruleset
 
-Stores both export templates and global normalisation config in a single table,
-distinguished by `config_type` (`'template'` | `'normalisation'`).
+Stores export templates and global normalisation config in a single table,
+distinguished by `config_type`:
+
+- `'template'` — List of Works export template
+- `'index_template'` — Artists' Index export template
+- `'normalisation'` — global normalisation configuration
+
+Columns:
 
 - `id` (UUID), `name`, `config` (JSONB), `config_hash`, `config_type`
 - `is_builtin` — `True` for seed templates shipped with the repository
@@ -96,6 +117,39 @@ distinguished by `config_type` (`'template'` | `'normalisation'`).
 
 Built-in templates are seeded from `backend/seed_templates/*.json` on startup
 and upserted (name + config updated) whenever the file's hash has changed.
+The JSON field `_config_type` in seed files determines the `config_type`.
+
+### IndexArtist
+
+One parsed artist entry within an Index import.
+
+- `id`, `import_id`, `sort_key`, `display_name`, `raw_name`
+- `qualifier` — RA/Hon RA/Hon RWS etc.
+- `is_ra_member`, `is_company`, `is_linked`, `is_multi_name`
+- `second_artist_name`, `second_artist_qualifier`, `second_artist_is_ra`
+- `exclude` — omit from export (default `False`)
+- `normalised_name`, `normalised_honorifics`
+
+### IndexCatNumber
+
+One catalogue number belonging to an `IndexArtist`.
+
+- `id`, `artist_id`, `cat_no`, `expert_no`
+
+### IndexArtistOverride
+
+Optional editorial corrections for a single artist entry.
+
+- `display_name_override`, `qualifier_override`, `is_ra_member_override`
+- `sort_key_override`, `second_artist_name_override`
+- `second_artist_qualifier_override`, `second_artist_is_ra_override`
+- `cat_numbers_override` (JSON list)
+
+### IndexArtistValidationWarning
+
+Validation warnings recorded during Index import.
+
+- `import_id`, `artist_id`, `warning_type`, `field`, `raw_value`, `message`
 
 ---
 
@@ -142,6 +196,8 @@ Returns an `EffectiveWork` dataclass used by the export renderer.
 
 ## 6. Export Layer
 
+### List of Works Export
+
 `backend/app/services/export_renderer.py`
 
 ### InDesign Tagged Text
@@ -180,6 +236,40 @@ Each component in the entry layout:
 
 Structured JSON output with sections → works hierarchy, also available.
 
+### Artists' Index Export
+
+`backend/app/services/index_renderer.py`
+
+Renders the Artists' Index as InDesign Tagged Text.
+
+#### IndexExportConfig
+
+Controls all index export behaviour:
+
+- `entry_style` — paragraph style for each artist entry
+- `ra_surname_style` — character style for RA member surnames
+- `ra_caps_style` — character style for RA qualifications
+- `cat_no_style` — character style for catalogue numbers
+- `honorifics_style` — character style for non-RA honorifics
+- `expert_numbers_style` — character style for expert numbers
+- `quals_lowercase` — render qualifications in lowercase
+- `expert_numbers_enabled` — include expert numbers in export
+- `cat_no_separator` — separator between catalogue numbers (default `,`)
+- `cat_no_separator_style` — character style for the separator
+- `section_separator` — separator between letter groups (`paragraph`, `column_break`, `frame_break`, `page_break`, `none`)
+- `section_separator_style` — paragraph style for the separator
+
+#### Letter Group Logic
+
+- `_letter_key(entry)` — returns uppercase first letter of `sort_key`, or `#` for digits
+- Entries are grouped by letter key and sorted within each group
+- `_section_sep()` inserts the configured separator between groups
+
+#### Second Artist Handling
+
+- Linked entries (`&`) and multi-name entries render `second_artist_name`
+  with independent RA styling when `second_artist_is_ra` is set
+
 ---
 
 ## 7. API
@@ -189,14 +279,19 @@ Routes are split across focused modules under `backend/app/api/`:
 - `imports.py` — upload, list, sections, preview, warnings, delete
 - `overrides.py` — per-work override CRUD and exclude toggle
 - `exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
-- `templates.py` — export template CRUD and duplication
+- `templates.py` — LoW export template CRUD and duplication
 - `normalisation_config.py` — global normalisation config
+- `index.py` — Index import, artists, overrides, warnings, export
+- `index_templates.py` — Index export template CRUD and duplication
 - `schemas.py` — centralised Pydantic request/response models
 - `deps.py` — shared dependencies (DB session)
 - `import_routes.py` — thin aggregation hub that includes all sub-routers
+- `auth.py` — API key middleware
 
 All routes under `/`. Protected by API key if `API_KEY` env var is set.
 CORS middleware is enabled when `CORS_ORIGINS` env var is set.
+
+### List of Works Routes
 
 | Method | Path                                       | Description                               |
 | ------ | ------------------------------------------ | ----------------------------------------- |
@@ -220,12 +315,35 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | GET    | `/imports/{id}/sections/{sid}/export-csv`  | Export single section as CSV              |
 | GET    | `/config`                                  | Get global normalisation config           |
 | PUT    | `/config`                                  | Save global normalisation config          |
-| GET    | `/templates`                               | List non-archived export templates        |
+| GET    | `/templates`                               | List non-archived LoW export templates    |
 | GET    | `/templates/{id}`                          | Get full config of a template             |
 | POST   | `/templates`                               | Create a new export template              |
 | PUT    | `/templates/{id}`                          | Update a template (non-builtin only)      |
 | DELETE | `/templates/{id}`                          | Soft-delete a template (non-builtin only) |
 | POST   | `/templates/{id}/duplicate`                | Clone a template                          |
+
+### Artists' Index Routes
+
+| Method | Path                                         | Description                          |
+| ------ | -------------------------------------------- | ------------------------------------ |
+| POST   | `/index/import`                              | Upload Index Excel file              |
+| GET    | `/index/imports`                             | List all Index imports               |
+| DELETE | `/index/imports/{id}`                        | Delete Index import and all data     |
+| GET    | `/index/imports/{id}/artists`                | List artists for an Index import     |
+| GET    | `/index/imports/{id}/artists/{aid}/warnings` | Warnings for a specific artist       |
+| GET    | `/index/imports/{id}/export-tags`            | Export full Index as Tagged Text     |
+| GET    | `/index/imports/{id}/export-tags?letter=A`   | Export single letter group           |
+| PUT    | `/index/imports/{id}/artists/{aid}/override` | Set/update artist override           |
+| GET    | `/index/imports/{id}/artists/{aid}/override` | Get current artist override          |
+| DELETE | `/index/imports/{id}/artists/{aid}/override` | Remove artist override               |
+| PATCH  | `/index/imports/{id}/artists/{aid}/exclude`  | Exclude or re-include an artist      |
+| PATCH  | `/index/imports/{id}/artists/{aid}/company`  | Toggle company flag                  |
+| GET    | `/index/templates`                           | List non-archived Index templates    |
+| GET    | `/index/templates/{id}`                      | Get full config of an Index template |
+| POST   | `/index/templates`                           | Create a new Index template          |
+| PUT    | `/index/templates/{id}`                      | Update an Index template             |
+| DELETE | `/index/templates/{id}`                      | Soft-delete an Index template        |
+| POST   | `/index/templates/{id}/duplicate`            | Clone an Index template              |
 
 ---
 
@@ -233,15 +351,31 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 
 `frontend/` — vanilla JS SPA served at `/ui`.
 
+### List of Works
+
 - Import list with upload and delete
-- Section browser with collapsible sections
+- Section browser with collapsible sections and per-section export
 - Works table (work number, artist, title, price, edition, artwork, medium, include flag)
-- Inline override editor per work
-- Validation warnings panel per import (with filterable badge summary)
+- Inline override editor per work with three-state resolved fields
+- Validation warnings panel per import (filterable badge summary by warning type)
 - Export buttons (full import and per-section) with template selector
-- Templates page: list, create, edit, duplicate, delete (built-in templates are read-only)
+
+### Artists' Index
+
+- Index import list with upload and delete
+- Artist entries grouped by letter in collapsible `<details>` blocks
+- Artist detail expansion with override editing and warning display
+- RA member and company indicators (styled badges)
+- Linked / multi-name entry indicators with enriched flag styling
+- Per-letter export buttons on each letter group heading
+- Warning type filter for targeted review
+
+### Shared
+
+- Combined Templates page for both LoW and Index templates (separate tabs)
+- Full template CRUD: list, create, edit, duplicate, delete (built-in templates read-only)
 - Config page: manage normalisation honorific tokens and display preferences
-- Toast notifications for all async operations (replaces browser alerts)
+- Toast notifications for all async operations
 - Button loading states with spinners during API calls
 
 ---

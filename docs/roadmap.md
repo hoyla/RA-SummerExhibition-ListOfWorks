@@ -121,6 +121,60 @@
 
 ---
 
+## Phase 12 – Artists' Index: Core Pipeline ✅
+
+- Index data model: `IndexArtist`, `IndexCatNumber`, `IndexArtistOverride`, `IndexArtistValidationWarning`
+- Excel import with multi-artist cell parsing (semicolons, commas, "and"/"&" separators)
+- Linked entry detection (e.g. "Boyd & Evans")
+- Multi-name detection (e.g. "Gilbert and George")
+- Company / collective detection (e.g. "Assemble")
+- RA member identification via known-artists lookup
+- Sort key generation (surname-first normalisation)
+- Normalisation warnings per artist entry
+- Index import API: upload, list, delete, artists listing
+- InDesign Tagged Text export with RA member styling
+  (surname style, qualifications style, dual character styles)
+- 100+ new tests
+
+---
+
+## Phase 13 – Artists' Index: Overrides & Warnings ✅
+
+- Per-artist override CRUD (display name, qualifier, RA status, sort key,
+  second artist fields, catalogue number list)
+- Exclude / re-include individual artists from export
+- Company flag toggle
+- Three-state resolved fields in the frontend (original → override → resolved)
+- Warning type filter for targeted review
+- Enriched flag styling (RA badge, company badge, linked/multi-name indicators)
+
+---
+
+## Phase 14 – Artists' Index: Export Templates ✅
+
+- `IndexExportConfig` with 12 configurable fields
+- Separate `index_template` config_type in the Ruleset model
+- Index template CRUD API (`/index/templates`)
+- Seed template: `index-default.json`
+- Combined Templates page in UI (LoW + Index tabs)
+- Template editor: paragraph/character styles, toggles, separators
+
+---
+
+## Phase 15 – Artists' Index: Letter Groups & Export ✅
+
+- Letter-group rendering: entries grouped by first letter of sort key
+- Configurable section separator between letter groups
+  (paragraph, column_break, frame_break, page_break, none)
+- Section separator paragraph style
+- Cat number separator and separator style
+- Collapsible letter sections in frontend (`<details>` blocks)
+- Per-letter export via `?letter=` query parameter
+- Filter hides empty letter groups
+- 448 tests total
+
+---
+
 ## Future Considerations
 
 - Role-based access (read-only vs editorial vs admin)

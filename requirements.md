@@ -5,6 +5,11 @@
 The Catalogue Tool ingests Royal Academy exhibition catalogue Excel files,
 applies editorial overrides, and generates InDesign-ready Tagged Text exports.
 
+The system supports two data products:
+
+- **List of Works** — the main exhibition catalogue (Import → Section → Work)
+- **Artists' Index** — alphabetical index of exhibiting artists with catalogue numbers
+
 The system must:
 
 - Preserve raw source data exactly as received.
@@ -37,13 +42,23 @@ The system must:
 
 ### 2.2 Data Structure
 
-The system must model:
+The system must model two product types:
+
+#### List of Works
 
 Import → Section → Work
 
 Each Import has many Sections; each Section has many Works.  
 Sections are ordered by `(import_id, position)`.  
 Works are ordered by `(section_id, position_in_section)`.
+
+#### Artists' Index
+
+Import → IndexArtist → IndexCatNumber
+
+Each Index Import has many IndexArtists; each artist has many IndexCatNumbers.  
+Artists are ordered by `sort_key`.  
+Each artist may have an optional IndexArtistOverride.
 
 ---
 
@@ -112,9 +127,12 @@ The system must normalise the following fields deterministically:
 
 The system must provide:
 
+#### List of Works
+
 | Method | Path                                       | Description                               |
 | ------ | ------------------------------------------ | ----------------------------------------- |
 | POST   | `/import`                                  | Upload Excel file                         |
+| PUT    | `/imports/{id}/reimport`                   | Re-import with override preservation      |
 | GET    | `/imports`                                 | List all imports                          |
 | DELETE | `/imports/{id}`                            | Delete import and all data                |
 | GET    | `/imports/{id}/sections`                   | List sections with works                  |
@@ -128,18 +146,44 @@ The system must provide:
 | GET    | `/imports/{id}/export-json`                | Export full import as JSON                |
 | GET    | `/imports/{id}/export-xml`                 | Export full import as XML                 |
 | GET    | `/imports/{id}/export-csv`                 | Export full import as CSV                 |
+| GET    | `/imports/{id}/export-diff`                | Diff against last export snapshot         |
 | GET    | `/imports/{id}/sections/{sid}/export-tags` | Export single section as Tagged Text      |
-| GET    | `/imports/{id}/sections/{sid}/export-json` | Export single section as JSON             |
-| GET    | `/imports/{id}/sections/{sid}/export-xml`  | Export single section as XML              |
-| GET    | `/imports/{id}/sections/{sid}/export-csv`  | Export single section as CSV              |
-| GET    | `/config`                                  | Get global normalisation config           |
-| PUT    | `/config`                                  | Save global normalisation config          |
-| GET    | `/templates`                               | List non-archived export templates        |
+| GET    | `/templates`                               | List non-archived LoW export templates    |
 | GET    | `/templates/{id}`                          | Get full config of a template             |
 | POST   | `/templates`                               | Create a new export template              |
 | PUT    | `/templates/{id}`                          | Update a template (non-builtin only)      |
 | DELETE | `/templates/{id}`                          | Soft-delete a template (non-builtin only) |
 | POST   | `/templates/{id}/duplicate`                | Clone a template                          |
+| GET    | `/config`                                  | Get global normalisation config           |
+| PUT    | `/config`                                  | Save global normalisation config          |
+| PATCH  | `/known-artists/{id}`                      | Update a known artist rule                |
+| DELETE | `/known-artists/{id}`                      | Delete a known artist rule                |
+| POST   | `/known-artists/seed`                      | Seed known artists from JSON              |
+| GET    | `/imports/{id}/audit-log`                  | Audit log for an import                   |
+| GET    | `/audit-log`                               | Global audit log                          |
+| POST   | `/admin/cleanup-uploads`                   | Remove orphaned upload files              |
+
+#### Artists' Index
+
+| Method | Path                                         | Description                                               |
+| ------ | -------------------------------------------- | --------------------------------------------------------- |
+| POST   | `/index/import`                              | Upload Index Excel file                                   |
+| GET    | `/index/imports`                             | List all index imports                                    |
+| DELETE | `/index/imports/{id}`                        | Delete index import and all data                          |
+| GET    | `/index/imports/{id}/artists`                | List all artists for an index import                      |
+| GET    | `/index/imports/{id}/warnings`               | Validation warnings for the index import                  |
+| GET    | `/index/imports/{id}/export-tags`            | Export index as Tagged Text (`?letter=`, `?template_id=`) |
+| GET    | `/index/imports/{id}/artists/{aid}/override` | Get artist override                                       |
+| PUT    | `/index/imports/{id}/artists/{aid}/override` | Set/update artist override                                |
+| DELETE | `/index/imports/{id}/artists/{aid}/override` | Remove artist override                                    |
+| PATCH  | `/index/imports/{id}/artists/{aid}/exclude`  | Exclude/re-include an artist                              |
+| PATCH  | `/index/imports/{id}/artists/{aid}/company`  | Toggle company flag                                       |
+| GET    | `/index/templates`                           | List index export templates                               |
+| GET    | `/index/templates/{id}`                      | Get index template config                                 |
+| POST   | `/index/templates`                           | Create index template                                     |
+| PUT    | `/index/templates/{id}`                      | Update index template                                     |
+| DELETE | `/index/templates/{id}`                      | Delete index template                                     |
+| POST   | `/index/templates/{id}/duplicate`            | Clone index template                                      |
 
 ---
 
@@ -158,18 +202,30 @@ The system must generate InDesign Tagged Text with:
 Export rules must follow the documented export specification (`export_spec_v1.md`).  
 Export logic must not contain parsing logic.
 
+#### Artists' Index Export
+
+- One paragraph per artist entry, styled with configurable paragraph style.
+- Character styles for RA member surnames, RA qualifications, non-RA honorifics,
+  catalogue numbers, and expert numbers.
+- Configurable section separator between alphabetical letter groups.
+- Per-letter export via `?letter=` query parameter.
+- Template-controlled behaviour: quals lowercase, expert numbers, cat number separator.
+
 ---
 
 ### 2.8 Frontend UI
 
 The system must provide a browser-based single-page application that allows:
 
-- Uploading Excel files.
-- Browsing sections and works within an import.
-- Viewing normalisation warnings.
-- Applying and removing overrides per work.
+- Uploading Excel files for both List of Works and Artists' Index.
+- Browsing sections and works within a LoW import.
+- Browsing artist entries grouped by letter within an Index import.
+- Viewing normalisation warnings with filterable badge summaries.
+- Applying and removing overrides per work (LoW) or per artist (Index).
 - Configuring export settings (component order, styles, separators, toggles).
-- Exporting the full import or a single section as Tagged Text.
+- Managing export templates for both LoW and Index on a combined Templates page.
+- Exporting the full import, a single section (LoW), or a letter group (Index) as Tagged Text.
+- Collapsible sections (LoW) and letter groups (Index) for focused editing.
 
 ---
 

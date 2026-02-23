@@ -146,3 +146,104 @@ If `honorifics_lowercase=True`, honorifics are lowercased in the output.
 When a `WorkOverride` exists for a work, its non-null values replace the
 corresponding normalised `Work` values before export. A `None` override field
 means "use the Work value". An empty string override outputs nothing for that field.
+
+---
+
+---
+
+# Artists' Index Export Specification
+
+The Artists' Index is exported as InDesign Tagged Text with the same encoding
+rules as the List of Works (ASCII-MAC, Mac Roman, CR line endings).
+
+## File Structure
+
+```
+<ASCII-MAC>\r
+<ParaStyle:SepStyle>\r
+<ParaStyle:EntryStyle><CharStyle:RASurname>ABBOT<CharStyle:>, Liz <CharStyle:RACaps>ra<CharStyle:>\t<CharStyle:CatNo>23<CharStyle:><cSpecialChar:Tab Align><CharStyle:Expert>e23<CharStyle:>\r
+<ParaStyle:EntryStyle>ADAMS, John\t<CharStyle:CatNo>45, 67<CharStyle:>\r
+<ParaStyle:SepStyle>\r
+<ParaStyle:EntryStyle><CharStyle:RASurname>BAKER<CharStyle:>, Tom <CharStyle:RACaps>hon ra<CharStyle:>\t<CharStyle:CatNo>12<CharStyle:>\r
+...
+```
+
+Entries are grouped alphabetically by the first letter of `sort_key`. A
+configurable section separator is inserted between letter groups.
+
+## Entry Format
+
+Each artist entry is a single paragraph. The structure is:
+
+```
+<ParaStyle:entry_style>[RA-styled name] [qualifications]\t[cat numbers][\texpert numbers]
+```
+
+### RA Member Entries
+
+For artists where `is_ra_member` is `True`:
+
+1. **Surname** — rendered in `ra_surname_style` character style, uppercase
+2. **Given name** — no special styling
+3. **Qualifier** — rendered in `ra_caps_style` character style  
+   (lowercased if `quals_lowercase=True`)
+
+### Non-RA Entries
+
+- Name rendered without character styles
+- Honorifics (if any) rendered in `honorifics_style`
+
+### Second Artist
+
+Linked entries (`&`) and multi-name entries render a second artist name
+after the primary. The second artist gets independent RA styling when
+`second_artist_is_ra` is set.
+
+## Catalogue Numbers
+
+Cat numbers are joined with `cat_no_separator` (default `,`). Each number
+is wrapped in `cat_no_style`. The separator itself can have an independent
+`cat_no_separator_style`.
+
+## Expert Numbers
+
+When `expert_numbers_enabled=True`, expert numbers are appended after a
+right-aligned tab stop (`<cSpecialChar:Tab Align>`) and styled with
+`expert_numbers_style`.
+
+## Section Separator
+
+Between letter groups, a separator is inserted. The `section_separator`
+field controls the type:
+
+| Value          | Output                                            |
+| -------------- | ------------------------------------------------- |
+| `paragraph`    | Empty paragraph with `section_separator_style`    |
+| `column_break` | `<cSpecialChar:Column Break>` in styled paragraph |
+| `frame_break`  | `<cSpecialChar:Frame Break>` in styled paragraph  |
+| `page_break`   | `<cSpecialChar:Page Break>` in styled paragraph   |
+| `none`         | No separator                                      |
+
+## IndexExportConfig Fields
+
+| Field                     | Type    | Default       | Description                           |
+| ------------------------- | ------- | ------------- | ------------------------------------- |
+| `entry_style`             | string  | `""`          | Paragraph style for each entry        |
+| `ra_surname_style`        | string  | `""`          | Character style for RA surnames       |
+| `ra_caps_style`           | string  | `""`          | Character style for RA qualifications |
+| `cat_no_style`            | string  | `""`          | Character style for catalogue numbers |
+| `honorifics_style`        | string  | `""`          | Character style for non-RA honorifics |
+| `expert_numbers_style`    | string  | `""`          | Character style for expert numbers    |
+| `quals_lowercase`         | boolean | `false`       | Lowercase RA qualifications           |
+| `expert_numbers_enabled`  | boolean | `false`       | Include expert numbers in output      |
+| `cat_no_separator`        | string  | `", "`        | Separator between catalogue numbers   |
+| `cat_no_separator_style`  | string  | `""`          | Character style for the separator     |
+| `section_separator`       | string  | `"paragraph"` | Separator type between letter groups  |
+| `section_separator_style` | string  | `""`          | Paragraph style for the separator     |
+
+## Override Behaviour
+
+When an `IndexArtistOverride` exists, its non-null values replace the
+corresponding `IndexArtist` values before export. Override fields set to
+`None` mean "use the original value". Cat number overrides replace the
+entire list of catalogue numbers.
