@@ -283,6 +283,8 @@ class IndexArtistOut(BaseModel):
     is_ra_member: bool
     is_company: bool
     is_company_auto: bool = False
+    has_known_artist: bool = False
+    has_override: bool = False
     sort_key: str
     include_in_export: bool
     cat_numbers: List[IndexCatNumberOut]

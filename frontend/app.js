@@ -2163,9 +2163,9 @@ function renderIndexArtists(importId, artists) {
         <th>First Name</th>
         <th>Title</th>
         <th class="col-quals">Quals</th>
-        <th class="col-flags">Flags</th>
         <th>Courtesy / Company</th>
         <th>Cat Numbers</th>
+        <th class="col-flags">Flags</th>
         <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -2225,6 +2225,14 @@ function indexArtistRowHTML(importId, a, groupColor) {
     badges.push(`<button class="badge badge-company-off badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as company'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',true)">Company</button>`);
   }
 
+  // Detect normalisation changes
+  const hasNorm = (a.raw_last_name ?? '') !== (a.last_name ?? '')
+    || (a.raw_first_name ?? '') !== (a.first_name ?? '')
+    || (a.raw_quals ?? '') !== (a.quals ?? '');
+  if (hasNorm) badges.push('<span class="badge badge-normalised" title="Values changed by normalisation">Norm</span>');
+  if (a.has_known_artist) badges.push('<span class="badge badge-known" title="Matched a Known Artist rule">Known</span>');
+  if (a.has_override) badges.push('<span class="badge badge-override" title="Has a user override">Override</span>');
+
   // Group cat numbers by courtesy
   const courtesyGroups = {};
   for (const cn of (a.cat_numbers || [])) {
@@ -2257,9 +2265,9 @@ function indexArtistRowHTML(importId, a, groupColor) {
       <td>${diffCell(a.raw_first_name, a.first_name)}</td>
       <td>${esc(a.title ?? '')}</td>
       <td class="col-quals">${diffCell(a.raw_quals, a.quals)}</td>
-      <td class="col-flags">${badges.join(' ')}</td>
       <td class="col-courtesy">${esc(courtesyDisplay)}</td>
       <td class="col-catnos">${esc(catDisplay)}</td>
+      <td class="col-flags">${badges.join(' ')}</td>
       <td class="col-include">
         <input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="idx-incl-${esc(a.id)}"
           ${included ? 'checked' : ''}
