@@ -525,7 +525,7 @@ def render_import_as_tagged_text(
                     # Manual line breaks (\n in overridden text) bypass auto-wrap
                     if raw and "\n" in raw:
                         wrapped = [
-                            line.strip() for line in raw.split("\n") if line.strip()
+                            line.lstrip() for line in raw.split("\n") if line.strip()
                         ]
                     else:
                         _wrap_fn = (

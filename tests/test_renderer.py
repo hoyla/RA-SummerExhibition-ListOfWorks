@@ -424,8 +424,8 @@ def test_no_newlines_still_auto_wraps():
     assert lines_in_output >= 1  # at least present
 
 
-def test_manual_line_breaks_strip_whitespace():
-    """Spaces around manual line breaks should be stripped."""
+def test_manual_line_breaks_strip_leading_whitespace():
+    """Leading spaces after manual line breaks should be stripped; trailing preserved."""
     db = _manual_break_db(title="First line \n  Second line")
     cfg = ExportConfig(
         components=[
@@ -439,8 +439,7 @@ def test_manual_line_breaks_strip_whitespace():
         ],
     )
     output = render_import_as_tagged_text("imp1", db, config=cfg)
-    # No leading/trailing spaces on wrapped lines
-    assert "First line" in output
+    # Leading spaces stripped, trailing space preserved
+    assert "First line " in output  # trailing space kept
     assert "Second line" in output
-    assert "First line " not in output
-    assert " Second line" not in output
+    assert " Second line" not in output  # leading space stripped
