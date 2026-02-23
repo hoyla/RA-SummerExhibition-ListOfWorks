@@ -292,6 +292,29 @@ class IndexArtistOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class IndexArtistOverrideIn(BaseModel):
+    """Request body for setting index artist overrides. All fields optional."""
+
+    first_name_override: str | None = None
+    last_name_override: str | None = None
+    title_override: str | None = None
+    quals_override: str | None = None
+    second_artist_override: str | None = None
+    is_company_override: bool | None = None
+
+
+class IndexArtistOverrideOut(BaseModel):
+    artist_id: str
+    first_name_override: str | None = None
+    last_name_override: str | None = None
+    title_override: str | None = None
+    quals_override: str | None = None
+    second_artist_override: str | None = None
+    is_company_override: bool | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class IndexImportOut(BaseModel):
     id: str
     filename: str

@@ -19,6 +19,8 @@ from backend.app.api.schemas import (
     IndexImportOut,
     IndexArtistOut,
     IndexCatNumberOut,
+    IndexArtistOverrideIn,
+    IndexArtistOverrideOut,
 )
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
@@ -254,6 +256,140 @@ def delete_index_import(import_id: UUID, db: Session = Depends(get_db)):
     _remove_disk_file(import_record.disk_filename)
 
     db.delete(import_record)
+    db.commit()
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Index artist overrides (GET / PUT / DELETE)
+# ---------------------------------------------------------------------------
+
+
+_OVERRIDE_TEXT_FIELDS = [
+    "first_name_override",
+    "last_name_override",
+    "title_override",
+    "quals_override",
+    "second_artist_override",
+]
+
+
+def _override_to_out(override: IndexArtistOverride) -> IndexArtistOverrideOut:
+    return IndexArtistOverrideOut(
+        artist_id=str(override.artist_id),
+        first_name_override=override.first_name_override,
+        last_name_override=override.last_name_override,
+        title_override=override.title_override,
+        quals_override=override.quals_override,
+        second_artist_override=override.second_artist_override,
+        is_company_override=override.is_company_override,
+    )
+
+
+@router.get(
+    "/imports/{import_id}/artists/{artist_id}/override",
+    response_model=IndexArtistOverrideOut,
+)
+def get_index_override(import_id: UUID, artist_id: UUID, db: Session = Depends(get_db)):
+    _get_artist_or_404(import_id, artist_id, db)
+    override = (
+        db.query(IndexArtistOverride)
+        .filter(IndexArtistOverride.artist_id == artist_id)
+        .first()
+    )
+    if not override:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No override exists for this artist",
+        )
+    return _override_to_out(override)
+
+
+@router.put(
+    "/imports/{import_id}/artists/{artist_id}/override",
+    response_model=IndexArtistOverrideOut,
+)
+def set_index_override(
+    import_id: UUID,
+    artist_id: UUID,
+    body: IndexArtistOverrideIn,
+    db: Session = Depends(get_db),
+):
+    artist = _get_artist_or_404(import_id, artist_id, db)
+    override = (
+        db.query(IndexArtistOverride)
+        .filter(IndexArtistOverride.artist_id == artist_id)
+        .first()
+    )
+
+    fields = body.model_dump()
+    audit_entries = []
+
+    if override is None:
+        override = IndexArtistOverride(artist_id=artist.id, **fields)
+        db.add(override)
+        for field, new_val in fields.items():
+            if new_val is not None:
+                audit_entries.append(
+                    AuditLog(
+                        import_id=import_id,
+                        action="override_set",
+                        field=field,
+                        old_value=None,
+                        new_value=str(new_val),
+                    )
+                )
+    else:
+        for field, new_val in fields.items():
+            old_val = getattr(override, field)
+            if new_val != old_val:
+                audit_entries.append(
+                    AuditLog(
+                        import_id=import_id,
+                        action="override_set",
+                        field=field,
+                        old_value=str(old_val) if old_val is not None else None,
+                        new_value=str(new_val) if new_val is not None else None,
+                    )
+                )
+                setattr(override, field, new_val)
+
+    for entry in audit_entries:
+        db.add(entry)
+
+    db.commit()
+    db.refresh(override)
+    return _override_to_out(override)
+
+
+@router.delete(
+    "/imports/{import_id}/artists/{artist_id}/override",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_index_override(
+    import_id: UUID, artist_id: UUID, db: Session = Depends(get_db)
+):
+    _get_artist_or_404(import_id, artist_id, db)
+    override = (
+        db.query(IndexArtistOverride)
+        .filter(IndexArtistOverride.artist_id == artist_id)
+        .first()
+    )
+    if not override:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No override exists for this artist",
+        )
+    db.delete(override)
+    db.add(
+        AuditLog(
+            import_id=import_id,
+            action="override_deleted",
+            field=None,
+            old_value=None,
+            new_value=None,
+        )
+    )
     db.commit()
     return None
 

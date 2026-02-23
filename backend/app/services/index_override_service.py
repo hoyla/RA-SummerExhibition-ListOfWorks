@@ -146,12 +146,13 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     """Merge an IndexArtist with an optional KnownArtist and IndexArtistOverride.
 
     Resolution priority (highest wins):
-      1. ``override.is_company_override`` — user override for company flag
+      1. ``override.*_override`` — user overrides for each field
       2. ``known_artist.resolved_*`` — known artist lookup results
       3. ``artist.*`` — normalised values from importer
 
-    The ``""`` (empty-string) convention for known artist fields means
-    "clear this field" (set to None).  ``None`` means "don't override".
+    The ``""`` (empty-string) convention for known artist and override
+    fields means "clear this field" (set to None).  ``None`` means
+    "don't override".
 
     Parameters
     ----------
@@ -165,6 +166,7 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     # Start with normalised values from the importer
     first_name = artist.first_name
     last_name = artist.last_name
+    title = artist.title
     quals = artist.quals
     second_artist = getattr(artist, "second_artist", None)
     company = artist.company
@@ -180,6 +182,19 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
             quals = known_artist.resolved_quals or None
         if known_artist.resolved_second_artist is not None:
             second_artist = known_artist.resolved_second_artist or None
+
+    # Layer 3 (highest priority): User overrides
+    if override is not None:
+        if override.first_name_override is not None:
+            first_name = override.first_name_override or None
+        if override.last_name_override is not None:
+            last_name = override.last_name_override or None
+        if override.title_override is not None:
+            title = override.title_override or None
+        if override.quals_override is not None:
+            quals = override.quals_override or None
+        if override.second_artist_override is not None:
+            second_artist = override.second_artist_override or None
 
     # Company flag: override > known_artist > auto-detected
     if override is not None and override.is_company_override is not None:
@@ -206,7 +221,7 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     index_name = build_index_name(
         last_name=last_name,
         first_name=first_name,
-        title=artist.title,
+        title=title,
         quals=quals,
         second_artist=second_artist,
         is_company=effective_company,
@@ -214,7 +229,7 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
 
     return EffectiveIndexArtist(
         index_name=index_name,
-        title=artist.title,
+        title=title,
         first_name=first_name,
         last_name=last_name,
         quals=quals,

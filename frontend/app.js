@@ -2352,6 +2352,11 @@ function indexArtistRowHTML(importId, a, groupColor) {
               ${a.second_artist ? `<tr><td>Second Artist</td><td colspan="2">${esc(a.second_artist)}</td></tr>` : ''}
             </tbody>
           </table>
+          <div style="margin-top:8px">
+            <button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
+              onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>
+          </div>
+          <div id="idx-ovc-${esc(a.id)}"></div>
         </div>
       </td>
     </tr>`;
@@ -2396,6 +2401,198 @@ async function toggleIndexCompany(importId, artistId, newValue) {
     }
   } catch (err) {
     showToast(`Toggle failed: ${err.message}`, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Index artist override form
+// ---------------------------------------------------------------------------
+
+async function toggleIndexOverrideForm(importId, artistId) {
+  const cell = document.getElementById(`idx-ovc-${artistId}`);
+  if (!cell) return;
+  // If form already visible, close it
+  if (cell.innerHTML.trim()) {
+    cell.innerHTML = '';
+    const btn = document.getElementById(`idx-ov-btn-${artistId}`);
+    if (btn) {
+      const a = _indexArtistCache[artistId];
+      const has = a?.has_override;
+      btn.textContent = has ? 'Edit Override' : 'Override\u2026';
+      btn.className = `btn btn-sm ${has ? 'btn-warning' : ''}`;
+    }
+    return;
+  }
+
+  // Try to load existing override
+  let existing = null;
+  try {
+    existing = await api('GET', `/index/imports/${importId}/artists/${artistId}/override`);
+  } catch (_) {
+    // 404 = no override yet
+  }
+  showIndexOverrideForm(importId, artistId, existing);
+}
+
+function showIndexOverrideForm(importId, artistId, existing) {
+  const val = (f) => esc(existing?.[f] ?? '');
+
+  // Effective current value = override if set, else current resolved from cache
+  const a = _indexArtistCache[artistId] ?? {};
+  const o = existing ?? {};
+  const cur = {
+    first_name_override:    o.first_name_override    ?? a.first_name     ?? '',
+    last_name_override:     o.last_name_override     ?? a.last_name      ?? '',
+    title_override:         o.title_override         ?? a.title          ?? '',
+    quals_override:         o.quals_override         ?? a.quals          ?? '',
+    second_artist_override: o.second_artist_override ?? a.second_artist  ?? '',
+  };
+
+  // Returns a clickable hint that copies the current value into the named input
+  const hint = (field, inputName) => {
+    const v = cur[field];
+    if (v === null || v === undefined || v === '') return '';
+    const safe = esc(String(v));
+    const b64 = btoa(unescape(encodeURIComponent(String(v))));
+    return `<button type="button" class="current-val-hint"
+      onclick="(function(){var el=document.querySelector('#idx-ovf-${esc(artistId)} [name=\\'${inputName}\\']');if(el)el.value=decodeURIComponent(escape(atob('${b64}')));})()">
+      ${safe}</button>`;
+  };
+
+  const companyChecked = o.is_company_override === true ? ' checked' : '';
+  const companyIndeterminate = o.is_company_override === null || o.is_company_override === undefined;
+
+  const cell = document.getElementById(`idx-ovc-${artistId}`);
+  cell.innerHTML = `
+    <div class="override-form" style="margin-top:10px" onclick="event.stopPropagation()">
+      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy</span></h5>
+      <div class="override-field-form" id="idx-ovf-${esc(artistId)}">
+        <div class="form-row"><label>Last Name</label>
+          ${hint('last_name_override','last_name_override')}
+          <input type="text" name="last_name_override" value="${val('last_name_override')}" placeholder="Override last name"></div>
+        <div class="form-row"><label>First Name</label>
+          ${hint('first_name_override','first_name_override')}
+          <input type="text" name="first_name_override" value="${val('first_name_override')}" placeholder="Override first name"></div>
+        <div class="form-row"><label>Title</label>
+          ${hint('title_override','title_override')}
+          <input type="text" name="title_override" value="${val('title_override')}" placeholder="Override title (e.g. Sir)"></div>
+        <div class="form-row"><label>Quals</label>
+          ${hint('quals_override','quals_override')}
+          <input type="text" name="quals_override" value="${val('quals_override')}" placeholder="Override quals (e.g. CBE RA)"></div>
+        <div class="form-row"><label>Second Artist</label>
+          ${hint('second_artist_override','second_artist_override')}
+          <input type="text" name="second_artist_override" value="${val('second_artist_override')}" placeholder="Override second artist suffix"></div>
+        <div class="form-row"><label>Company</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" name="is_company_override" ${companyChecked}
+              ${companyIndeterminate ? 'data-indeterminate="1"' : ''}>
+            Mark as company
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="saveIndexOverride('${esc(importId)}','${esc(artistId)}')">Save</button>
+          ${existing ? `<button class="btn btn-danger" onclick="deleteIndexOverride('${esc(importId)}','${esc(artistId)}')">Delete Override</button>` : ''}
+          <span id="idx-ovs-${esc(artistId)}" class="status-msg"></span>
+        </div>
+      </div>
+    </div>`;
+}
+
+/** Re-render visible index artist row cells after override save/delete. */
+function _refreshIndexArtistRow(importId, artistId) {
+  const a = _indexArtistCache[artistId];
+  if (!a) return;
+  const tmp = document.createElement('tbody');
+  tmp.innerHTML = indexArtistRowHTML(importId, a);
+  const oldRow = document.getElementById(`idx-${artistId}`);
+  const newRow = tmp.querySelector(`#idx-${CSS.escape(artistId)}`);
+  if (oldRow && newRow) oldRow.replaceWith(newRow);
+  // Also replace the detail row
+  const oldDetail = document.getElementById(`idx-detail-${artistId}`);
+  const newDetail = tmp.querySelector(`#idx-detail-${CSS.escape(artistId)}`);
+  if (oldDetail && newDetail) oldDetail.replaceWith(newDetail);
+}
+
+async function saveIndexOverride(importId, artistId) {
+  const formEl = document.getElementById(`idx-ovf-${artistId}`);
+  const statusEl = document.getElementById(`idx-ovs-${artistId}`);
+  statusEl.textContent = 'Saving\u2026';
+  statusEl.className = 'status-msg';
+
+  const textFields = ['first_name_override', 'last_name_override', 'title_override',
+    'quals_override', 'second_artist_override'];
+
+  const body = {};
+  for (const f of textFields) {
+    const input = formEl.querySelector(`[name="${f}"]`);
+    const raw = input?.value.trim() ?? '';
+    body[f] = raw === '' ? null : raw;
+  }
+
+  // Company checkbox: unchecked + was indeterminate = null (no override)
+  // otherwise true/false
+  const companyCb = formEl.querySelector('[name="is_company_override"]');
+  if (companyCb) {
+    if (companyCb.dataset.indeterminate === '1' && !companyCb.checked) {
+      body.is_company_override = null;
+    } else {
+      body.is_company_override = companyCb.checked;
+    }
+    // Once user interacts, it's no longer indeterminate
+    delete companyCb.dataset.indeterminate;
+  }
+
+  try {
+    const result = await api('PUT', `/index/imports/${importId}/artists/${artistId}/override`, body);
+    // Re-fetch the artist list to get recalculated index_name, is_company etc.
+    await _reloadIndexArtist(importId, artistId);
+    const a = _indexArtistCache[artistId];
+    if (a) a.has_override = true;
+    _refreshIndexArtistRow(importId, artistId);
+    // Re-open the form with the saved data, and make detail row visible
+    const detailRow = document.getElementById(`idx-detail-${artistId}`);
+    if (detailRow) detailRow.style.display = '';
+    showIndexOverrideForm(importId, artistId, result);
+    const s = document.getElementById(`idx-ovs-${artistId}`);
+    if (s) { s.textContent = '\u2713 Saved'; s.className = 'status-msg success'; }
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+    statusEl.className = 'status-msg error';
+  }
+}
+
+async function deleteIndexOverride(importId, artistId) {
+  if (!confirm('Delete all overrides for this artist?')) return;
+  const statusEl = document.getElementById(`idx-ovs-${artistId}`);
+  try {
+    await api('DELETE', `/index/imports/${importId}/artists/${artistId}/override`);
+    await _reloadIndexArtist(importId, artistId);
+    const a = _indexArtistCache[artistId];
+    if (a) a.has_override = false;
+    _refreshIndexArtistRow(importId, artistId);
+    const detailRow = document.getElementById(`idx-detail-${artistId}`);
+    if (detailRow) detailRow.style.display = '';
+    showIndexOverrideForm(importId, artistId, null);
+    const s = document.getElementById(`idx-ovs-${artistId}`);
+    if (s) { s.textContent = '\u2713 Deleted'; s.className = 'status-msg success'; }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = `Error: ${err.message}`;
+      statusEl.className = 'status-msg error';
+    }
+  }
+}
+
+/** Re-fetch a single artist's resolved data and update the cache. */
+async function _reloadIndexArtist(importId, artistId) {
+  try {
+    const artists = await api('GET', `/index/imports/${importId}/artists`);
+    const found = artists.find(a => a.id === artistId);
+    if (found) {
+      _indexArtistCache[artistId] = found;
+    }
+  } catch (_) {
+    // Fallback: ignore; the cached data will be stale
   }
 }
 

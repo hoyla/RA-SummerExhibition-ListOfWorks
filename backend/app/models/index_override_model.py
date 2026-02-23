@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Boolean, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Boolean, Text, ForeignKey, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -11,6 +11,10 @@ class IndexArtistOverride(Base):
     Each nullable column represents an overridable field.  ``None`` means
     "use the importer's auto-detected value"; a non-None value means the
     user has explicitly set it.
+
+    The ``""`` (empty-string) convention means "clear this field" — i.e.
+    force it to None/blank regardless of the normalised or known-artist
+    value.
     """
 
     __tablename__ = "index_artist_overrides"
@@ -22,6 +26,12 @@ class IndexArtistOverride(Base):
     )
 
     is_company_override = Column(Boolean, nullable=True)
+
+    first_name_override = Column(Text, nullable=True)
+    last_name_override = Column(Text, nullable=True)
+    title_override = Column(Text, nullable=True)
+    quals_override = Column(Text, nullable=True)
+    second_artist_override = Column(Text, nullable=True)
 
     updated_at = Column(
         TIMESTAMP(timezone=True),
