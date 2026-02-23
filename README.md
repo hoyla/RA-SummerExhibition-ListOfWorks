@@ -1,4 +1,4 @@
-# Royal Academy Summer Exhibition Catalogue Tool
+# Royal Academy Summer Exhibition catalogue tool
 
 The Royal Academy's annual Summer Exhibition publishes a printed catalogue.
 The editorial team prepares exhibition data in Excel spreadsheets; this tool
@@ -10,7 +10,7 @@ of time-consuming and error-prone regex and find-and-replace operations.
 Supports two data products:
 
 - **List of Works** — the main exhibition catalogue (sections → works)
-- **Artists' Index** — alphabetical index of exhibiting artists with catalogue numbers
+- **Artists Index** — alphabetical index of exhibiting artists with catalogue numbers
 
 ---
 
@@ -30,7 +30,7 @@ Supports two data products:
 - Re-import with override preservation
 - Export diff (compare current output to last snapshot)
 
-### Artists' Index
+### Artists Index
 
 - Excel upload with automatic artist parsing and normalisation
 - RA member detection from qualifications
@@ -56,7 +56,7 @@ Supports two data products:
 
 ---
 
-## Tech Stack
+## Tech stack
 
 - Python 3.12 / FastAPI / Uvicorn
 - SQLAlchemy 2.0 + PostgreSQL 16
@@ -66,7 +66,7 @@ Supports two data products:
 
 ---
 
-## Quick Start (Docker)
+## Quick start (Docker)
 
 ```bash
 # Copy env template and set a password / API key
@@ -93,7 +93,7 @@ uvicorn backend.app.main:app --reload
 
 ---
 
-## Typical Workflow
+## Typical workflow
 
 ### List of Works
 
@@ -103,7 +103,7 @@ uvicorn backend.app.main:app --reload
 4. Select or create an export template (Templates page)
 5. Export the full import or a single section as InDesign Tagged Text
 
-### Artists' Index
+### Artists Index
 
 1. Upload an Index Excel file via the Artists' Index tab
 2. Review artist entries grouped by letter; check warnings and flags
@@ -113,7 +113,7 @@ uvicorn backend.app.main:app --reload
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 backend/app/
@@ -154,7 +154,7 @@ docs/
 
 ---
 
-## Running Tests
+## Running tests
 
 ```bash
 python -m pytest tests/ -q
@@ -162,7 +162,7 @@ python -m pytest tests/ -q
 
 ---
 
-## Database Migrations
+## Database migrations
 
 This project uses Alembic for database migrations.
 
@@ -173,7 +173,7 @@ This project uses Alembic for database migrations.
 
 ---
 
-## Environment Variables
+## Environment variables
 
 | Variable            | Default                   | Description                               |
 | ------------------- | ------------------------- | ----------------------------------------- |
