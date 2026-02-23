@@ -224,16 +224,64 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 
+def _resolve_index_template(
+    db: Session, template_id: UUID | None
+) -> "IndexExportConfig":
+    """Load an index template by ID and convert to IndexExportConfig."""
+    if not template_id:
+        return DEFAULT_INDEX_CONFIG
+
+    from backend.app.models.ruleset_model import Ruleset
+
+    r = (
+        db.query(Ruleset)
+        .filter(
+            Ruleset.id == template_id,
+            Ruleset.archived == False,
+            Ruleset.config_type == "index_template",
+        )
+        .first()
+    )
+    if not r:
+        return DEFAULT_INDEX_CONFIG
+
+    cfg = r.config
+    return IndexExportConfig(
+        entry_style=cfg.get("entry_style", DEFAULT_INDEX_CONFIG.entry_style),
+        ra_surname_style=cfg.get(
+            "ra_surname_style", DEFAULT_INDEX_CONFIG.ra_surname_style
+        ),
+        ra_caps_style=cfg.get("ra_caps_style", DEFAULT_INDEX_CONFIG.ra_caps_style),
+        cat_no_style=cfg.get("cat_no_style", DEFAULT_INDEX_CONFIG.cat_no_style),
+        honorifics_style=cfg.get(
+            "honorifics_style", DEFAULT_INDEX_CONFIG.honorifics_style
+        ),
+        expert_numbers_style=cfg.get(
+            "expert_numbers_style", DEFAULT_INDEX_CONFIG.expert_numbers_style
+        ),
+        quals_lowercase=cfg.get(
+            "quals_lowercase", DEFAULT_INDEX_CONFIG.quals_lowercase
+        ),
+        expert_numbers_enabled=cfg.get(
+            "expert_numbers_enabled", DEFAULT_INDEX_CONFIG.expert_numbers_enabled
+        ),
+        cat_no_separator=cfg.get(
+            "cat_no_separator", DEFAULT_INDEX_CONFIG.cat_no_separator
+        ),
+    )
+
+
 @router.get("/imports/{import_id}/export-tags")
 def export_index_tags(
     import_id: UUID,
+    template_id: UUID | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """Export Artists' Index as InDesign Tagged Text."""
     _get_index_import_or_404(import_id, db)
 
     entries = collect_index_entries(db, import_id)
-    cfg = DEFAULT_INDEX_CONFIG
+    cfg = _resolve_index_template(db, template_id)
     output = render_index_tagged_text(entries, cfg)
 
     return Response(

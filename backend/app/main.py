@@ -105,6 +105,7 @@ def _seed_builtin_templates() -> None:
             with open(f, encoding="utf-8") as fp:
                 seed = json.load(fp)
             name = seed.pop("_name", slug)
+            config_type = seed.pop("_config_type", "template")
             cfg_hash = hashlib.sha256(
                 json.dumps(seed, sort_keys=True).encode()
             ).hexdigest()
@@ -112,6 +113,8 @@ def _seed_builtin_templates() -> None:
             if existing:
                 if existing.name != name:
                     existing.name = name
+                if existing.config_type != config_type:
+                    existing.config_type = config_type
                 if existing.config_hash != cfg_hash:
                     existing.config = seed
                     existing.config_hash = cfg_hash
@@ -121,7 +124,7 @@ def _seed_builtin_templates() -> None:
                     name=name,
                     config=seed,
                     config_hash=cfg_hash,
-                    config_type="template",
+                    config_type=config_type,
                     is_builtin=True,
                     slug=slug,
                 )

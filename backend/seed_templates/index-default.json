@@ -1,0 +1,13 @@
+{
+  "_name": "Index Default",
+  "_config_type": "index_template",
+  "entry_style": "Index Text",
+  "ra_surname_style": "RA Member Cap Surname",
+  "ra_caps_style": "RA Caps",
+  "cat_no_style": "Index works numbers",
+  "honorifics_style": "Small caps",
+  "expert_numbers_style": "Expert numbers",
+  "quals_lowercase": true,
+  "expert_numbers_enabled": false,
+  "cat_no_separator": ","
+}

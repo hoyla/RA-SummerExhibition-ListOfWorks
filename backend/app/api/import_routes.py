@@ -18,6 +18,7 @@ from backend.app.api import (
     normalisation_config,
     audit,
     index,
+    index_templates,
     known_artists,
 )
 
@@ -30,4 +31,5 @@ router.include_router(templates.router)
 router.include_router(normalisation_config.router)
 router.include_router(audit.router)
 router.include_router(index.router)
+router.include_router(index_templates.router)
 router.include_router(known_artists.router)

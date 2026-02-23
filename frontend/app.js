@@ -178,14 +178,16 @@ function router() {
   const importMatch = hash.match(/^#\/import\/([^/]+)/);
   const indexDetailMatch = hash.match(/^#\/index\/([^/]+)/);
   const tmplEditMatch = hash.match(/^#\/templates\/([^/]+)\/edit$/);
+  const idxTmplEditMatch = hash.match(/^#\/index-templates\/([^/]+)\/edit$/);
   if (importMatch)             renderDetail(importMatch[1]);
   else if (indexDetailMatch)   renderIndexDetail(indexDetailMatch[1]);
+  else if (idxTmplEditMatch)   renderIndexTemplateEdit(idxTmplEditMatch[1]);
   else if (tmplEditMatch)      renderTemplateEdit(tmplEditMatch[1]);
-  else if (hash === '#/index')      renderIndexList();
-  else if (hash === '#/templates')  renderTemplates();
-  else if (hash === '#/audit')      renderAuditLog();
-  else if (hash === '#/settings')   renderSettings();
-  else                              renderList();
+  else if (hash === '#/index')             renderIndexList();
+  else if (hash === '#/templates')         renderTemplates();
+  else if (hash === '#/audit')             renderAuditLog();
+  else if (hash === '#/settings')          renderSettings();
+  else                                     renderList();
 }
 
 window.addEventListener('hashchange', router);
@@ -206,6 +208,10 @@ function _auditActionLabel(action) {
     template_updated: 'Template updated',
     template_deleted: 'Template deleted',
     template_duplicated: 'Template duplicated',
+    index_template_created: 'Index template created',
+    index_template_updated: 'Index template updated',
+    index_template_deleted: 'Index template deleted',
+    index_template_duplicated: 'Index template duplicated',
     index_artist_excluded: 'Artist excluded',
     index_artist_included: 'Artist included',
   };
@@ -783,11 +789,17 @@ function moveComponent(btn, dir) {
 async function renderTemplates() {
   const app = document.getElementById('app');
   app.innerHTML = '<p class="loading" style="padding:40px 0">Loading templates&hellip;</p>';
-  let templates;
-  try { templates = await api('GET', '/templates'); }
-  catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
 
-  const rows = templates.map(t => {
+  let lowTemplates, idxTemplates;
+  try {
+    [lowTemplates, idxTemplates] = await Promise.all([
+      api('GET', '/templates'),
+      api('GET', '/index/templates'),
+    ]);
+  } catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+
+  // --- List of Works templates table ---
+  const lowRows = lowTemplates.map(t => {
     const created = t.created_at ? new Date(t.created_at).toLocaleDateString('en-GB') : '';
     const builtinBadge = t.is_builtin
       ? '<span class="badge badge-builtin">built-in</span>'
@@ -804,16 +816,49 @@ async function renderTemplates() {
     </tr>`;
   }).join('');
 
+  // --- Index templates table ---
+  const idxRows = idxTemplates.map(t => {
+    const created = t.created_at ? new Date(t.created_at).toLocaleDateString('en-GB') : '';
+    const builtinBadge = t.is_builtin
+      ? '<span class="badge badge-builtin">built-in</span>'
+      : '';
+    const editBtn = `<a class="btn btn-sm" href="#/index-templates/${esc(t.id)}/edit">${t.is_builtin ? 'View' : 'Edit'}</a>`;
+    const dupBtn  = `<button class="btn btn-sm" onclick="duplicateIndexTemplate('${esc(t.id)}',this)">Duplicate</button>`;
+    const delBtn  = t.is_builtin
+      ? ''
+      : `<button class="btn btn-sm btn-danger" onclick="deleteIndexTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`;
+    return `<tr class="template-row">
+      <td>${esc(t.name)} ${builtinBadge}</td>
+      <td>${esc(created)}</td>
+      <td class="table-actions">${editBtn} ${dupBtn} ${delBtn}</td>
+    </tr>`;
+  }).join('');
+
+  const emptyRow = '<tr><td colspan="3" style="padding:20px;color:var(--muted)">No templates yet.</td></tr>';
+
   app.innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-      <h2 class="page-heading" style="margin:0">Export Templates</h2>
-      <a class="btn btn-primary" href="#/templates/new/edit">+ New Template</a>
+    <h2 class="page-heading" style="margin-bottom:20px">Export Templates</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Templates define InDesign export settings. Choose one each time you export.</p>
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <h3 style="margin:0">List of Works</h3>
+      <a class="btn btn-sm btn-primary" href="#/templates/new/edit">+ New</a>
     </div>
-    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Templates define InDesign export settings. Choose one each time you export.</p>
+    <section class="panel" style="padding:0;overflow:hidden;margin-bottom:28px">
+      <table class="data-table" style="width:100%">
+        <thead><tr><th>Name</th><th>Created</th><th></th></tr></thead>
+        <tbody>${lowRows || emptyRow}</tbody>
+      </table>
+    </section>
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <h3 style="margin:0">Artists Index</h3>
+      <a class="btn btn-sm btn-primary" href="#/index-templates/new/edit">+ New</a>
+    </div>
     <section class="panel" style="padding:0;overflow:hidden">
       <table class="data-table" style="width:100%">
         <thead><tr><th>Name</th><th>Created</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="3" style="padding:20px;color:var(--muted)">No templates yet.</td></tr>'}</tbody>
+        <tbody>${idxRows || emptyRow}</tbody>
       </table>
     </section>`;
 }
@@ -841,6 +886,170 @@ async function deleteTemplate(id, name, btnEl) {
     showToast(`Could not delete: ${e.message}`, 'error');
   } finally {
     restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Index template CRUD
+// ---------------------------------------------------------------------------
+
+async function duplicateIndexTemplate(id, btnEl) {
+  const restore = btnLoading(btnEl, 'Duplicating');
+  try {
+    const created = await api('POST', `/index/templates/${id}/duplicate`);
+    location.hash = `#/index-templates/${created.id}/edit`;
+  } catch (e) {
+    showToast(`Could not duplicate: ${e.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+async function deleteIndexTemplate(id, name, btnEl) {
+  if (!confirm(`Delete template "${name}"? This cannot be undone.`)) return;
+  const restore = btnLoading(btnEl, 'Deleting');
+  try {
+    await api('DELETE', `/index/templates/${id}`);
+    showToast('Template deleted', 'success', 3000);
+    renderTemplates();
+  } catch (e) {
+    showToast(`Could not delete: ${e.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Index template edit page
+// ---------------------------------------------------------------------------
+
+async function renderIndexTemplateEdit(id) {
+  const app = document.getElementById('app');
+  app.innerHTML = '<p class="loading" style="padding:40px 0">Loading&hellip;</p>';
+
+  const isNew = id === 'new';
+  let cfg = {};
+  let isBuiltin = false;
+
+  if (!isNew) {
+    try { cfg = await api('GET', `/index/templates/${id}`); }
+    catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    isBuiltin = cfg.is_builtin ?? false;
+  }
+
+  const ro = isBuiltin ? ' readonly disabled' : '';
+  const roCheck = isBuiltin ? ' disabled' : '';
+
+  const backLink = '<a href="#/templates" style="font-size:13px;color:var(--muted)">&larr; Back to templates</a>';
+  const heading = isNew ? 'New Index Template' : esc(cfg.name ?? 'Edit Index Template');
+  const builtinNote = isBuiltin
+    ? `<div class="info-banner" style="margin-bottom:16px;padding:10px 14px;background:var(--bg-alt);border-radius:6px;font-size:13px;color:var(--muted)">
+        <strong>Built-in template</strong> &mdash; read-only. <button class="btn btn-sm" onclick="duplicateIndexTemplate('${esc(id)}',this)">Duplicate to edit</button>
+       </div>`
+    : '';
+  const saveBtn = isBuiltin
+    ? ''
+    : `<button class="btn btn-primary" onclick="saveIndexTemplate('${isNew ? 'new' : esc(id)}')">Save Template</button>`;
+
+  const catSepOpts = [',', ';', ' '].map(v => {
+    const label = v === ',' ? 'comma (,)' : v === ';' ? 'semicolon (;)' : 'space';
+    const sel = (cfg.cat_no_separator ?? ',') === v ? ' selected' : '';
+    return `<option value="${esc(v)}"${sel}>${label}</option>`;
+  }).join('');
+
+  app.innerHTML = `
+    <div style="margin-bottom:4px">${backLink}</div>
+    <h2 class="page-heading">${heading}</h2>
+    ${builtinNote}
+
+    <section class="panel"><div class="settings-form"><div class="form-row">
+      <label>Template name</label>
+      <input id="idx-tmpl-name" type="text" value="${esc(isNew ? '' : (cfg.name ?? ''))}" placeholder="e.g. Summer Exhibition 2026"${ro}>
+    </div></div></section>
+
+    <h3 class="settings-group-heading">InDesign Paragraph Style</h3>
+    <section class="panel">
+      <div class="settings-form">
+        <div class="form-row">
+          <label>Entry paragraph</label>
+          <input id="idx-tmpl-entry-style" type="text" value="${esc(cfg.entry_style ?? 'Index Text')}"${ro}>
+        </div>
+      </div>
+    </section>
+
+    <h3 class="settings-group-heading">InDesign Character Styles</h3>
+    <section class="panel">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Leave blank to output plain text for that element.</p>
+      <div class="settings-form">
+        <div class="form-row"><label>RA member surname</label><input id="idx-tmpl-ra-surname" type="text" value="${esc(cfg.ra_surname_style ?? 'RA Member Cap Surname')}"${ro}></div>
+        <div class="form-row"><label>RA caps (quals)</label><input id="idx-tmpl-ra-caps" type="text" value="${esc(cfg.ra_caps_style ?? 'RA Caps')}"${ro}></div>
+        <div class="form-row"><label>Non-RA honorifics</label><input id="idx-tmpl-honorifics" type="text" value="${esc(cfg.honorifics_style ?? 'Small caps')}"${ro}></div>
+        <div class="form-row"><label>Cat numbers</label><input id="idx-tmpl-cat-no" type="text" value="${esc(cfg.cat_no_style ?? 'Index works numbers')}"${ro}></div>
+        <div class="form-row"><label>Expert numbers</label><input id="idx-tmpl-expert-numbers" type="text" value="${esc(cfg.expert_numbers_style ?? 'Expert numbers')}"${ro}></div>
+      </div>
+    </section>
+
+    <h3 class="settings-group-heading">Behaviour</h3>
+    <section class="panel">
+      <div class="settings-form">
+        <div class="form-row">
+          <label>Quals lowercase</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" id="idx-tmpl-quals-lower"${(cfg.quals_lowercase !== false) ? ' checked' : ''}${roCheck}>
+            Force qualifications to lowercase
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Expert numbers</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" id="idx-tmpl-expert-enabled"${cfg.expert_numbers_enabled ? ' checked' : ''}${roCheck}>
+            Apply Expert numbers style to leading digits in names
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Cat number separator</label>
+          <select id="idx-tmpl-cat-sep"${isBuiltin ? ' disabled' : ''}>${catSepOpts}</select>
+        </div>
+      </div>
+    </section>
+
+    <div class="form-actions" style="padding-bottom:20px">
+      ${saveBtn}
+      <span id="idx-tmpl-status" class="status-msg"></span>
+    </div>`;
+}
+
+async function saveIndexTemplate(id) {
+  const nameEl = document.getElementById('idx-tmpl-name');
+  const name = (nameEl?.value ?? '').trim();
+  if (!name) { showToast('Please enter a template name.', 'error'); nameEl?.focus(); return; }
+
+  const body = {
+    name,
+    entry_style:          (document.getElementById('idx-tmpl-entry-style')?.value ?? '').trim() || 'Index Text',
+    ra_surname_style:     (document.getElementById('idx-tmpl-ra-surname')?.value  ?? '').trim() || 'RA Member Cap Surname',
+    ra_caps_style:        (document.getElementById('idx-tmpl-ra-caps')?.value     ?? '').trim() || 'RA Caps',
+    cat_no_style:         (document.getElementById('idx-tmpl-cat-no')?.value      ?? '').trim(),
+    honorifics_style:     (document.getElementById('idx-tmpl-honorifics')?.value  ?? '').trim(),
+    expert_numbers_style: (document.getElementById('idx-tmpl-expert-numbers')?.value ?? '').trim(),
+    quals_lowercase:       document.getElementById('idx-tmpl-quals-lower')?.checked ?? true,
+    expert_numbers_enabled: document.getElementById('idx-tmpl-expert-enabled')?.checked ?? false,
+    cat_no_separator:      document.getElementById('idx-tmpl-cat-sep')?.value ?? ',',
+  };
+
+  const statusEl = document.getElementById('idx-tmpl-status');
+  if (statusEl) { statusEl.textContent = 'Saving\u2026'; statusEl.className = 'status-msg'; }
+  try {
+    let result;
+    if (id === 'new') {
+      result = await api('POST', '/index/templates', body);
+      location.hash = `#/index-templates/${result.id}/edit`;
+    } else {
+      await api('PUT', `/index/templates/${id}`, body);
+      if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+    }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${esc(e.message)}`; statusEl.className = 'status-msg error'; }
   }
 }
 
@@ -2170,11 +2379,7 @@ async function renderIndexDetail(importId) {
     <h2 class="page-heading" id="index-detail-heading">Loading\u2026</h2>
     <section class="panel">
       <h3>Export</h3>
-      <div id="index-export-panel">
-        <div class="export-buttons">
-          <button class="btn btn-primary" onclick="downloadIndexExport('${esc(importId)}',this)">Export InDesign Tags (.txt)</button>
-        </div>
-      </div>
+      <div id="index-export-panel"><p class="loading" style="padding:4px 0">Loading templates…</p></div>
     </section>
     <section class="panel" id="index-warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
     <section class="panel">
@@ -2199,10 +2404,29 @@ async function renderIndexDetail(importId) {
       ? `Artists Index \u2013 ${importFilename}`
       : `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
 
-  const [artists, warnings] = await Promise.all([
+  const [artists, warnings, idxTemplates] = await Promise.all([
     api('GET', `/index/imports/${importId}/artists`).catch(e => ({ _error: e.message })),
     api('GET', `/index/imports/${importId}/warnings`).catch(() => []),
+    api('GET', '/index/templates').catch(() => []),
   ]);
+
+  // Populate index template picker
+  const _lastIdxTmplKey = 'catalogue_last_index_template';
+  const _lastIdxTmplId = localStorage.getItem(_lastIdxTmplKey) || '';
+  const idxTmplOpts = idxTemplates.length
+    ? idxTemplates.map(t => `<option value="${esc(t.id)}"${t.id === _lastIdxTmplId ? ' selected' : ''}>${esc(t.name)}</option>`).join('')
+    : '<option value="" disabled>No templates \u2014 create one in Templates</option>';
+  const exportPanel = document.getElementById('index-export-panel');
+  if (exportPanel) exportPanel.innerHTML = `
+    <div class="export-buttons">
+      <div class="template-row">
+        <label class="export-template-label">Template</label>
+        <select id="idx-tmpl-select-${esc(importId)}"${idxTemplates.length ? '' : ' disabled'}>${idxTmplOpts}</select>
+        <button class="btn btn-primary" onclick="downloadIndexExport('${esc(importId)}',this)">Export InDesign Tags (.txt)</button>
+      </div>
+    </div>`;
+  const _idxTmplSel = document.getElementById(`idx-tmpl-select-${importId}`);
+  if (_idxTmplSel) _idxTmplSel.addEventListener('change', () => localStorage.setItem(_lastIdxTmplKey, _idxTmplSel.value));
 
   // Warnings
   _renderIndexWarnings(warnings);
@@ -2743,9 +2967,15 @@ function _applyIndexFilter(query, countEl, totalArtists) {
 // ---------------------------------------------------------------------------
 
 async function downloadIndexExport(importId, btnEl) {
+  const sel = document.getElementById(`idx-tmpl-select-${importId}`);
+  const tid = sel?.value || null;
+  if (tid) localStorage.setItem('catalogue_last_index_template', tid);
+
   const restore = btnLoading(btnEl, 'Exporting');
   try {
-    const res = await fetch(`/index/imports/${importId}/export-tags`, {
+    let path = `/index/imports/${importId}/export-tags`;
+    if (tid) path += `?template_id=${encodeURIComponent(tid)}`;
+    const res = await fetch(path, {
       headers: { 'X-API-Key': _apiKey },
     });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }

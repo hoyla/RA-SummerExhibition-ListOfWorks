@@ -252,6 +252,24 @@ class TemplateOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Artists' Index Templates
+# ---------------------------------------------------------------------------
+
+
+class IndexTemplateBodyIn(BaseModel):
+    name: str
+    entry_style: str = "Index Text"
+    ra_surname_style: str = "RA Member Cap Surname"
+    ra_caps_style: str = "RA Caps"
+    cat_no_style: str = "Index works numbers"
+    honorifics_style: str = "Small caps"
+    expert_numbers_style: str = "Expert numbers"
+    quals_lowercase: bool = True
+    expert_numbers_enabled: bool = False
+    cat_no_separator: str = ","
+
+
+# ---------------------------------------------------------------------------
 # Artists' Index
 # ---------------------------------------------------------------------------
 
