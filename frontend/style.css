@@ -855,3 +855,58 @@ details.section-block[open] > .section-summary::before {
   color: var(--muted);
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------
+   Artists' Index
+   --------------------------------------------------------------------------- */
+
+.index-table {
+  width: 100%;
+}
+
+.index-table th,
+.index-table td {
+  vertical-align: top;
+}
+
+.index-table .col-lastname {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.index-table .col-ra {
+  text-align: center;
+  width: 40px;
+}
+
+.index-table .col-courtesy {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 200px;
+}
+
+.index-table .col-catnos {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  max-width: 260px;
+  word-break: break-word;
+}
+
+.badge-ra {
+  background: var(--ra-red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+.badge-company {
+  background: #6c757d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+}

@@ -176,13 +176,16 @@ function router() {
   _highlightNav();
   const hash = location.hash || '#/';
   const importMatch = hash.match(/^#\/import\/([^/]+)/);
+  const indexDetailMatch = hash.match(/^#\/index\/([^/]+)/);
   const tmplEditMatch = hash.match(/^#\/templates\/([^/]+)\/edit$/);
-  if (importMatch)        renderDetail(importMatch[1]);
-  else if (tmplEditMatch) renderTemplateEdit(tmplEditMatch[1]);
-  else if (hash === '#/templates') renderTemplates();
-  else if (hash === '#/audit')     renderAuditLog();
-  else if (hash === '#/settings')  renderSettings();
-  else                             renderList();
+  if (importMatch)             renderDetail(importMatch[1]);
+  else if (indexDetailMatch)   renderIndexDetail(indexDetailMatch[1]);
+  else if (tmplEditMatch)      renderTemplateEdit(tmplEditMatch[1]);
+  else if (hash === '#/index')      renderIndexList();
+  else if (hash === '#/templates')  renderTemplates();
+  else if (hash === '#/audit')      renderAuditLog();
+  else if (hash === '#/settings')   renderSettings();
+  else                              renderList();
 }
 
 window.addEventListener('hashchange', router);
@@ -203,6 +206,8 @@ function _auditActionLabel(action) {
     template_updated: 'Template updated',
     template_deleted: 'Template deleted',
     template_duplicated: 'Template duplicated',
+    index_artist_excluded: 'Artist excluded',
+    index_artist_included: 'Artist included',
   };
   return labels[action] || action;
 }
@@ -1714,6 +1719,337 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
     } else {
       showToast('Export downloaded', 'success', 2500);
     }
+  } catch (err) {
+    showToast(`Export failed: ${err.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+// ===========================================================================
+// Artists' Index
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Index — list page
+// ---------------------------------------------------------------------------
+
+async function renderIndexList() {
+  document.getElementById('app').innerHTML = `
+    <section class="panel">
+      <h3>Import Artists\u2019 Index</h3>
+      <form id="index-upload-form" class="upload-form">
+        <input type="file" id="index-file-input" accept=".xlsx,.xls" required>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </form>
+      <p id="index-upload-status" class="status-msg" style="margin-top:8px"></p>
+    </section>
+    <section class="panel">
+      <h3>Index Imports</h3>
+      <div id="index-imports-list">Loading\u2026</div>
+    </section>`;
+
+  document.getElementById('index-upload-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('index-file-input').files[0];
+    if (file) await handleIndexUpload(file);
+  });
+
+  await loadIndexImportList();
+}
+
+async function loadIndexImportList() {
+  const container = document.getElementById('index-imports-list');
+  try {
+    const imports = await api('GET', '/index/imports');
+    if (!imports.length) {
+      container.innerHTML = '<p class="muted">No index imports yet.</p>';
+      return;
+    }
+    const rows = imports.map(i => `
+      <tr>
+        <td><code class="import-id" title="${esc(i.id)}">${esc(i.id.slice(0, 8))}\u2026</code></td>
+        <td><a class="link" href="#/index/${esc(i.id)}">${esc(i.filename)}</a></td>
+        <td>${esc(formatDate(i.uploaded_at))}</td>
+        <td class="num">${i.artist_count}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="navigate('#/index/${esc(i.id)}')">View</button>
+          <button class="btn btn-sm btn-danger" onclick="handleIndexDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}', this)">Delete</button>
+        </td>
+      </tr>`).join('');
+    container.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>ID</th><th>Filename</th><th>Uploaded</th>
+          <th class="num">Artists</th>
+          <th>Actions</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (err) {
+    container.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+  }
+}
+
+async function handleIndexUpload(file) {
+  const statusEl = document.getElementById('index-upload-status');
+  const uploadBtn = document.querySelector('#index-upload-form .btn-primary');
+  const restore = btnLoading(uploadBtn, 'Uploading');
+  statusEl.textContent = 'Uploading\u2026';
+  statusEl.className = 'status-msg';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/index/import', { method: 'POST', body: form, headers: { 'X-API-Key': _apiKey } });
+    if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
+    if (!res.ok) { const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    statusEl.textContent = `\u2713 Uploaded (ID: ${data.import_id})`;
+    statusEl.className = 'status-msg success';
+    document.getElementById('index-file-input').value = '';
+    await loadIndexImportList();
+  } catch (err) {
+    statusEl.textContent = `Upload failed: ${err.message}`;
+    statusEl.className = 'status-msg error';
+  } finally {
+    restore();
+  }
+}
+
+async function handleIndexDelete(id, filename, btnEl) {
+  if (!confirm(`Delete index import \u201c${filename}\u201d? This cannot be undone.`)) return;
+  const restore = btnLoading(btnEl, 'Deleting');
+  try {
+    await api('DELETE', `/index/imports/${id}`);
+    showToast('Index import deleted', 'success', 3000);
+    await loadIndexImportList();
+  } catch (err) {
+    showToast(`Delete failed: ${err.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Index — detail page
+// ---------------------------------------------------------------------------
+
+let _indexArtistCache = {};  // artistId -> artist object
+
+async function renderIndexDetail(importId) {
+  _indexArtistCache = {};
+  document.getElementById('app').innerHTML = `
+    <div class="breadcrumb"><a href="#/index">\u2190 All Index Imports</a></div>
+    <h2 class="page-heading" id="index-detail-heading">Loading\u2026</h2>
+    <section class="panel">
+      <h3>Export</h3>
+      <div id="index-export-panel">
+        <div class="export-buttons">
+          <button class="btn btn-primary" onclick="downloadIndexExport('${esc(importId)}',this)">Export InDesign Tags (.txt)</button>
+        </div>
+      </div>
+    </section>
+    <section class="panel" id="index-warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
+    <section class="panel">
+      <h3>Artists</h3>
+      <div class="works-filter-bar">
+        <input type="text" id="index-filter" class="works-filter-input" placeholder="Filter by name, quals, or cat number\u2026" autocomplete="off">
+        <span id="index-filter-count" class="works-filter-count"></span>
+      </div>
+      <div id="index-artists-container"><p class="loading">Loading\u2026</p></div>
+    </section>`;
+
+  // Fetch import metadata
+  let importFilename = null;
+  try {
+    const imports = await api('GET', '/index/imports');
+    const thisImport = imports.find(i => i.id === importId);
+    if (thisImport) importFilename = thisImport.filename;
+  } catch (_) {}
+
+  document.getElementById('index-detail-heading').textContent =
+    importFilename
+      ? `Artists\u2019 Index \u2013 ${importFilename}`
+      : `Artists\u2019 Index \u2013 ${importId.slice(0, 8)}\u2026`;
+
+  const [artists, warnings] = await Promise.all([
+    api('GET', `/index/imports/${importId}/artists`).catch(e => ({ _error: e.message })),
+    api('GET', `/index/imports/${importId}/warnings`).catch(() => []),
+  ]);
+
+  // Warnings
+  _renderIndexWarnings(warnings);
+
+  if (artists._error) {
+    document.getElementById('index-artists-container').innerHTML = `<p class="error">${esc(artists._error)}</p>`;
+    return;
+  }
+
+  renderIndexArtists(importId, artists);
+}
+
+function _renderIndexWarnings(warnings) {
+  const panel = document.getElementById('index-warnings-panel');
+  if (!warnings.length) {
+    panel.innerHTML = '<p class="no-warnings">\u2713 No validation warnings</p>';
+    return;
+  }
+  panel.classList.add('has-warnings');
+  const rows = warnings.map(w => `<tr>
+    <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
+    <td>${esc(w.message)}</td>
+  </tr>`).join('');
+  panel.innerHTML = `
+    <h3>\u26a0 Validation Warnings (${warnings.length})</h3>
+    <details>
+      <summary class="warnings-toggle">Show detail</summary>
+      <table class="data-table warnings-table" style="margin-top:10px">
+        <thead><tr><th>Type</th><th>Message</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </details>`;
+}
+
+function renderIndexArtists(importId, artists) {
+  const container = document.getElementById('index-artists-container');
+  if (!artists.length) {
+    container.innerHTML = '<p class="muted">No artists found.</p>';
+    return;
+  }
+
+  _indexArtistCache = {};
+  for (const a of artists) _indexArtistCache[a.id] = a;
+
+  const filterInput = document.getElementById('index-filter');
+  const filterCount = document.getElementById('index-filter-count');
+  if (filterInput) {
+    filterInput.value = '';
+    filterCount.textContent = '';
+    filterInput.addEventListener('input', () => _applyIndexFilter(filterInput.value, filterCount, artists.length));
+  }
+
+  const rows = artists.map(a => indexArtistRowHTML(importId, a)).join('');
+  container.innerHTML = `
+    <table class="data-table index-table">
+      <thead><tr>
+        <th>Last Name</th>
+        <th>First Name</th>
+        <th>Title</th>
+        <th>Quals</th>
+        <th class="col-ra"><abbr title="Royal Academician">RA</abbr></th>
+        <th>Courtesy / Company</th>
+        <th>Cat Numbers</th>
+        <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function indexArtistRowHTML(importId, a) {
+  const included = a.include_in_export !== false;
+  const raBadge = a.is_ra_member
+    ? '<span class="badge badge-ra">RA</span>'
+    : (a.is_company ? '<span class="badge badge-company">Co.</span>' : '');
+
+  // Group cat numbers by courtesy
+  const courtesyGroups = {};
+  for (const cn of (a.cat_numbers || [])) {
+    const key = cn.courtesy || '';
+    if (!courtesyGroups[key]) courtesyGroups[key] = [];
+    courtesyGroups[key].push(cn.cat_no);
+  }
+  const catDisplay = Object.entries(courtesyGroups).map(([courtesy, nums]) => {
+    const numStr = nums.join(', ');
+    return courtesy ? `${numStr} (${courtesy})` : numStr;
+  }).join('; ');
+
+  const courtesyDisplay = a.company || Object.keys(courtesyGroups).filter(k => k).join('; ');
+
+  return `
+    <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}">
+      <td class="col-lastname">${esc(a.last_name ?? '')}</td>
+      <td>${esc(a.first_name ?? '')}</td>
+      <td>${esc(a.title ?? '')}</td>
+      <td>${esc(a.quals ?? '')}</td>
+      <td class="col-ra">${raBadge}</td>
+      <td class="col-courtesy">${esc(courtesyDisplay)}</td>
+      <td class="col-catnos">${esc(catDisplay)}</td>
+      <td class="col-include">
+        <input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="idx-incl-${esc(a.id)}"
+          ${included ? 'checked' : ''}
+          onchange="toggleIndexInclude('${esc(importId)}','${esc(a.id)}',this)">
+      </td>
+    </tr>`;
+}
+
+async function toggleIndexInclude(importId, artistId, checkbox) {
+  const nowIncluded = checkbox.checked;
+  checkbox.disabled = true;
+  try {
+    await api('PATCH', `/index/imports/${importId}/artists/${artistId}/exclude?exclude=${!nowIncluded}`);
+    const row = document.getElementById(`idx-${artistId}`);
+    if (row) row.className = `index-row ${nowIncluded ? '' : 'row-excluded'}`;
+    checkbox.className = `include-cb${nowIncluded ? '' : ' excluded'}`;
+  } catch (err) {
+    checkbox.checked = !nowIncluded;
+    showToast(`Toggle failed: ${err.message}`, 'error');
+  } finally {
+    checkbox.disabled = false;
+  }
+}
+
+function _applyIndexFilter(query, countEl, totalArtists) {
+  const q = query.trim().toLowerCase();
+  const rows = document.querySelectorAll('.index-row');
+  let visible = 0;
+  rows.forEach(row => {
+    if (!q) {
+      row.style.display = '';
+      visible++;
+      return;
+    }
+    const text = row.textContent.toLowerCase();
+    const match = text.includes(q);
+    row.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  if (q) {
+    countEl.textContent = `${visible} of ${totalArtists} artists`;
+  } else {
+    countEl.textContent = '';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Index — export download
+// ---------------------------------------------------------------------------
+
+async function downloadIndexExport(importId, btnEl) {
+  const restore = btnLoading(btnEl, 'Exporting');
+  try {
+    const res = await fetch(`/index/imports/${importId}/export-tags`, {
+      headers: { 'X-API-Key': _apiKey },
+    });
+    if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const ts = now.getFullYear().toString()
+      + String(now.getMonth() + 1).padStart(2, '0')
+      + String(now.getDate()).padStart(2, '0')
+      + '-'
+      + String(now.getHours()).padStart(2, '0')
+      + String(now.getMinutes()).padStart(2, '0')
+      + String(now.getSeconds()).padStart(2, '0');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `artists-index-${importId.slice(0, 8)}-${ts}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Index export downloaded', 'success', 2500);
   } catch (err) {
     showToast(`Export failed: ${err.message}`, 'error');
   } finally {
