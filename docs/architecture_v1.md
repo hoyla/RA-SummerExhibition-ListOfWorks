@@ -155,6 +155,8 @@ Validation warnings recorded during Index import.
 
 ## 4. Normalisation Layer
 
+### List of Works Normalisation
+
 `backend/app/services/normalisation_service.py`
 
 - **Price**: strips currency symbols, parses decimals; passes through `NFS`, `_`, blank
@@ -165,9 +167,84 @@ Validation warnings recorded during Index import.
 
 Principles: deterministic, idempotent, raw data never mutated.
 
+### Artists' Index Normalisation
+
+`backend/app/services/index_importer.py`
+
+The Index importer parses artist data from a different Excel schema and applies
+multi-pass normalisation.
+
+#### Index Excel Schema
+
+- **Required columns**: `Last Name`, `Cat Nos`
+- **Optional columns**: `Title`, `First Name`, `Quals`, `Company`, `Address 1`
+
+Header validation uses fuzzy matching (`difflib.get_close_matches`) to suggest
+corrections for misspelled column names.
+
+#### Multi-Artist Parsing
+
+When `last_name` starts with `"and "` or `"& "`, the row is treated as a
+multi-artist entry (e.g. "& Peter St John"):
+
+1. `first_name` is assumed to contain the primary artist's full name
+2. Known qualification tokens (RA, OBE, CBE, etc.) are stripped from
+   the end of `first_name` and merged into `quals`
+3. The remaining `first_name` is split — the last word becomes `last_name`,
+   everything before becomes `first_name`
+4. The original `last_name` value is stored as `second_artist`
+
+#### Multi-Name Detection
+
+Names containing `"and"`, `"with"`, or `&` (regex `\band\b|\bwith\b|\s&\s`)
+generate a `multi_artist_name` validation warning. Unlike multi-artist parsing,
+this only warns — it does not restructure the row.
+
+#### Company Detection
+
+Heuristic: has `last_name` AND no `first_name` AND no `quals`.
+If detected and no `Company` column value exists, `last_name` is copied into
+`company`. Generates a `possible_company` validation warning.
+
+#### RA Member Detection
+
+The `quals` string is checked (whole-word, case-insensitive) for tokens:
+`RA`, `PRA`, `PPRA`, `HON RA`, `HONRA`, `RA ELECT`, `EX OFFICIO`.
+
+#### Sort Key Generation
+
+`build_sort_key(last_name, first_name)` → `"{last_name} {first_name}"`,
+lowercased, accent-stripped (NFKD + remove combining marks).
+Companies (no `last_name`) sort by `first_name`.
+
+#### Display Name (Index Name)
+
+`build_index_name()` composes the final display string:
+
+| Type         | Pattern                                      | Example                              |
+| ------------ | -------------------------------------------- | ------------------------------------ |
+| Standard     | `Surname, [Title] FirstName quals`           | `Adams, Roger`                       |
+| RA member    | `Surname, FirstName quals`                   | `Parker, Cornelia cbe ra`            |
+| Company      | `CompanyName`                                | `Assemble`                           |
+| Multi-artist | `Surname, FirstName quals, and SecondArtist` | `Caruso, Adam ra, and Peter St John` |
+
+#### Cat Number Parsing
+
+Split on `;` or `,`; each token is stripped. Only digit-only tokens are
+stored as integers.
+
+#### Artist Merging (Pass 2)
+
+Rows are grouped by identity key: `title|first_name|last_name|quals`
+(all lowered and stripped). Rows **without** an `Address 1` (courtesy) value
+are merged into a single artist entry (cat numbers combined). Rows **with**
+an `Address 1` value each become separate entries (one per courtesy address).
+
 ---
 
 ## 4.1 Spreadsheet Validation
+
+### List of Works
 
 `backend/app/services/excel_importer.py`
 
@@ -180,9 +257,67 @@ Before importing, the header row is validated:
 - **Non-Excel files** and corrupt/empty spreadsheets → 400 with a clear message.
 - **Header-only spreadsheets** → import succeeds with an `empty_spreadsheet` warning.
 
+### Artists' Index
+
+`backend/app/services/index_importer.py`
+
+- **Required columns** (`Last Name`, `Cat Nos`) — missing any → 400 error.
+- **Optional columns** (`Title`, `First Name`, `Quals`, `Company`, `Address 1`) —
+  missing → import proceeds normally.
+- Fuzzy-match "did you mean?" suggestions for misspelled columns.
+
 ---
 
-## 5. Override Service
+## 4.2 Known Artists
+
+`backend/app/models/known_artist_model.py`  
+`backend/app/api/known_artists.py`
+
+A lookup table of known artists with pre-defined attributes. Used during
+Index import to correct names and set RA status without manual overrides.
+
+### KnownArtist Model
+
+| Column                   | Type    | Purpose                                  |
+| ------------------------ | ------- | ---------------------------------------- |
+| `id`                     | UUID PK |                                          |
+| `match_first_name`       | Text    | Match criterion (spreadsheet first name) |
+| `match_last_name`        | Text    | Match criterion (spreadsheet last name)  |
+| `resolved_first_name`    | Text    | Output first name                        |
+| `resolved_last_name`     | Text    | Output last name                         |
+| `resolved_quals`         | Text    | Output qualifications                    |
+| `resolved_second_artist` | Text    | Output second artist suffix              |
+| `resolved_is_company`    | Boolean | Override company flag                    |
+| `notes`                  | Text    | Human-readable explanation               |
+
+Unique constraint on `(match_first_name, match_last_name)`.
+
+### Matching Logic
+
+All `KnownArtist` rows are loaded into an in-memory dict keyed by
+`(match_first_name.strip().lower(), match_last_name.strip().lower())`.
+NULL fields normalise to empty string. Matching is **exact** (no fuzzy matching).
+
+### Seed Data
+
+Stored at `backend/seed_templates/known-artists.json` — a JSON array of objects.
+Seeded via `POST /known-artists/seed`; existing matches are skipped.
+`""` means "clear this field to None"; `null` or absent means "don't override".
+
+### Resolution Priority
+
+Known Artist values sit between normalised values and user overrides in the
+resolution chain:
+
+1. **User override** (highest priority)
+2. **Known Artist lookup**
+3. **Normalised values** (lowest priority)
+
+---
+
+## 5. Override Services
+
+### List of Works
 
 `backend/app/services/override_service.py`
 
@@ -191,6 +326,74 @@ Before importing, the header row is validated:
 Merges a Work ORM object with an optional WorkOverride. Each field prefers the
 override value if set, otherwise falls back to the normalised Work value.
 Returns an `EffectiveWork` dataclass used by the export renderer.
+
+### Artists' Index
+
+`backend/app/services/index_override_service.py`
+
+`resolve_index_artist(artist, override, known_artist=None) → EffectiveIndexArtist`
+
+Merges three layers for each IndexArtist:
+
+1. **User override** (`IndexArtistOverride.*_override` fields)
+2. **Known Artist lookup** (`KnownArtist.resolved_*` fields)
+3. **Normalised values** (from importer heuristics)
+
+Convention: `""` (empty string) means "clear this field to None";
+`None` means "don't override" (fall through to next layer).
+
+`EffectiveIndexArtist` contains: `index_name`, `title`, `first_name`,
+`last_name`, `quals`, `company`, `second_artist`, `is_ra_member`, `is_company`,
+`is_company_auto`, `sort_key`, `include_in_export`.
+
+Company handling: company flag follows override > known_artist > auto-detected.
+Companies never have a `second_artist` (cleared automatically).
+Sort key is recomputed from resolved values.
+
+---
+
+## 5.1 Re-import with Override Preservation
+
+`backend/app/services/excel_importer.py` → `reimport_excel()`
+
+Route: `PUT /imports/{id}/reimport` (LoW only; Index does not yet have re-import).
+
+1. Parse and validate the new Excel file (fail fast before touching data)
+2. Snapshot all existing overrides + `include_in_export` flags, keyed by `raw_cat_no`
+3. Delete all old data (work overrides → warnings → works → sections)
+4. Re-create sections and works from the new spreadsheet
+5. For each new work, if its `raw_cat_no` matches a preserved key, restore the
+   override and exclude flag (one-to-one, first match wins)
+6. Count matched / added / removed works
+7. Audit log entry with action `"reimport"` and counts
+
+Return: `{import_id, matched, added, removed, overrides_preserved}`
+
+---
+
+## 5.2 Export Diff
+
+`backend/app/services/export_diff_service.py`
+
+Compares resolved export data against a previously saved snapshot.
+
+- `save_export_snapshot(import_id, template_id, db)` — saves current resolved
+  data as an `ExportSnapshot` row
+- `compute_diff(import_id, template_id, db)` — computes a field-level diff
+  between the current data and the most recent snapshot
+
+Diff algorithm:
+
+1. Flatten section-grouped data into a dict keyed by catalogue number
+   (unnamed works get synthetic keys `__unnamed_N`; duplicates disambiguated
+   with `__posX_Y`)
+2. Compute added / removed / common key sets
+3. For common keys, compare each field: `number`, `artist`, `honorifics`,
+   `title`, `price_numeric`, `price_text`, `edition_total`,
+   `edition_price_numeric`, `artwork`, `medium`, plus section membership
+4. Return `{has_changes, previous_exported_at, added[], removed[], changed[], unchanged_count}`
+
+If no previous snapshot exists: `{has_changes: false, no_previous_export: true}`.
 
 ---
 
@@ -276,11 +479,12 @@ Controls all index export behaviour:
 
 Routes are split across focused modules under `backend/app/api/`:
 
-- `imports.py` — upload, list, sections, preview, warnings, delete
+- `imports.py` — upload, re-import, list, sections, preview, warnings, delete
 - `overrides.py` — per-work override CRUD and exclude toggle
 - `exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
 - `templates.py` — LoW export template CRUD and duplication
 - `normalisation_config.py` — global normalisation config
+- `known_artists.py` — Known Artists CRUD and seed
 - `index.py` — Index import, artists, overrides, warnings, export
 - `index_templates.py` — Index export template CRUD and duplication
 - `schemas.py` — centralised Pydantic request/response models
@@ -321,6 +525,16 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | PUT    | `/templates/{id}`                          | Update a template (non-builtin only)      |
 | DELETE | `/templates/{id}`                          | Soft-delete a template (non-builtin only) |
 | POST   | `/templates/{id}/duplicate`                | Clone a template                          |
+| PUT    | `/imports/{id}/reimport`                   | Re-import with override preservation      |
+| GET    | `/imports/{id}/export-diff`                | Diff against last export snapshot         |
+| GET    | `/imports/{id}/audit-log`                  | Audit log for an import                   |
+| GET    | `/audit-log`                               | Global audit log                          |
+| POST   | `/admin/cleanup-uploads`                   | Remove orphaned upload files              |
+| GET    | `/known-artists`                           | List all known artist rules               |
+| POST   | `/known-artists`                           | Create a known artist rule                |
+| PATCH  | `/known-artists/{id}`                      | Update a known artist rule                |
+| DELETE | `/known-artists/{id}`                      | Delete a known artist rule                |
+| POST   | `/known-artists/seed`                      | Seed known artists from JSON              |
 
 ### Artists' Index Routes
 
@@ -350,6 +564,22 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 ## 8. Frontend
 
 `frontend/` — vanilla JS SPA served at `/ui`.
+
+### Navigation
+
+Hash-based routing (`window.addEventListener('hashchange', router)`).
+Main navigation bar:
+
+| Nav item      | Hash          | View                    |
+| ------------- | ------------- | ----------------------- |
+| List of Works | `#/`          | LoW import list         |
+| Artists Index | `#/index`     | Index import list       |
+| Templates     | `#/templates` | Combined templates page |
+| Audit Log     | `#/audit`     | Audit log viewer        |
+| Settings      | `#/settings`  | Normalisation config    |
+
+Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
+`#/templates/{id}/edit`, `#/index-templates/{id}/edit`.
 
 ### List of Works
 

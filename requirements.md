@@ -2,8 +2,10 @@
 
 ## 1. System Overview
 
-The Catalogue Tool ingests Royal Academy exhibition catalogue Excel files,
-applies editorial overrides, and generates InDesign-ready Tagged Text exports.
+The Royal Academy's annual Summer Exhibition publishes a printed catalogue.
+The editorial team prepares exhibition data in Excel spreadsheets; this tool
+ingests those spreadsheets, lets editors review and correct the data, and
+generates InDesign Tagged Text files ready for import into the catalogue layout.
 
 The system supports two data products:
 
@@ -25,6 +27,8 @@ The system must:
 
 ### 2.1 Importing
 
+#### List of Works
+
 1. The system must accept Excel file uploads via API and UI.
 2. Each upload must create a new immutable Import record.
 3. The original filename must be stored.
@@ -37,6 +41,20 @@ The system must:
    - Non-Excel, corrupt, or empty files must be rejected with a clear error.
    - Missing optional columns must produce validation warnings (not errors).
    - Header-only spreadsheets (no data rows) must produce a warning.
+8. Re-import: a new Excel file can replace the data of an existing import while
+   preserving editorial overrides matched by catalogue number.
+
+#### Artists' Index
+
+1. Excel files with a different column schema (`Last Name`, `Cat Nos` required;
+   `Title`, `First Name`, `Quals`, `Company`, `Address 1` optional).
+2. Multi-artist cells (e.g. `& Peter St John` in `Last Name`) must be parsed
+   to extract primary and second artist names.
+3. Company vs individual must be auto-detected (last name only, no first name or quals).
+4. RA member status must be detected from qualification tokens.
+5. Rows must be merged by identity key when they share the same name/quals
+   and have no courtesy address (`Address 1`).
+6. Known Artists lookup must be applied to correct names and set RA status.
 
 ---
 

@@ -1,7 +1,10 @@
 # Royal Academy Summer Exhibition Catalogue Tool
 
-A tool for ingesting Royal Academy exhibition catalogue Excel files,
-applying editorial overrides, and generating clean InDesign Tagged Text exports.
+The Royal Academy's annual Summer Exhibition publishes a printed catalogue.
+The editorial team prepares exhibition data in Excel spreadsheets; this tool
+ingests those spreadsheets, lets editors review and correct the data, and
+generates InDesign Tagged Text files ready for import into the catalogue
+layout. It replaces a manual copy-and-format workflow.
 
 Supports two data products:
 
