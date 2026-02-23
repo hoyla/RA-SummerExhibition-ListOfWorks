@@ -1,4 +1,4 @@
-# InDesign Tagged Text Export Specification
+# InDesign Tagged Text export specification
 
 ## Encoding
 
@@ -17,7 +17,7 @@ error. Characters that don't exist in Mac Roman are passed through as InDesign's
 
 ---
 
-## File Structure
+## File structure
 
 ```
 <ASCII-MAC>\r
@@ -32,7 +32,7 @@ Sections are separated by a blank line (bare `\r`).
 
 ---
 
-## Component Layout
+## Component layout
 
 Each catalogue entry is a single paragraph. The field order, separators,
 and character styles are all configurable via `ExportConfig`.
@@ -72,7 +72,7 @@ relative to a wrapped field:
 
 ---
 
-## Separator Types
+## Separator types
 
 | Key           | Output                                              |
 | ------------- | --------------------------------------------------- |
@@ -85,7 +85,7 @@ relative to a wrapped field:
 
 ---
 
-## Character Styles
+## Character styles
 
 Each field can have an associated character style name. If non-empty, the
 value is wrapped: `<CharStyle:Name>value<CharStyle:>`. An empty style name
@@ -105,7 +105,7 @@ Default style names:
 
 ---
 
-## Edition Rules
+## Edition rules
 
 | Condition       | Output                    |
 | --------------- | ------------------------- |
@@ -118,7 +118,7 @@ The prefix `edition of` and bracketing are configurable via `ExportConfig`.
 
 ---
 
-## Price Rules
+## Price rules
 
 | Condition     | Output                          |
 | ------------- | ------------------------------- |
@@ -141,7 +141,7 @@ If `honorifics_lowercase=True`, honorifics are lowercased in the output.
 
 ---
 
-## Override Behaviour
+## Override behaviour
 
 When a `WorkOverride` exists for a work, its non-null values replace the
 corresponding normalised `Work` values before export. A `None` override field
@@ -151,12 +151,12 @@ means "use the Work value". An empty string override outputs nothing for that fi
 
 ---
 
-# Artists' Index Export Specification
+# Artists Index export specification
 
 The Artists' Index is exported as InDesign Tagged Text with the same encoding
 rules as the List of Works (ASCII-MAC, Mac Roman, CR line endings).
 
-## File Structure
+## File structure
 
 ```
 <ASCII-MAC>\r
@@ -171,7 +171,7 @@ rules as the List of Works (ASCII-MAC, Mac Roman, CR line endings).
 Entries are grouped alphabetically by the first letter of `sort_key`. A
 configurable section separator is inserted between letter groups.
 
-## Entry Format
+## Entry format
 
 Each artist entry is a single paragraph. The structure is:
 
@@ -179,7 +179,7 @@ Each artist entry is a single paragraph. The structure is:
 <ParaStyle:entry_style>[RA-styled name] [qualifications]\t[cat numbers][\texpert numbers]
 ```
 
-### RA Member Entries
+### RA member entries
 
 For artists where `is_ra_member` is `True`:
 
@@ -188,30 +188,30 @@ For artists where `is_ra_member` is `True`:
 3. **Qualifier** — rendered in `ra_caps_style` character style  
    (lowercased if `quals_lowercase=True`)
 
-### Non-RA Entries
+### Non-RA entries
 
 - Name rendered without character styles
 - Honorifics (if any) rendered in `honorifics_style`
 
-### Second Artist
+### Second artist
 
 Linked entries (`&`) and multi-name entries render a second artist name
 after the primary. The second artist gets independent RA styling when
 `second_artist_is_ra` is set.
 
-## Catalogue Numbers
+## Catalogue numbers
 
 Cat numbers are joined with `cat_no_separator` (default `,`). Each number
 is wrapped in `cat_no_style`. The separator itself can have an independent
 `cat_no_separator_style`.
 
-## Expert Numbers
+## Expert numbers
 
 When `expert_numbers_enabled=True`, expert numbers are appended after a
 right-aligned tab stop (`<cSpecialChar:Tab Align>`) and styled with
 `expert_numbers_style`.
 
-## Section Separator
+## Section separator
 
 Between letter groups, a separator is inserted. The `section_separator`
 field controls the type:
@@ -224,7 +224,7 @@ field controls the type:
 | `page_break`   | `<cSpecialChar:Page Break>` in styled paragraph   |
 | `none`         | No separator                                      |
 
-## IndexExportConfig Fields
+## IndexExportConfig fields
 
 | Field                     | Type    | Default       | Description                           |
 | ------------------------- | ------- | ------------- | ------------------------------------- |
@@ -241,7 +241,7 @@ field controls the type:
 | `section_separator`       | string  | `"paragraph"` | Separator type between letter groups  |
 | `section_separator_style` | string  | `""`          | Paragraph style for the separator     |
 
-## Override Behaviour
+## Override behaviour
 
 When an `IndexArtistOverride` exists, its non-null values replace the
 corresponding `IndexArtist` values before export. Override fields set to
