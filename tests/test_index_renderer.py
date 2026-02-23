@@ -1,0 +1,362 @@
+"""Tests for the Artists' Index renderer."""
+
+import pytest
+
+from backend.app.services.index_renderer import (
+    ArtistExportEntry,
+    IndexExportConfig,
+    render_index_tagged_text,
+    _render_name_part,
+    _render_quals,
+    _render_courtesy,
+    _render_cat_nos,
+    _cstyle,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _entry(
+    last_name=None,
+    first_name=None,
+    title=None,
+    quals=None,
+    company=None,
+    is_ra=False,
+    is_company=False,
+    courtesy=None,
+    cat_nos=None,
+    sort_key="",
+):
+    return ArtistExportEntry(
+        title=title,
+        first_name=first_name,
+        last_name=last_name,
+        quals=quals,
+        company=company,
+        is_ra_member=is_ra,
+        is_company=is_company,
+        sort_key=sort_key,
+        courtesy=courtesy,
+        cat_nos=cat_nos or [],
+    )
+
+
+CFG = IndexExportConfig()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — building blocks
+# ---------------------------------------------------------------------------
+
+
+class TestCstyle:
+    def test_basic(self):
+        assert _cstyle("Bold", "hello") == "<cstyle:Bold>hello<cstyle:>"
+
+    def test_empty_style(self):
+        assert _cstyle("", "hello") == "hello"
+
+
+class TestRenderCatNos:
+    def test_single(self):
+        result = _render_cat_nos([714], CFG)
+        assert result == "<cstyle:Index works numbers>714<cstyle:>"
+
+    def test_multiple(self):
+        result = _render_cat_nos([101, 205, 318], CFG)
+        assert result == (
+            "<cstyle:Index works numbers>101<cstyle:>"
+            ",<cstyle:Index works numbers> 205<cstyle:>"
+            ",<cstyle:Index works numbers> 318<cstyle:>"
+        )
+
+    def test_empty(self):
+        assert _render_cat_nos([], CFG) == ""
+
+
+class TestRenderQuals:
+    def test_ra_member(self):
+        result = _render_quals("CBE RA", True, CFG)
+        assert result == "<cstyle:RA Caps>cbe ra, <cstyle:>"
+
+    def test_non_ra(self):
+        result = _render_quals("OBE", False, CFG)
+        assert result == "<cstyle:Small caps>obe, <cstyle:>"
+
+    def test_no_quals(self):
+        assert _render_quals(None, False, CFG) == ""
+
+    def test_no_lowercase(self):
+        cfg = IndexExportConfig(quals_lowercase=False)
+        result = _render_quals("CBE RA", True, cfg)
+        assert result == "<cstyle:RA Caps>CBE RA, <cstyle:>"
+
+
+class TestRenderNamePart:
+    def test_simple(self):
+        e = _entry(last_name="Adams", first_name="Roger")
+        assert _render_name_part(e, CFG) == "Adams, Roger, "
+
+    def test_ra_member(self):
+        e = _entry(last_name="Parker", first_name="Cornelia", is_ra=True)
+        result = _render_name_part(e, CFG)
+        assert result == "<cstyle:RA Member Cap Surname>Parker, <cstyle:>Cornelia, "
+
+    def test_with_title(self):
+        e = _entry(last_name="Adjaye", first_name="David", title="Sir", is_ra=True)
+        result = _render_name_part(e, CFG)
+        assert result == "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>Sir David, "
+
+    def test_single_name_ra(self):
+        e = _entry(first_name="Assemble", is_ra=True)
+        result = _render_name_part(e, CFG)
+        assert result == "<cstyle:RA Member Cap Surname>Assemble, <cstyle:>"
+
+    def test_company(self):
+        e = _entry(last_name="AKT II", is_company=True)
+        result = _render_name_part(e, CFG)
+        assert result == "AKT II, "
+
+    def test_expert_numbers_enabled(self):
+        cfg = IndexExportConfig(expert_numbers_enabled=True)
+        e = _entry(last_name="8014")
+        result = _render_name_part(e, cfg)
+        assert result == "<cstyle:Expert numbers>8014<cstyle:>, "
+
+    def test_expert_numbers_partial(self):
+        """Name with leading digits like '51 Architecture'."""
+        cfg = IndexExportConfig(expert_numbers_enabled=True)
+        e = _entry(last_name="51 Architecture")
+        result = _render_name_part(e, cfg)
+        assert result == "<cstyle:Expert numbers>51<cstyle:> Architecture, "
+
+    def test_expert_numbers_disabled(self):
+        cfg = IndexExportConfig(expert_numbers_enabled=False)
+        e = _entry(last_name="8014")
+        result = _render_name_part(e, cfg)
+        assert result == "8014, "
+
+    def test_the_late(self):
+        e = _entry(
+            last_name="Ackroyd", first_name="Norman", title="The late Prof.", is_ra=True
+        )
+        result = _render_name_part(e, CFG)
+        assert (
+            result
+            == "<cstyle:RA Member Cap Surname>Ackroyd, <cstyle:>The late Prof. Norman, "
+        )
+
+
+class TestRenderCourtesy:
+    def test_courtesy(self):
+        assert (
+            _render_courtesy("Courtesy of Flowers Gallery", None)
+            == "Courtesy of Flowers Gallery, "
+        )
+
+    def test_company(self):
+        assert _render_courtesy(None, "Adjaye Associates") == "Adjaye Associates, "
+
+    def test_neither(self):
+        assert _render_courtesy(None, None) == ""
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — full render
+# ---------------------------------------------------------------------------
+
+
+class TestFullRender:
+    def test_simple_entry(self):
+        entries = [_entry(last_name="Adams", first_name="Roger", cat_nos=[1266, 1276])]
+        result = render_index_tagged_text(entries, CFG)
+        expected_line = (
+            "<pstyle:Index Text>Adams, Roger, "
+            "<cstyle:Index works numbers>1266<cstyle:>"
+            ",<cstyle:Index works numbers> 1276<cstyle:>"
+        )
+        assert expected_line in result
+
+    def test_ra_member_with_courtesy(self):
+        entries = [
+            _entry(
+                last_name="Armfield",
+                first_name="Diana",
+                quals="RA",
+                is_ra=True,
+                courtesy="courtesy of Browse and Draby",
+                cat_nos=[597, 948, 1428, 1429, 1430, 1431],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        assert "<cstyle:RA Member Cap Surname>Armfield, <cstyle:>" in result
+        assert "<cstyle:RA Caps>ra, <cstyle:>" in result
+        assert "courtesy of Browse and Draby, " in result
+        assert "<cstyle:Index works numbers>597<cstyle:>" in result
+
+    def test_ra_member_with_company(self):
+        entries = [
+            _entry(
+                last_name="Adjaye",
+                first_name="David",
+                title="Sir",
+                quals="OM OBE RA",
+                is_ra=True,
+                company="Adjaye Associates",
+                cat_nos=[124],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        assert "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>Sir David, " in result
+        assert "<cstyle:RA Caps>om obe ra, <cstyle:>" in result
+        assert "Adjaye Associates, " in result
+
+    def test_company_entry(self):
+        entries = [
+            _entry(
+                last_name="AKT II",
+                is_company=True,
+                company="AKT II",
+                cat_nos=[787, 788],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        assert "<pstyle:Index Text>AKT II, " in result
+
+    def test_single_name_ra(self):
+        entries = [
+            _entry(
+                first_name="Assemble",
+                quals="RA",
+                is_ra=True,
+                cat_nos=[607, 705, 721, 779, 780, 1589],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        assert "<cstyle:RA Member Cap Surname>Assemble, <cstyle:>" in result
+        assert "<cstyle:RA Caps>ra, <cstyle:>" in result
+
+    def test_header(self):
+        entries = [_entry(last_name="Test", first_name="A", cat_nos=[1])]
+        result = render_index_tagged_text(entries, CFG)
+        assert result.startswith("<ASCII-MAC>")
+
+    def test_line_separator(self):
+        """Lines separated by \\r (Mac line endings for InDesign)."""
+        entries = [
+            _entry(last_name="Adams", first_name="Roger", cat_nos=[1]),
+            _entry(last_name="Baker", first_name="Sue", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        lines = result.split("\r")
+        assert len(lines) == 3  # header + 2 entries
+
+    def test_multi_entry_sorted_output(self):
+        """Entries should appear in the order provided (pre-sorted)."""
+        entries = [
+            _entry(
+                last_name="Abramović",
+                first_name="Marina",
+                quals="HON RA",
+                is_ra=True,
+                courtesy="courtesy of Lisson Gallery",
+                cat_nos=[1170],
+                sort_key="abramovic marina",
+            ),
+            _entry(
+                last_name="Adams",
+                first_name="Roger",
+                cat_nos=[399],
+                sort_key="adams roger",
+            ),
+            _entry(
+                last_name="Parker",
+                first_name="Cornelia",
+                quals="CBE RA",
+                is_ra=True,
+                courtesy="courtesy of Frith Street Gallery",
+                cat_nos=[1216, 1238, 1452],
+                sort_key="parker cornelia",
+            ),
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        lines = result.split("\r")
+        # Line 1 = header, 2 = Abramovic, 3 = Adams, 4 = Parker
+        assert "Abramovi" in lines[1]
+        assert "Adams" in lines[2]
+        assert "Parker" in lines[3]
+
+    def test_non_ra_courtesy_entry(self):
+        """Non-RA artist with courtesy line."""
+        entries = [
+            _entry(
+                last_name="Armstrong-Jones",
+                first_name="Sarah",
+                courtesy="courtesy of The Redfern Gallery",
+                cat_nos=[1083],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        assert "Armstrong-Jones, Sarah, " in line
+        assert "courtesy of The Redfern Gallery, " in line
+        # Should NOT have RA styling
+        assert "RA Member Cap Surname" not in line
+        assert "RA Caps" not in line
+
+    def test_matches_edited_output_ackroyd(self):
+        """Compare against the known-good edited output for Ackroyd."""
+        entries = [
+            _entry(
+                last_name="Ackroyd",
+                first_name="Norman",
+                title="The late Prof.",
+                quals="CBE RA",
+                is_ra=True,
+                cat_nos=[57, 58, 59, 61, 62, 63],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "<cstyle:RA Member Cap Surname>Ackroyd, <cstyle:>"
+            "The late Prof. Norman, "
+            "<cstyle:RA Caps>cbe ra, <cstyle:>"
+            "<cstyle:Index works numbers>57<cstyle:>"
+            ",<cstyle:Index works numbers> 58<cstyle:>"
+            ",<cstyle:Index works numbers> 59<cstyle:>"
+            ",<cstyle:Index works numbers> 61<cstyle:>"
+            ",<cstyle:Index works numbers> 62<cstyle:>"
+            ",<cstyle:Index works numbers> 63<cstyle:>"
+        )
+        assert line == expected
+
+    def test_matches_edited_output_adjaye(self):
+        """Compare against the known-good edited output for Adjaye."""
+        entries = [
+            _entry(
+                last_name="Adjaye",
+                first_name="David",
+                title="Sir",
+                quals="OM OBE RA",
+                is_ra=True,
+                company="Adjaye Associates",
+                cat_nos=[124],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>"
+            "Sir David, "
+            "<cstyle:RA Caps>om obe ra, <cstyle:>"
+            "Adjaye Associates, "
+            "<cstyle:Index works numbers>124<cstyle:>"
+        )
+        assert line == expected
