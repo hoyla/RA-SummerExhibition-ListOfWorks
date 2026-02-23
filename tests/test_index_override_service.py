@@ -223,7 +223,7 @@ class TestResolveWithKnownArtist:
         assert eff.second_artist == "and Peter St John"
         assert eff.quals == "RA"  # preserved from artist
         assert eff.sort_key == "caruso adam"
-        assert eff.index_name == "Caruso, Adam, ra, and Peter St John"
+        assert eff.index_name == "Caruso, Adam ra, and Peter St John"
 
     def test_known_none_means_keep_normalised(self):
         """None in known_artist fields means 'keep normalised value'."""
@@ -313,24 +313,24 @@ class TestBuildIndexName:
 
     def test_with_quals(self):
         name = build_index_name("Parker", "Cornelia", None, "CBE RA", None, False)
-        assert name == "Parker, Cornelia, cbe ra"
+        assert name == "Parker, Cornelia cbe ra"
 
     def test_with_title(self):
         name = build_index_name("Adjaye", "David", "Sir", "OM OBE RA", None, False)
-        assert name == "Adjaye, Sir David, om obe ra"
+        assert name == "Adjaye, Sir David om obe ra"
 
     def test_company(self):
         assert build_index_name("AKT II", None, None, None, None, True) == "AKT II"
 
     def test_single_name_ra(self):
         name = build_index_name(None, "Assemble", None, "RA", None, False)
-        assert name == "Assemble, ra"
+        assert name == "Assemble ra"
 
     def test_second_artist(self):
         name = build_index_name(
             "Caruso", "Adam", None, "RA", "and Peter St John", False
         )
-        assert name == "Caruso, Adam, ra, and Peter St John"
+        assert name == "Caruso, Adam ra, and Peter St John"
 
     def test_company_partnership(self):
         assert (

@@ -512,32 +512,37 @@ function _kaPreviewIndexName(tr) {
   if (!surname) return '<span class="muted">&mdash;</span>';
 
   const isRa = _isRaMember(quals);
-  const parts = [];
+  const commaParts = [];
+  const nameParts = [];
 
   // Surname — RA members shown in uppercase
   if (isRa) {
-    parts.push(`<span class="idx-ra-styled" title="RA Member styling">${esc(surname)}</span>`);
+    commaParts.push(`<span class="idx-ra-styled" title="RA Member styling">${esc(surname)}</span>`);
   } else {
-    parts.push(esc(surname));
+    commaParts.push(esc(surname));
   }
 
   // First name (only when both names present and not a company)
   if (!isCompany && lastName && firstName) {
-    parts.push(esc(firstName));
+    commaParts.push(esc(firstName));
   }
 
-  // Quals as a pill
+  // Quals as a pill (space-separated, no comma)
   if (quals) {
     const pillClass = isRa ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
-    parts.push(`<span class="${pillClass}">${esc(quals)}</span>`);
+    nameParts.push(`<span class="${pillClass}">${esc(quals)}</span>`);
   }
 
-  // Second artist
+  // Second artist (comma-separated)
+  const suffixes = [];
   if (secondArtist) {
-    parts.push(esc(secondArtist));
+    suffixes.push(esc(secondArtist));
   }
 
-  return parts.join(', ');
+  let result = commaParts.join(', ');
+  if (nameParts.length) result += ' ' + nameParts.join(' ');
+  if (suffixes.length) result += ', ' + suffixes.join(', ');
+  return result;
 }
 
 /** Update the preview cell in a Known Artist row. */
@@ -2244,13 +2249,16 @@ function styledIndexName(a) {
   const surname = a.last_name || a.first_name || '';
   if (!surname) return '';
 
-  const parts = [];
+  // commaParts: surname, first name — joined with ", "
+  // nameParts: quals — joined with space after the name
+  const commaParts = [];
+  const nameParts = [];
 
   // Surname — RA members get a special visual indicator
   if (a.is_ra_member) {
-    parts.push(`<span class="idx-ra-styled" title="Styled as RA Member in print">${esc(surname)}</span>`);
+    commaParts.push(`<span class="idx-ra-styled" title="Styled as RA Member in print">${esc(surname)}</span>`);
   } else {
-    parts.push(esc(surname));
+    commaParts.push(esc(surname));
   }
 
   // First name with optional title (only when both names present, not a company)
@@ -2258,21 +2266,26 @@ function styledIndexName(a) {
     const rest = [];
     if (a.title) rest.push(esc(a.title));
     rest.push(esc(a.first_name));
-    parts.push(rest.join(' '));
+    commaParts.push(rest.join(' '));
   }
 
   // Quals — shown as a pill, different styling for RA vs non-RA
+  // Quals follow the name with a space (no comma), matching LoW convention
   if (a.quals) {
     const pillClass = a.is_ra_member ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
-    parts.push(`<span class="${pillClass}">${esc(a.quals)}</span>`);
+    nameParts.push(`<span class="${pillClass}">${esc(a.quals)}</span>`);
   }
 
   // Second artist suffix (never for companies — name is already complete)
+  const suffixes = [];
   if (a.second_artist && !a.is_company) {
-    parts.push(esc(a.second_artist));
+    suffixes.push(esc(a.second_artist));
   }
 
-  return parts.join(', ');
+  let result = commaParts.join(', ');
+  if (nameParts.length) result += ' ' + nameParts.join(' ');
+  if (suffixes.length) result += ', ' + suffixes.join(', ');
+  return result;
 }
 
 function indexArtistRowHTML(importId, a, groupColor) {

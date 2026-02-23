@@ -123,6 +123,18 @@ class TestRenderNamePart:
         result = _render_name_part(e, CFG)
         assert result == "AKT II, "
 
+    def test_has_quals_strips_comma_after_first_name(self):
+        """When quals follow, trailing separator after first name is space not comma."""
+        e = _entry(last_name="Parker", first_name="Cornelia", is_ra=True)
+        result = _render_name_part(e, CFG, has_quals=True)
+        assert result == "<cstyle:RA Member Cap Surname>Parker, <cstyle:>Cornelia "
+
+    def test_has_quals_single_name(self):
+        """Single-name entry with quals: surname separator is space not comma."""
+        e = _entry(first_name="Assemble", is_ra=True)
+        result = _render_name_part(e, CFG, has_quals=True)
+        assert result == "<cstyle:RA Member Cap Surname>Assemble <cstyle:>"
+
     def test_expert_numbers_enabled(self):
         cfg = IndexExportConfig(expert_numbers_enabled=True)
         e = _entry(last_name="8014")
@@ -213,7 +225,7 @@ class TestFullRender:
             )
         ]
         result = render_index_tagged_text(entries, CFG)
-        assert "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>Sir David, " in result
+        assert "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>Sir David " in result
         assert "<cstyle:RA Caps>om obe ra, <cstyle:>" in result
         assert "Adjaye Associates, " in result
 
@@ -239,7 +251,7 @@ class TestFullRender:
             )
         ]
         result = render_index_tagged_text(entries, CFG)
-        assert "<cstyle:RA Member Cap Surname>Assemble, <cstyle:>" in result
+        assert "<cstyle:RA Member Cap Surname>Assemble <cstyle:>" in result
         assert "<cstyle:RA Caps>ra, <cstyle:>" in result
 
     def test_header(self):
@@ -327,7 +339,7 @@ class TestFullRender:
         expected = (
             "<pstyle:Index Text>"
             "<cstyle:RA Member Cap Surname>Ackroyd, <cstyle:>"
-            "The late Prof. Norman, "
+            "The late Prof. Norman "
             "<cstyle:RA Caps>cbe ra, <cstyle:>"
             "<cstyle:Index works numbers>57<cstyle:>"
             ",<cstyle:Index works numbers> 58<cstyle:>"
@@ -356,7 +368,7 @@ class TestFullRender:
         expected = (
             "<pstyle:Index Text>"
             "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>"
-            "Sir David, "
+            "Sir David "
             "<cstyle:RA Caps>om obe ra, <cstyle:>"
             "Adjaye Associates, "
             "<cstyle:Index works numbers>124<cstyle:>"

@@ -73,37 +73,41 @@ def build_index_name(
 ) -> str:
     """Build the composite index name as it would appear in the printed index.
 
+    Quals follow the name with a space (no comma), matching the LoW
+    convention for honorifics.
+
     Examples:
       Adams, Roger
-      Parker, Cornelia, cbe ra
-      Adjaye, Sir David, om obe ra
+      Parker, Cornelia cbe ra
+      Adjaye, Sir David om obe ra
       Boyd & Evans
-      Assemble, ra
-      Caruso, Adam, ra, and Peter St John
+      Assemble ra
+      Caruso, Adam ra, and Peter St John
     """
     surname = last_name or first_name or ""
     if not surname:
         return ""
 
-    parts = [surname]
-
-    # First name with optional title (only when we have both names and not a company)
+    # Build the name portion (comma-separated surname + first name)
+    name_parts = [surname]
     if not is_company and last_name and first_name:
         rest = []
         if title:
             rest.append(title)
         rest.append(first_name)
-        parts.append(" ".join(rest))
+        name_parts.append(" ".join(rest))
 
-    # Quals (lowercased per print convention)
+    name = ", ".join(name_parts)
+
+    # Quals follow with a space (no comma)
     if quals:
-        parts.append(quals.lower())
+        name += " " + quals.lower()
 
-    # Second artist suffix (never for companies — name is already complete)
+    # Second artist suffix is comma-separated (never for companies)
     if second_artist and not is_company:
-        parts.append(second_artist)
+        name += ", " + second_artist
 
-    return ", ".join(parts)
+    return name
 
 
 # ---------------------------------------------------------------------------

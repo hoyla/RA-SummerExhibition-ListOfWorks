@@ -167,6 +167,7 @@ def _has_leading_digit(name: Optional[str]) -> bool:
 def _render_name_part(
     entry: ArtistExportEntry,
     cfg: IndexExportConfig,
+    has_quals: bool = False,
 ) -> str:
     """Render the name portion of an index entry.
 
@@ -206,15 +207,20 @@ def _render_name_part(
     else:
         surname_display = surname
 
+    # When quals follow directly, the last separator is a space not a comma
+    # so that we get "Parker, Cornelia cbe ra" not "Parker, Cornelia, cbe ra".
+    surname_sep = " " if (has_quals and not rest_parts) else ", "
+    rest_sep = " " if has_quals else ", "
+
     # Apply RA surname styling
     if entry.is_ra_member:
-        parts.append(_cstyle(cfg.ra_surname_style, surname_display + ", "))
+        parts.append(_cstyle(cfg.ra_surname_style, surname_display + surname_sep))
     else:
-        parts.append(surname_display + ", ")
+        parts.append(surname_display + surname_sep)
 
     # Add the rest (title + first name)
     if rest_parts:
-        parts.append(" ".join(rest_parts) + ", ")
+        parts.append(" ".join(rest_parts) + rest_sep)
 
     return "".join(parts)
 
@@ -269,8 +275,9 @@ def render_index_tagged_text(
     for entry in entries:
         line_parts: List[str] = [f"<pstyle:{cfg.entry_style}>"]
 
-        # Name
-        line_parts.append(_render_name_part(entry, cfg))
+        # Name (pass has_quals so separator is space not comma before quals)
+        has_quals = bool(entry.quals)
+        line_parts.append(_render_name_part(entry, cfg, has_quals=has_quals))
 
         # Qualifications
         line_parts.append(_render_quals(entry.quals, entry.is_ra_member, cfg))
