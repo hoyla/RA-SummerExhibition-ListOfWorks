@@ -957,6 +957,14 @@ async function renderIndexTemplateEdit(id) {
     return `<option value="${esc(v)}"${sel}>${label}</option>`;
   }).join('');
 
+  const _idxSectionSepOpts = (val) => [
+    ['paragraph',    'Paragraph return (blank line)'],
+    ['column_break', 'Column break'],
+    ['frame_break',  'Frame break'],
+    ['page_break',   'Page break'],
+    ['none',         'None (continuous)'],
+  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
+
   app.innerHTML = `
     <div style="margin-bottom:4px">${backLink}</div>
     <h2 class="page-heading">${heading}</h2>
@@ -1010,6 +1018,25 @@ async function renderIndexTemplateEdit(id) {
           <label>Cat number separator</label>
           <select id="idx-tmpl-cat-sep"${isBuiltin ? ' disabled' : ''}>${catSepOpts}</select>
         </div>
+        <div class="form-row">
+          <label>Cat sep. char style</label>
+          <input id="idx-tmpl-cat-sep-style" type="text" value="${esc(cfg.cat_no_separator_style ?? '')}"${ro} placeholder="(none)">
+        </div>
+      </div>
+    </section>
+
+    <h3 class="settings-group-heading">Section Separator</h3>
+    <section class="panel">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">What to insert between alphabetical letter groups in the export.</p>
+      <div class="settings-form">
+        <div class="form-row">
+          <label>Between letters</label>
+          <select id="idx-tmpl-section-sep"${isBuiltin ? ' disabled' : ''}>${_idxSectionSepOpts(cfg.section_separator ?? 'paragraph')}</select>
+        </div>
+        <div class="form-row">
+          <label>Separator style</label>
+          <input id="idx-tmpl-section-sep-style" value="${esc(cfg.section_separator_style ?? '')}"${isBuiltin ? ' disabled' : ''} placeholder="(none)">
+        </div>
       </div>
     </section>
 
@@ -1035,6 +1062,9 @@ async function saveIndexTemplate(id) {
     quals_lowercase:       document.getElementById('idx-tmpl-quals-lower')?.checked ?? true,
     expert_numbers_enabled: document.getElementById('idx-tmpl-expert-enabled')?.checked ?? false,
     cat_no_separator:      document.getElementById('idx-tmpl-cat-sep')?.value ?? ',',
+    cat_no_separator_style: (document.getElementById('idx-tmpl-cat-sep-style')?.value ?? '').trim(),
+    section_separator:      document.getElementById('idx-tmpl-section-sep')?.value ?? 'paragraph',
+    section_separator_style:(document.getElementById('idx-tmpl-section-sep-style')?.value ?? '').trim(),
   };
 
   const statusEl = document.getElementById('idx-tmpl-status');
@@ -2544,22 +2574,51 @@ function renderIndexArtists(importId, artists) {
     }
   }
 
-  const rows = artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''])).join('');
-  container.innerHTML = `
-    <table class="data-table index-table">
-      <thead><tr>
-        <th>Index Name</th>
-        <th>Last Name</th>
-        <th>First Name</th>
-        <th>Title</th>
-        <th class="col-quals">Quals</th>
-        <th>Courtesy / Company</th>
-        <th>Cat Numbers</th>
-        <th class="col-flags">Flags</th>
-        <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  // Group artists by first letter of sort_key
+  const letterGroups = [];
+  let currentLetter = null;
+  let currentGroup = null;
+  for (const a of artists) {
+    const ch = (a.sort_key || '?')[0].toUpperCase();
+    const letter = /\d/.test(ch) ? '#' : ch;
+    if (letter !== currentLetter) {
+      currentLetter = letter;
+      currentGroup = { letter, artists: [] };
+      letterGroups.push(currentGroup);
+    }
+    currentGroup.artists.push(a);
+  }
+
+  const theadHTML = `<thead><tr>
+    <th>Index Name</th>
+    <th>Last Name</th>
+    <th>First Name</th>
+    <th>Title</th>
+    <th class="col-quals">Quals</th>
+    <th>Courtesy / Company</th>
+    <th>Cat Numbers</th>
+    <th class="col-flags">Flags</th>
+    <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
+  </tr></thead>`;
+
+  container.innerHTML = letterGroups.map(g => {
+    const rows = g.artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''])).join('');
+    return `
+    <details class="section-block" open>
+      <summary class="section-summary">
+        <span class="section-name">${esc(g.letter)}</span>
+        <span class="section-meta">${g.artists.length} artist${g.artists.length !== 1 ? 's' : ''}</span>
+        <button type="button" class="btn btn-xs btn-secondary section-export-btn"
+          onclick="event.preventDefault();downloadIndexLetterExport('${esc(importId)}','${esc(g.letter)}',this)">
+          Export &ldquo;${esc(g.letter)}&rdquo;
+        </button>
+      </summary>
+      <table class="data-table index-table">
+        ${theadHTML}
+        <tbody>${rows}</tbody>
+      </table>
+    </details>`;
+  }).join('');
 }
 
 /**
@@ -2955,6 +3014,12 @@ function _applyIndexFilter(query, countEl, totalArtists) {
     row.style.display = match ? '' : 'none';
     if (match) visible++;
   });
+  // Show/hide letter-group blocks that have no visible rows
+  document.querySelectorAll('#index-artists-container .section-block').forEach(block => {
+    const visibleRows = block.querySelectorAll('.index-row');
+    const anyVisible = Array.from(visibleRows).some(r => r.style.display !== 'none');
+    block.style.display = (!q || anyVisible) ? '' : 'none';
+  });
   if (q) {
     countEl.textContent = `${visible} of ${totalArtists} artists`;
   } else {
@@ -2974,7 +3039,9 @@ async function downloadIndexExport(importId, btnEl) {
   const restore = btnLoading(btnEl, 'Exporting');
   try {
     let path = `/index/imports/${importId}/export-tags`;
-    if (tid) path += `?template_id=${encodeURIComponent(tid)}`;
+    const params = [];
+    if (tid) params.push(`template_id=${encodeURIComponent(tid)}`);
+    if (params.length) path += '?' + params.join('&');
     const res = await fetch(path, {
       headers: { 'X-API-Key': _apiKey },
     });
@@ -2998,6 +3065,47 @@ async function downloadIndexExport(importId, btnEl) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('Index export downloaded', 'success', 2500);
+  } catch (err) {
+    showToast(`Export failed: ${err.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+async function downloadIndexLetterExport(importId, letter, btnEl) {
+  const sel = document.getElementById(`idx-tmpl-select-${importId}`);
+  const tid = sel?.value || null;
+  if (tid) localStorage.setItem('catalogue_last_index_template', tid);
+
+  const restore = btnLoading(btnEl, 'Exporting');
+  try {
+    let path = `/index/imports/${importId}/export-tags`;
+    const params = [`letter=${encodeURIComponent(letter)}`];
+    if (tid) params.push(`template_id=${encodeURIComponent(tid)}`);
+    path += '?' + params.join('&');
+    const res = await fetch(path, {
+      headers: { 'X-API-Key': _apiKey },
+    });
+    if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const ts = now.getFullYear().toString()
+      + String(now.getMonth() + 1).padStart(2, '0')
+      + String(now.getDate()).padStart(2, '0')
+      + '-'
+      + String(now.getHours()).padStart(2, '0')
+      + String(now.getMinutes()).padStart(2, '0')
+      + String(now.getSeconds()).padStart(2, '0');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `artists-index-${letter}-${importId.slice(0, 8)}-${ts}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`Letter "${letter}" exported`, 'success', 2500);
   } catch (err) {
     showToast(`Export failed: ${err.message}`, 'error');
   } finally {

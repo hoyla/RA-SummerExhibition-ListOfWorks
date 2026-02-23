@@ -26,6 +26,9 @@ def _make_index_ruleset(db, *, name, is_builtin=False):
         "quals_lowercase": True,
         "expert_numbers_enabled": False,
         "cat_no_separator": ",",
+        "cat_no_separator_style": "",
+        "section_separator": "paragraph",
+        "section_separator_style": "",
     }
     r = Ruleset(
         name=name,
@@ -55,6 +58,9 @@ def _minimal_index_template_body(**overrides):
         "quals_lowercase": True,
         "expert_numbers_enabled": False,
         "cat_no_separator": ",",
+        "cat_no_separator_style": "",
+        "section_separator": "paragraph",
+        "section_separator_style": "",
     }
     body.update(overrides)
     return body

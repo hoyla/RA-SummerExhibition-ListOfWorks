@@ -9,5 +9,8 @@
   "expert_numbers_style": "Expert numbers",
   "quals_lowercase": true,
   "expert_numbers_enabled": false,
-  "cat_no_separator": ","
+  "cat_no_separator": ",",
+  "cat_no_separator_style": "",
+  "section_separator": "paragraph",
+  "section_separator_style": ""
 }

@@ -245,6 +245,34 @@ class TestExportIndex:
         r = client.get(f"/index/imports/{fake_id}/export-tags")
         assert r.status_code == 404
 
+    def test_export_letter_filter(self, client, db_session):
+        """?letter=A should include only Adams, not Parker."""
+        imp, _ = _seed_index_import(db_session)
+        r = client.get(f"/index/imports/{imp.id}/export-tags?letter=A")
+        assert r.status_code == 200
+        content = r.text
+        assert "Adams" in content
+        assert "Parker" not in content
+
+    def test_export_letter_filter_case_insensitive(self, client, db_session):
+        """?letter=p (lowercase) should still match Parker."""
+        imp, _ = _seed_index_import(db_session)
+        r = client.get(f"/index/imports/{imp.id}/export-tags?letter=p")
+        assert r.status_code == 200
+        content = r.text
+        assert "Parker" in content
+        assert "Adams" not in content
+
+    def test_export_letter_no_match_returns_header_only(self, client, db_session):
+        """?letter=Z should return just the header, no entries."""
+        imp, _ = _seed_index_import(db_session)
+        r = client.get(f"/index/imports/{imp.id}/export-tags?letter=Z")
+        assert r.status_code == 200
+        content = r.text
+        assert "<ASCII-MAC>" in content
+        assert "Adams" not in content
+        assert "Parker" not in content
+
 
 # ---------------------------------------------------------------------------
 # Delete

@@ -12,6 +12,8 @@ from backend.app.services.index_renderer import (
     _render_cat_nos,
     _cstyle,
     _split_second_artist_quals,
+    _letter_key,
+    _section_sep,
 )
 
 
@@ -75,6 +77,23 @@ class TestRenderCatNos:
             "<cstyle:Index works numbers>101<cstyle:>"
             ",<cstyle:Index works numbers> 205<cstyle:>"
             ",<cstyle:Index works numbers> 318<cstyle:>"
+        )
+
+    def test_separator_style(self):
+        cfg = IndexExportConfig(cat_no_separator_style="Sep Style")
+        result = _render_cat_nos([10, 20], cfg)
+        assert result == (
+            "<cstyle:Index works numbers>10<cstyle:>"
+            "<cstyle:Sep Style>,<cstyle:>"
+            "<cstyle:Index works numbers> 20<cstyle:>"
+        )
+
+    def test_semicolon_separator(self):
+        cfg = IndexExportConfig(cat_no_separator=";")
+        result = _render_cat_nos([10, 20], cfg)
+        assert result == (
+            "<cstyle:Index works numbers>10<cstyle:>"
+            ";<cstyle:Index works numbers> 20<cstyle:>"
         )
 
     def test_empty(self):
@@ -300,10 +319,10 @@ class TestFullRender:
         ]
         result = render_index_tagged_text(entries, CFG)
         lines = result.split("\r")
-        # Line 1 = header, 2 = Abramovic, 3 = Adams, 4 = Parker
+        # Line 0 = header, 1 = Abramovic, 2 = Adams, 3 = separator (A→P), 4 = Parker
         assert "Abramovi" in lines[1]
         assert "Adams" in lines[2]
-        assert "Parker" in lines[3]
+        assert "Parker" in lines[4]
 
     def test_non_ra_courtesy_entry(self):
         """Non-RA artist with courtesy line."""
@@ -466,3 +485,98 @@ class TestSecondArtistRaStyling:
             "<cstyle:Index works numbers>42<cstyle:>"
         )
         assert line == expected
+
+
+# ---------------------------------------------------------------------------
+# Section separator
+# ---------------------------------------------------------------------------
+
+
+class TestSectionSep:
+    def test_paragraph(self):
+        assert _section_sep("paragraph") == "\r"
+
+    def test_column_break(self):
+        assert _section_sep("column_break") == "<cnxc:Column>\r"
+
+    def test_frame_break(self):
+        assert _section_sep("frame_break") == "<cnxc:Frame>\r"
+
+    def test_page_break(self):
+        assert _section_sep("page_break") == "<cnxc:Page>\r"
+
+    def test_none(self):
+        assert _section_sep("none") == ""
+
+    def test_with_style(self):
+        assert _section_sep("paragraph", "Spacer") == "<pstyle:Spacer>\r"
+        assert (
+            _section_sep("column_break", "Spacer") == "<pstyle:Spacer><cnxc:Column>\r"
+        )
+
+
+class TestLetterKey:
+    def test_alpha(self):
+        assert _letter_key(_entry(sort_key="adams")) == "A"
+
+    def test_digit(self):
+        assert _letter_key(_entry(sort_key="8014")) == "#"
+
+    def test_uppercase(self):
+        assert _letter_key(_entry(sort_key="Zaha")) == "Z"
+
+
+class TestLetterGroupRendering:
+    def test_separator_between_letter_groups(self):
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Baker", sort_key="baker", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        parts = result.split("\r")
+        # <ASCII-MAC>, A entry, separator, B entry
+        assert len(parts) == 4
+        assert parts[0] == "<ASCII-MAC>"
+        assert "Adams" in parts[1]
+        assert parts[2] == ""  # blank paragraph separator
+        assert "Baker" in parts[3]
+
+    def test_no_separator_before_first(self):
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        parts = result.split("\r")
+        assert len(parts) == 2  # header + one entry
+
+    def test_no_separator_same_letter(self):
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Archer", sort_key="archer", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        parts = result.split("\r")
+        assert len(parts) == 3  # header + 2 entries, no separator
+
+    def test_none_separator(self):
+        cfg = IndexExportConfig(section_separator="none")
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Baker", sort_key="baker", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, cfg)
+        parts = result.split("\r")
+        # No separator injected between groups
+        assert len(parts) == 3  # header + 2 entries
+
+    def test_column_break_separator(self):
+        cfg = IndexExportConfig(
+            section_separator="column_break", section_separator_style="Spacer"
+        )
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Baker", sort_key="baker", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, cfg)
+        parts = result.split("\r")
+        assert "<pstyle:Spacer><cnxc:Column>" in parts[2]

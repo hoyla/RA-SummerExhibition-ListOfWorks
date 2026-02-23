@@ -41,6 +41,7 @@ from backend.app.services.index_renderer import (
     render_index_tagged_text,
     IndexExportConfig,
     DEFAULT_INDEX_CONFIG,
+    _letter_key,
 )
 
 router = APIRouter(prefix="/index", tags=["index"])
@@ -268,6 +269,15 @@ def _resolve_index_template(
         cat_no_separator=cfg.get(
             "cat_no_separator", DEFAULT_INDEX_CONFIG.cat_no_separator
         ),
+        cat_no_separator_style=cfg.get(
+            "cat_no_separator_style", DEFAULT_INDEX_CONFIG.cat_no_separator_style
+        ),
+        section_separator=cfg.get(
+            "section_separator", DEFAULT_INDEX_CONFIG.section_separator
+        ),
+        section_separator_style=cfg.get(
+            "section_separator_style", DEFAULT_INDEX_CONFIG.section_separator_style
+        ),
     )
 
 
@@ -275,12 +285,18 @@ def _resolve_index_template(
 def export_index_tags(
     import_id: UUID,
     template_id: UUID | None = Query(None),
+    letter: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Export Artists' Index as InDesign Tagged Text."""
+    """Export Artists' Index as InDesign Tagged Text.
+
+    Pass ?letter=A to export only the entries for that letter group.
+    """
     _get_index_import_or_404(import_id, db)
 
     entries = collect_index_entries(db, import_id)
+    if letter:
+        entries = [e for e in entries if _letter_key(e) == letter.upper()]
     cfg = _resolve_index_template(db, template_id)
     output = render_index_tagged_text(entries, cfg)
 

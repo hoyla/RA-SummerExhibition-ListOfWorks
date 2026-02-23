@@ -44,6 +44,13 @@ class IndexExportConfig:
     quals_lowercase: bool = True  # lowercase the quals string
     expert_numbers_enabled: bool = False  # apply Expert numbers style to leading digits
     cat_no_separator: str = ","  # separator between catalogue numbers
+    cat_no_separator_style: str = ""  # character style for the separator (empty = none)
+
+    # Section separator (between letter groups)
+    section_separator: str = (
+        "paragraph"  # paragraph | column_break | frame_break | page_break | none
+    )
+    section_separator_style: str = ""  # paragraph style for the separator line
 
 
 DEFAULT_INDEX_CONFIG = IndexExportConfig()
@@ -277,6 +284,21 @@ def _split_second_artist_quals(second_artist: str) -> Tuple[str, Optional[str]]:
     return (name, quals)
 
 
+def _section_sep(name: str, style: str = "") -> str:
+    """Return the InDesign tagged-text string for a section separator."""
+    prefix = f"<pstyle:{style}>" if style else ""
+    if name == "none":
+        return ""
+    if name == "column_break":
+        return f"{prefix}<cnxc:Column>\r"
+    if name == "frame_break":
+        return f"{prefix}<cnxc:Frame>\r"
+    if name == "page_break":
+        return f"{prefix}<cnxc:Page>\r"
+    # Default: paragraph (blank line)
+    return f"{prefix}\r"
+
+
 def _render_cat_nos(cat_nos: List[int], cfg: IndexExportConfig) -> str:
     """Render catalogue numbers, each individually styled.
 
@@ -285,14 +307,22 @@ def _render_cat_nos(cat_nos: List[int], cfg: IndexExportConfig) -> str:
     if not cat_nos:
         return ""
     style = cfg.cat_no_style
+    sep = cfg.cat_no_separator
+    sep_style = cfg.cat_no_separator_style
     parts: List[str] = []
     for i, num in enumerate(cat_nos):
         if i == 0:
             parts.append(_cstyle(style, str(num)))
         else:
-            # Comma outside the style, space inside the next styled span
-            parts.append(f",{_cstyle(style, ' ' + str(num))}")
+            styled_sep = _cstyle(sep_style, sep)
+            parts.append(f"{styled_sep}{_cstyle(style, ' ' + str(num))}")
     return "".join(parts)
+
+
+def _letter_key(entry: ArtistExportEntry) -> str:
+    """Return the uppercase first letter of the sort key, or '#' for digits."""
+    ch = (entry.sort_key or "?")[0].upper()
+    return "#" if ch.isdigit() else ch
 
 
 def render_index_tagged_text(
@@ -302,7 +332,17 @@ def render_index_tagged_text(
     """Render a list of ArtistExportEntry objects as InDesign Tagged Text."""
     lines: List[str] = ["<ASCII-MAC>"]
 
+    current_letter: Optional[str] = None
     for entry in entries:
+        letter = _letter_key(entry)
+        if letter != current_letter:
+            if current_letter is not None:
+                # Insert section separator between letter groups
+                sep = _section_sep(cfg.section_separator, cfg.section_separator_style)
+                if sep:
+                    # Strip trailing \r because "\r".join() already adds one
+                    lines.append(sep.rstrip("\r"))
+            current_letter = letter
         line_parts: List[str] = [f"<pstyle:{cfg.entry_style}>"]
 
         # Name (pass has_quals so separator is space not comma before quals)

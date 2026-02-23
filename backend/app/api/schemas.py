@@ -267,6 +267,9 @@ class IndexTemplateBodyIn(BaseModel):
     quals_lowercase: bool = True
     expert_numbers_enabled: bool = False
     cat_no_separator: str = ","
+    cat_no_separator_style: str = ""
+    section_separator: str = "paragraph"
+    section_separator_style: str = ""
 
 
 # ---------------------------------------------------------------------------
