@@ -1,6 +1,6 @@
-# Catalogue Tool – Architecture
+# Catalogue tool – architecture
 
-## 1. System Overview
+## 1. System overview
 
 The Catalogue Tool ingests Royal Academy exhibition catalogue data,
 applies editorial overrides, and generates InDesign-ready Tagged Text exports.
@@ -9,7 +9,7 @@ It supports two products:
 1. **List of Works (LoW)** — structured catalogue entries grouped by gallery section.
 2. **Artists' Index** — alphabetical artist listing with catalogue number references.
 
-### List of Works Data Flow
+### List of Works data flow
 
 ```
 Excel Upload
@@ -20,7 +20,7 @@ Excel Upload
   → Export Layer  →  InDesign Tagged Text / JSON / XML / CSV
 ```
 
-### Artists' Index Data Flow
+### Artists Index data flow
 
 ```
 Excel Upload
@@ -33,7 +33,7 @@ Excel Upload
 
 ---
 
-## 2. Technology Stack
+## 2. Technology stack
 
 | Layer      | Technology                        |
 | ---------- | --------------------------------- |
@@ -48,7 +48,7 @@ Excel Upload
 
 ---
 
-## 3. Data Model
+## 3. Data model
 
 ### Import
 
@@ -153,9 +153,9 @@ Validation warnings recorded during Index import.
 
 ---
 
-## 4. Normalisation Layer
+## 4. Normalisation layer
 
-### List of Works Normalisation
+### List of Works normalisation
 
 `backend/app/services/normalisation_service.py`
 
@@ -167,14 +167,14 @@ Validation warnings recorded during Index import.
 
 Principles: deterministic, idempotent, raw data never mutated.
 
-### Artists' Index Normalisation
+### Artists Index normalisation
 
 `backend/app/services/index_importer.py`
 
 The Index importer parses artist data from a different Excel schema and applies
 multi-pass normalisation.
 
-#### Index Excel Schema
+#### Index Excel schema
 
 - **Required columns**: `Last Name`, `Cat Nos`
 - **Optional columns**: `Title`, `First Name`, `Quals`, `Company`, `Address 1`
@@ -182,7 +182,7 @@ multi-pass normalisation.
 Header validation uses fuzzy matching (`difflib.get_close_matches`) to suggest
 corrections for misspelled column names.
 
-#### Multi-Artist Parsing
+#### Multi-artist parsing
 
 When `last_name` starts with `"and "` or `"& "`, the row is treated as a
 multi-artist entry (e.g. "& Peter St John"):
@@ -194,24 +194,24 @@ multi-artist entry (e.g. "& Peter St John"):
    everything before becomes `first_name`
 4. The original `last_name` value is stored as `second_artist`
 
-#### Multi-Name Detection
+#### Multi-name detection
 
 Names containing `"and"`, `"with"`, or `&` (regex `\band\b|\bwith\b|\s&\s`)
 generate a `multi_artist_name` validation warning. Unlike multi-artist parsing,
 this only warns — it does not restructure the row.
 
-#### Company Detection
+#### Company detection
 
 Heuristic: has `last_name` AND no `first_name` AND no `quals`.
 If detected and no `Company` column value exists, `last_name` is copied into
 `company`. Generates a `possible_company` validation warning.
 
-#### RA Member Detection
+#### RA member detection
 
 The `quals` string is checked (whole-word, case-insensitive) for tokens:
 `RA`, `PRA`, `PPRA`, `HON RA`, `HONRA`, `RA ELECT`, `EX OFFICIO`.
 
-#### Sort Key Generation
+#### Sort key generation
 
 `build_sort_key(last_name, first_name)` → `"{last_name} {first_name}"`,
 lowercased, accent-stripped (NFKD + remove combining marks).
@@ -228,12 +228,12 @@ Companies (no `last_name`) sort by `first_name`.
 | Company      | `CompanyName`                                | `Assemble`                           |
 | Multi-artist | `Surname, FirstName quals, and SecondArtist` | `Caruso, Adam ra, and Peter St John` |
 
-#### Cat Number Parsing
+#### Cat Number parsing
 
 Split on `;` or `,`; each token is stripped. Only digit-only tokens are
 stored as integers.
 
-#### Artist Merging (Pass 2)
+#### Artist merging (Pass 2)
 
 Rows are grouped by identity key: `title|first_name|last_name|quals`
 (all lowered and stripped). Rows **without** an `Address 1` (courtesy) value
@@ -242,7 +242,7 @@ an `Address 1` value each become separate entries (one per courtesy address).
 
 ---
 
-## 4.1 Spreadsheet Validation
+## 4.1 Spreadsheet validation
 
 ### List of Works
 
@@ -257,7 +257,7 @@ Before importing, the header row is validated:
 - **Non-Excel files** and corrupt/empty spreadsheets → 400 with a clear message.
 - **Header-only spreadsheets** → import succeeds with an `empty_spreadsheet` warning.
 
-### Artists' Index
+### Artists Index
 
 `backend/app/services/index_importer.py`
 
@@ -268,7 +268,7 @@ Before importing, the header row is validated:
 
 ---
 
-## 4.2 Known Artists
+## 4.2 Known artists
 
 `backend/app/models/known_artist_model.py`  
 `backend/app/api/known_artists.py`
@@ -276,7 +276,7 @@ Before importing, the header row is validated:
 A lookup table of known artists with pre-defined attributes. Used during
 Index import to correct names and set RA status without manual overrides.
 
-### KnownArtist Model
+### KnownArtist model
 
 | Column                   | Type    | Purpose                                  |
 | ------------------------ | ------- | ---------------------------------------- |
@@ -292,19 +292,19 @@ Index import to correct names and set RA status without manual overrides.
 
 Unique constraint on `(match_first_name, match_last_name)`.
 
-### Matching Logic
+### Matching logic
 
 All `KnownArtist` rows are loaded into an in-memory dict keyed by
 `(match_first_name.strip().lower(), match_last_name.strip().lower())`.
 NULL fields normalise to empty string. Matching is **exact** (no fuzzy matching).
 
-### Seed Data
+### Seed data
 
 Stored at `backend/seed_templates/known-artists.json` — a JSON array of objects.
 Seeded via `POST /known-artists/seed`; existing matches are skipped.
 `""` means "clear this field to None"; `null` or absent means "don't override".
 
-### Resolution Priority
+### Resolution priority
 
 Known Artist values sit between normalised values and user overrides in the
 resolution chain:
@@ -315,7 +315,7 @@ resolution chain:
 
 ---
 
-## 5. Override Services
+## 5. Override services
 
 ### List of Works
 
@@ -327,7 +327,7 @@ Merges a Work ORM object with an optional WorkOverride. Each field prefers the
 override value if set, otherwise falls back to the normalised Work value.
 Returns an `EffectiveWork` dataclass used by the export renderer.
 
-### Artists' Index
+### Artists Index
 
 `backend/app/services/index_override_service.py`
 
@@ -352,7 +352,7 @@ Sort key is recomputed from resolved values.
 
 ---
 
-## 5.1 Re-import with Override Preservation
+## 5.1 Re-import with override preservation
 
 `backend/app/services/excel_importer.py` → `reimport_excel()`
 
@@ -371,7 +371,7 @@ Return: `{import_id, matched, added, removed, overrides_preserved}`
 
 ---
 
-## 5.2 Export Diff
+## 5.2 Export diff
 
 `backend/app/services/export_diff_service.py`
 
@@ -397,9 +397,9 @@ If no previous snapshot exists: `{has_changes: false, no_previous_export: true}`
 
 ---
 
-## 6. Export Layer
+## 6. Export layer
 
-### List of Works Export
+### List of Works export
 
 `backend/app/services/export_renderer.py`
 
@@ -435,11 +435,11 @@ Each component in the entry layout:
 - `next_component_position` — where the next component starts after a wrapped field:
   `'end_of_text'` (after all wrapped lines) or `'end_of_first_line'` (on the same first line)
 
-### JSON Export
+### JSON export
 
 Structured JSON output with sections → works hierarchy, also available.
 
-### Artists' Index Export
+### Artists Index export
 
 `backend/app/services/index_renderer.py`
 
@@ -462,13 +462,13 @@ Controls all index export behaviour:
 - `section_separator` — separator between letter groups (`paragraph`, `column_break`, `frame_break`, `page_break`, `none`)
 - `section_separator_style` — paragraph style for the separator
 
-#### Letter Group Logic
+#### Letter group logic
 
 - `_letter_key(entry)` — returns uppercase first letter of `sort_key`, or `#` for digits
 - Entries are grouped by letter key and sorted within each group
 - `_section_sep()` inserts the configured separator between groups
 
-#### Second Artist Handling
+#### Second artist handling
 
 - Linked entries (`&`) and multi-name entries render `second_artist_name`
   with independent RA styling when `second_artist_is_ra` is set
@@ -495,7 +495,7 @@ Routes are split across focused modules under `backend/app/api/`:
 All routes under `/`. Protected by API key if `API_KEY` env var is set.
 CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 
-### List of Works Routes
+### List of Works routes
 
 | Method | Path                                       | Description                               |
 | ------ | ------------------------------------------ | ----------------------------------------- |
@@ -536,7 +536,7 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | DELETE | `/known-artists/{id}`                      | Delete a known artist rule                |
 | POST   | `/known-artists/seed`                      | Seed known artists from JSON              |
 
-### Artists' Index Routes
+### Artists Index routes
 
 | Method | Path                                         | Description                          |
 | ------ | -------------------------------------------- | ------------------------------------ |
@@ -590,7 +590,7 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 - Validation warnings panel per import (filterable badge summary by warning type)
 - Export buttons (full import and per-section) with template selector
 
-### Artists' Index
+### Artists Index
 
 - Index import list with upload and delete
 - Artist entries grouped by letter in collapsible `<details>` blocks
@@ -610,7 +610,7 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 
 ---
 
-## 9. Database Migrations
+## 9. Database migrations
 
 `backend/alembic/` — Alembic migration framework.
 
@@ -621,7 +621,7 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 
 ---
 
-## 10. Design Principles
+## 10. Design principles
 
 - Raw data is sacred and never mutated
 - Normalisation is deterministic and idempotent
