@@ -2215,19 +2215,54 @@ async function renderIndexDetail(importId) {
   renderIndexArtists(importId, artists);
 }
 
+// ---------------------------------------------------------------------------
+// Index warnings panel state (filter toggles survive re-renders)
+// ---------------------------------------------------------------------------
+let _indexWarningsAll = [];
+let _hiddenIndexWarningTypes = new Set();
+
 function _renderIndexWarnings(warnings) {
+  _indexWarningsAll = warnings;
+  _hiddenIndexWarningTypes = new Set();
+  _buildIndexWarningsPanel();
+}
+
+function _buildIndexWarningsPanel() {
+  const warnings = _indexWarningsAll;
   const panel = document.getElementById('index-warnings-panel');
   if (!warnings.length) {
     panel.innerHTML = '<p class="no-warnings">\u2713 No validation warnings</p>';
     return;
   }
   panel.classList.add('has-warnings');
-  const rows = warnings.map(w => `<tr>
+
+  // Summary counts by type
+  const counts = {};
+  for (const w of warnings) {
+    counts[w.warning_type] = (counts[w.warning_type] || 0) + 1;
+  }
+  const summaryBadges = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, n]) => {
+      const muted = _hiddenIndexWarningTypes.has(type);
+      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click to show' : 'Click to hide'}">${esc(type)}: ${n}</button>`;
+    }).join('');
+
+  // Detailed rows — filtered by hidden types
+  const visible = warnings.filter(w => !_hiddenIndexWarningTypes.has(w.warning_type));
+  const rows = visible.map(w => `<tr>
     <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
     <td>${esc(w.message)}</td>
   </tr>`).join('');
+
+  const hiddenCount = warnings.length - visible.length;
+  const countLabel = hiddenCount > 0
+    ? `${visible.length} shown of ${warnings.length}`
+    : String(warnings.length);
+
   panel.innerHTML = `
-    <h3>\u26a0 Validation Warnings (${warnings.length})</h3>
+    <h3>\u26a0 Validation Warnings (${countLabel})</h3>
+    <div class="warning-filter-bar">${summaryBadges}</div>
     <details>
       <summary class="warnings-toggle">Show detail</summary>
       <table class="data-table warnings-table" style="margin-top:10px">
@@ -2235,6 +2270,19 @@ function _renderIndexWarnings(warnings) {
         <tbody>${rows}</tbody>
       </table>
     </details>`;
+
+  // Attach badge click handlers
+  panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      if (_hiddenIndexWarningTypes.has(type)) {
+        _hiddenIndexWarningTypes.delete(type);
+      } else {
+        _hiddenIndexWarningTypes.add(type);
+      }
+      _buildIndexWarningsPanel();
+    });
+  });
 }
 
 function renderIndexArtists(importId, artists) {
