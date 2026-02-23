@@ -422,3 +422,25 @@ def test_no_newlines_still_auto_wraps():
     # The title is 70 chars, max 30, so it must wrap
     lines_in_output = output.count("A title")
     assert lines_in_output >= 1  # at least present
+
+
+def test_manual_line_breaks_strip_whitespace():
+    """Spaces around manual line breaks should be stripped."""
+    db = _manual_break_db(title="First line \n  Second line")
+    cfg = ExportConfig(
+        components=[
+            ComponentConfig(field="work_number", separator_after="tab"),
+            ComponentConfig(
+                field="title",
+                separator_after="soft_return",
+                max_line_chars=80,
+            ),
+            ComponentConfig(field="artist", separator_after="none"),
+        ],
+    )
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    # No leading/trailing spaces on wrapped lines
+    assert "First line" in output
+    assert "Second line" in output
+    assert "First line " not in output
+    assert " Second line" not in output
