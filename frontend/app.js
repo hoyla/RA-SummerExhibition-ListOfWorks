@@ -487,21 +487,27 @@ function _isRaMember(quals) {
 /**
  * Build a styled Index Name preview from a Known Artist row's fields.
  * Uses resolved values where set, falling back to match values.
+ * Respects the "cleared" state (empty string = clear the field).
  */
 function _kaPreviewIndexName(tr) {
   const v = (cls) => tr.querySelector(cls)?.value?.trim() || '';
-  const resFirst = v('.ka-res-first');
-  const resLast = v('.ka-res-last');
   const matchFirst = v('.ka-match-first');
   const matchLast = v('.ka-match-last');
-  const resQuals = v('.ka-res-quals');
-  const resSecond = v('.ka-res-second');
   const isCompany = tr.querySelector('.ka-company')?.checked || false;
 
-  // Effective values: resolved overrides match
-  const firstName = resFirst || matchFirst;
-  const lastName = resLast || matchLast;
-  const quals = resQuals; // no fallback — original quals unknown
+  // Resolve each field: cleared → empty, has value → use it, otherwise → match value
+  function resolve(inputCls, matchVal) {
+    const cell = tr.querySelector(inputCls)?.closest('.ka-res-cell');
+    const clearBtn = cell?.querySelector('.ka-clear-btn');
+    if (clearBtn && clearBtn.classList.contains('ka-clear-active')) return ''; // explicitly cleared
+    const val = tr.querySelector(inputCls)?.value?.trim() || '';
+    return val || matchVal; // fall back to match value
+  }
+
+  const firstName = resolve('.ka-res-first', matchFirst);
+  const lastName = resolve('.ka-res-last', matchLast);
+  const quals = resolve('.ka-res-quals', '');
+  const secondArtist = resolve('.ka-res-second', '');
   const surname = lastName || firstName || '';
   if (!surname) return '<span class="muted">&mdash;</span>';
 
@@ -527,8 +533,8 @@ function _kaPreviewIndexName(tr) {
   }
 
   // Second artist
-  if (resSecond) {
-    parts.push(esc(resSecond));
+  if (secondArtist) {
+    parts.push(esc(secondArtist));
   }
 
   return parts.join(', ');
@@ -545,15 +551,59 @@ function _refreshAllKaPreviews() {
   document.querySelectorAll('#known-artists-table tbody tr').forEach(_updateKaPreview);
 }
 
+/**
+ * Build a resolved field cell with a clear toggle.
+ * Three states:
+ *   null  → input empty, placeholder "no change", clear button inactive
+ *   ""    → input disabled, shows "(cleared)", clear button active
+ *   "val" → input has text, clear button inactive
+ */
+function _kaResolvedCell(cls, value, showClear) {
+  const isCleared = value === '';
+  const hasValue = value !== null && value !== '';
+  const displayVal = hasValue ? esc(value) : '';
+  const clearActive = isCleared ? ' ka-clear-active' : '';
+  const clearBtn = showClear
+    ? ` <button type="button" class="ka-clear-btn${clearActive}" title="${isCleared ? 'Undo clear (revert to no change)' : 'Clear this field (set to empty)'}" onclick="_toggleKaClear(this)">\u2298</button>`
+    : '';
+  return `<td class="ka-res-cell"><input type="text" class="${cls}" value="${displayVal}" placeholder="${isCleared ? '(cleared)' : 'no change'}" ${isCleared ? 'disabled' : ''} oninput="_onKaResInput(this)">${clearBtn}</td>`;
+}
+
+/** When user types in a resolved field, deactivate clear state. */
+function _onKaResInput(input) {
+  const clearBtn = input.parentElement.querySelector('.ka-clear-btn');
+  if (clearBtn) clearBtn.classList.remove('ka-clear-active');
+  input.disabled = false;
+  input.placeholder = 'no change';
+  _updateKaPreview(input.closest('tr'));
+}
+
+/** Toggle a resolved field between "no change" (null) and "cleared" (""). */
+function _toggleKaClear(btn) {
+  const input = btn.parentElement.querySelector('input[type="text"]');
+  const isActive = btn.classList.toggle('ka-clear-active');
+  if (isActive) {
+    input.value = '';
+    input.disabled = true;
+    input.placeholder = '(cleared)';
+    btn.title = 'Undo clear (revert to no change)';
+  } else {
+    input.disabled = false;
+    input.placeholder = 'no change';
+    btn.title = 'Clear this field (set to empty)';
+  }
+  _updateKaPreview(input.closest('tr'));
+}
+
 function _knownArtistRow(ka) {
   const id = ka.id || '';
   return `<tr data-ka-id="${esc(id)}">
     <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
     <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
-    <td><input type="text" class="ka-res-first" value="${esc(ka.resolved_first_name ?? '')}" placeholder="no change" oninput="_updateKaPreview(this.closest('tr'))"></td>
-    <td><input type="text" class="ka-res-last" value="${esc(ka.resolved_last_name ?? '')}" placeholder="no change" oninput="_updateKaPreview(this.closest('tr'))"></td>
-    <td><input type="text" class="ka-res-quals" value="${esc(ka.resolved_quals ?? '')}" placeholder="no change" oninput="_updateKaPreview(this.closest('tr'))"></td>
-    <td><input type="text" class="ka-res-second" value="${esc(ka.resolved_second_artist ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    ${_kaResolvedCell('ka-res-first', ka.resolved_first_name, true)}
+    ${_kaResolvedCell('ka-res-last', ka.resolved_last_name, true)}
+    ${_kaResolvedCell('ka-res-quals', ka.resolved_quals, true)}
+    ${_kaResolvedCell('ka-res-second', ka.resolved_second_artist, true)}
     <td style="text-align:center"><input type="checkbox" class="ka-company" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_is_company ? ' checked' : ''}></td>
     <td class="ka-preview col-index-name"></td>
     <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"></td>
@@ -575,18 +625,31 @@ function addKnownArtistRow() {
 }
 
 function _readKaRow(tr) {
-  const val = (cls) => tr.querySelector(cls)?.value?.trim() || null;
   const companyEl = tr.querySelector('.ka-company');
   // Checkbox: checked = true, unchecked = null (don't override).
-  // We use indeterminate state to distinguish "no opinion" from "not a company".
   const isCompany = companyEl?.checked ? true : null;
+
+  // Resolved fields: three states
+  //   clear button active (input disabled) → "" (clear the field)
+  //   input has text                       → text value
+  //   input empty, not cleared             → null (no change)
+  function resVal(cls) {
+    const cell = tr.querySelector(cls)?.closest('.ka-res-cell') || tr;
+    const input = cell.querySelector(cls) || tr.querySelector(cls);
+    const clearBtn = cell.querySelector('.ka-clear-btn');
+    if (clearBtn && clearBtn.classList.contains('ka-clear-active')) return '';
+    const v = input?.value?.trim();
+    return v || null;
+  }
+
+  const val = (cls) => tr.querySelector(cls)?.value?.trim() || null;
   return {
     match_first_name:      val('.ka-match-first'),
     match_last_name:       val('.ka-match-last'),
-    resolved_first_name:   val('.ka-res-first'),
-    resolved_last_name:    val('.ka-res-last'),
-    resolved_quals:        val('.ka-res-quals'),
-    resolved_second_artist: val('.ka-res-second'),
+    resolved_first_name:   resVal('.ka-res-first'),
+    resolved_last_name:    resVal('.ka-res-last'),
+    resolved_quals:        resVal('.ka-res-quals'),
+    resolved_second_artist: resVal('.ka-res-second'),
     resolved_is_company:   isCompany,
     notes:                 val('.ka-notes'),
   };

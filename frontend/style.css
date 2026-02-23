@@ -1006,3 +1006,47 @@ details.section-block[open] > .section-summary::before {
   padding: 1px 5px;
   border-radius: 3px;
 }
+
+/* Known Artist resolved field cells */
+.ka-res-cell {
+  position: relative;
+  white-space: nowrap;
+}
+
+.ka-res-cell input[type="text"] {
+  width: calc(100% - 22px);
+}
+
+.ka-res-cell input[disabled] {
+  background: #f5f5f5;
+  color: #999;
+  font-style: italic;
+}
+
+.ka-clear-btn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  color: #999;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 1px 3px;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+.ka-clear-btn:hover {
+  color: #c0392b;
+  border-color: #c0392b;
+}
+
+.ka-clear-btn.ka-clear-active {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #fff;
+}
+
+.ka-clear-btn.ka-clear-active:hover {
+  background: #a93226;
+}
