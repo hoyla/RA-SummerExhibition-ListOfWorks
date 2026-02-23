@@ -1318,7 +1318,7 @@ function workRowHTML(importId, w, cfg) {
   };
 
   const honorifics = eff.artist_honorifics
-    ? ` <span class="honorifics-pill">${esc(eff.artist_honorifics)}</span>`
+    ? ` <span class="honorifics-pill${hasOverride && o?.artist_honorifics_override ? ' cell-overridden' : ''}">${esc(eff.artist_honorifics)}</span>`
     : '';
   const priceDisplay = formatPrice(eff.price_numeric, eff.price_text, cfg);
 
