@@ -17,6 +17,7 @@ from backend.app.api import (
     templates,
     normalisation_config,
     audit,
+    index,
 )
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
@@ -27,3 +28,4 @@ router.include_router(exports.router)
 router.include_router(templates.router)
 router.include_router(normalisation_config.router)
 router.include_router(audit.router)
+router.include_router(index.router)

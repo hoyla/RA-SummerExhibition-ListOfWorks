@@ -58,6 +58,16 @@ def db_session():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,  # single connection ensures create_all and queries share the same in-memory DB
     )
+
+    # Enable foreign key enforcement in SQLite so ON DELETE CASCADE works
+    from sqlalchemy import event
+
+    @event.listens_for(eng, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(bind=eng)
     _Session = sessionmaker(autocommit=False, autoflush=False, bind=eng)
     session = _Session()

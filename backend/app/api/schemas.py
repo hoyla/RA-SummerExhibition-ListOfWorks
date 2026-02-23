@@ -249,3 +249,51 @@ class TemplateOut(BaseModel):
     name: str
     created_at: str
     is_builtin: bool
+
+
+# ---------------------------------------------------------------------------
+# Artists' Index
+# ---------------------------------------------------------------------------
+
+
+class IndexCatNumberOut(BaseModel):
+    id: str
+    cat_no: int
+    courtesy: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class IndexArtistOut(BaseModel):
+    id: str
+    row_number: int | None = None
+    raw_title: str | None = None
+    raw_first_name: str | None = None
+    raw_last_name: str | None = None
+    raw_quals: str | None = None
+    raw_company: str | None = None
+    raw_address: str | None = None
+    title: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    quals: str | None = None
+    company: str | None = None
+    is_ra_member: bool
+    is_company: bool
+    sort_key: str
+    include_in_export: bool
+    cat_numbers: List[IndexCatNumberOut]
+
+    model_config = {"from_attributes": True}
+
+
+class IndexImportOut(BaseModel):
+    id: str
+    filename: str
+    uploaded_at: str
+    notes: str | None = None
+    product_type: str
+    artist_count: int
+    override_count: int = 0
+
+    model_config = {"from_attributes": True}

@@ -1,0 +1,347 @@
+"""
+Artists' Index routes: upload, list, artists, export, delete, exclude toggle.
+"""
+
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, status
+from fastapi.responses import Response
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+import os
+from pathlib import Path
+import shutil
+import uuid
+from typing import List
+from uuid import UUID
+
+from backend.app.api.deps import get_db
+from backend.app.config import UPLOAD_DIR
+from backend.app.api.schemas import (
+    IndexImportOut,
+    IndexArtistOut,
+    IndexCatNumberOut,
+)
+from backend.app.models.import_model import Import
+from backend.app.models.index_artist_model import IndexArtist
+from backend.app.models.index_cat_number_model import IndexCatNumber
+from backend.app.models.audit_log_model import AuditLog
+from backend.app.services.index_importer import (
+    import_index_excel,
+    IndexImportError,
+)
+from backend.app.services.index_renderer import (
+    collect_index_entries,
+    render_index_tagged_text,
+    IndexExportConfig,
+    DEFAULT_INDEX_CONFIG,
+)
+
+router = APIRouter(prefix="/index", tags=["index"])
+
+
+# ---------------------------------------------------------------------------
+# Upload
+# ---------------------------------------------------------------------------
+
+
+@router.post("/import")
+def upload_index_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload an Artists' Index spreadsheet."""
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    original_name = file.filename or "upload.xlsx"
+    safe_name = Path(original_name).name
+    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
+    file_path = os.path.join(UPLOAD_DIR, disk_name)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        import_record = import_index_excel(
+            file_path,
+            db,
+            display_name=original_name,
+        )
+    except IndexImportError as exc:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    import_record.disk_filename = disk_name
+    db.commit()
+
+    return {"import_id": str(import_record.id)}
+
+
+# ---------------------------------------------------------------------------
+# List imports
+# ---------------------------------------------------------------------------
+
+
+@router.get("/imports", response_model=List[IndexImportOut])
+def list_index_imports(db: Session = Depends(get_db)):
+    """List all Artists' Index imports."""
+    imports = (
+        db.query(Import)
+        .filter(Import.product_type == "artists_index")
+        .order_by(Import.uploaded_at.desc())
+        .all()
+    )
+
+    # Batch-fetch artist counts
+    artist_counts = {
+        str(row.import_id): row.cnt
+        for row in db.query(
+            IndexArtist.import_id,
+            func.count(IndexArtist.id).label("cnt"),
+        )
+        .group_by(IndexArtist.import_id)
+        .all()
+    }
+
+    return [
+        IndexImportOut(
+            id=str(i.id),
+            filename=i.filename,
+            uploaded_at=i.uploaded_at.isoformat(),
+            notes=i.notes,
+            product_type=i.product_type,
+            artist_count=artist_counts.get(str(i.id), 0),
+        )
+        for i in imports
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Artists listing
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/imports/{import_id}/artists",
+    response_model=List[IndexArtistOut],
+)
+def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
+    """List all artists for an index import, ordered by sort key."""
+    _get_index_import_or_404(import_id, db)
+
+    artists = (
+        db.query(IndexArtist)
+        .filter(IndexArtist.import_id == import_id)
+        .order_by(IndexArtist.sort_key, IndexArtist.row_number)
+        .all()
+    )
+
+    # Batch-fetch all cat numbers for this import
+    artist_ids = [a.id for a in artists]
+    cat_numbers = (
+        db.query(IndexCatNumber)
+        .filter(IndexCatNumber.artist_id.in_(artist_ids))
+        .order_by(IndexCatNumber.cat_no)
+        .all()
+        if artist_ids
+        else []
+    )
+    cat_map: dict[str, list] = {}
+    for cn in cat_numbers:
+        cat_map.setdefault(str(cn.artist_id), []).append(cn)
+
+    return [
+        IndexArtistOut(
+            id=str(a.id),
+            row_number=a.row_number,
+            raw_title=a.raw_title,
+            raw_first_name=a.raw_first_name,
+            raw_last_name=a.raw_last_name,
+            raw_quals=a.raw_quals,
+            raw_company=a.raw_company,
+            raw_address=a.raw_address,
+            title=a.title,
+            first_name=a.first_name,
+            last_name=a.last_name,
+            quals=a.quals,
+            company=a.company,
+            is_ra_member=a.is_ra_member,
+            is_company=a.is_company,
+            sort_key=a.sort_key,
+            include_in_export=bool(a.include_in_export),
+            cat_numbers=[
+                IndexCatNumberOut(
+                    id=str(cn.id),
+                    cat_no=cn.cat_no,
+                    courtesy=cn.courtesy,
+                )
+                for cn in cat_map.get(str(a.id), [])
+            ],
+        )
+        for a in artists
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Export
+# ---------------------------------------------------------------------------
+
+
+@router.get("/imports/{import_id}/export-tags")
+def export_index_tags(
+    import_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Export Artists' Index as InDesign Tagged Text."""
+    _get_index_import_or_404(import_id, db)
+
+    entries = collect_index_entries(db, import_id)
+    cfg = DEFAULT_INDEX_CONFIG
+    output = render_index_tagged_text(entries, cfg)
+
+    return Response(
+        content=output.encode("mac_roman", errors="replace"),
+        media_type="text/plain",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Delete
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/imports/{import_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_index_import(import_id: UUID, db: Session = Depends(get_db)):
+    """Delete an Artists' Index import and all associated data."""
+    import_record = _get_index_import_or_404(import_id, db)
+
+    # Remove uploaded file from disk
+    _remove_disk_file(import_record.disk_filename)
+
+    db.delete(import_record)
+    db.commit()
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Exclude / include toggle
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/imports/{import_id}/artists/{artist_id}/exclude",
+    status_code=status.HTTP_200_OK,
+)
+def set_artist_excluded(
+    import_id: UUID,
+    artist_id: UUID,
+    exclude: bool = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Toggle include_in_export for an index artist."""
+    artist = _get_artist_or_404(import_id, artist_id, db)
+
+    old_excluded = not bool(artist.include_in_export)
+    new_excluded = exclude
+
+    if old_excluded != new_excluded:
+        artist.include_in_export = not new_excluded
+        db.add(
+            AuditLog(
+                import_id=import_id,
+                action=(
+                    "index_artist_excluded" if new_excluded else "index_artist_included"
+                ),
+                field="include_in_export",
+                old_value=str(not old_excluded),
+                new_value=str(not new_excluded),
+            )
+        )
+        db.commit()
+
+    return {
+        "artist_id": str(artist_id),
+        "include_in_export": not new_excluded,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Warnings
+# ---------------------------------------------------------------------------
+
+
+@router.get("/imports/{import_id}/warnings")
+def list_index_warnings(import_id: UUID, db: Session = Depends(get_db)):
+    """List validation warnings for an index import."""
+    from backend.app.models.validation_warning_model import ValidationWarning
+
+    _get_index_import_or_404(import_id, db)
+
+    warnings = (
+        db.query(ValidationWarning)
+        .filter(ValidationWarning.import_id == import_id)
+        .order_by(ValidationWarning.created_at.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": str(w.id),
+            "warning_type": w.warning_type,
+            "message": w.message,
+        }
+        for w in warnings
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_index_import_or_404(import_id: UUID, db: Session) -> Import:
+    """Fetch an Import record, ensuring it is an artists_index type."""
+    import_record = db.query(Import).filter(Import.id == import_id).first()
+    if not import_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Import not found",
+        )
+    if import_record.product_type != "artists_index":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Import is not an Artists' Index",
+        )
+    return import_record
+
+
+def _get_artist_or_404(
+    import_id: UUID,
+    artist_id: UUID,
+    db: Session,
+) -> IndexArtist:
+    """Fetch an IndexArtist, ensuring it belongs to the given import."""
+    artist = (
+        db.query(IndexArtist)
+        .filter(IndexArtist.id == artist_id, IndexArtist.import_id == import_id)
+        .first()
+    )
+    if not artist:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Artist not found in this import",
+        )
+    return artist
+
+
+def _remove_disk_file(disk_filename: str | None) -> bool:
+    """Delete an uploaded file from disk."""
+    if not disk_filename:
+        return False
+    path = os.path.join(UPLOAD_DIR, disk_filename)
+    if os.path.isfile(path):
+        os.remove(path)
+        return True
+    return False
