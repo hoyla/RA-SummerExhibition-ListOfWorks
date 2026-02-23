@@ -99,8 +99,8 @@ def build_index_name(
     if quals:
         parts.append(quals.lower())
 
-    # Second artist suffix
-    if second_artist:
+    # Second artist suffix (never for companies — name is already complete)
+    if second_artist and not is_company:
         parts.append(second_artist)
 
     return ", ".join(parts)
@@ -192,6 +192,12 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     # If resolved as company and no company name, use last_name
     if effective_company and not company:
         company = last_name
+
+    # Companies never have a second-artist suffix — the full name is
+    # already in last_name (e.g. "Boyd & Evans").  Clear the artefact
+    # left over from multi-artist parsing.
+    if effective_company:
+        second_artist = None
 
     # Recompute sort key from resolved values
     resolved_sort_key = build_sort_key(last_name, first_name)

@@ -2267,8 +2267,8 @@ function styledIndexName(a) {
     parts.push(`<span class="${pillClass}">${esc(a.quals)}</span>`);
   }
 
-  // Second artist suffix
-  if (a.second_artist) {
+  // Second artist suffix (never for companies — name is already complete)
+  if (a.second_artist && !a.is_company) {
     parts.push(esc(a.second_artist));
   }
 
@@ -2285,7 +2285,7 @@ function indexArtistRowHTML(importId, a, groupColor) {
   if (a.is_company) {
     badges.push(`<button class="badge badge-company badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as individual'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',false)">Company</button>`);
   } else {
-    badges.push(`<button class="badge badge-company-off badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as company'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',true)">Company</button>`);
+    badges.push(`<button class="badge badge-company-off badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as company'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',true)">Company?</button>`);
   }
 
   // Detect normalisation changes

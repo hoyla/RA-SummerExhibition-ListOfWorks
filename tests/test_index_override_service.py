@@ -279,6 +279,15 @@ class TestBuildIndexName:
             == "Boyd & Evans"
         )
 
+    def test_company_ignores_second_artist(self):
+        """A company should never show a second_artist suffix — the full name
+        is already in last_name.  Regression test for Boyd & Evans showing as
+        'Boyd & Evans, & Evans'."""
+        assert (
+            build_index_name("Boyd & Evans", None, None, None, "& Evans", True)
+            == "Boyd & Evans"
+        )
+
     def test_empty(self):
         assert build_index_name(None, None, None, None, None, False) == ""
 
