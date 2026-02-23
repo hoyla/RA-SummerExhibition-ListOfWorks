@@ -14,7 +14,7 @@ from backend.app.api.schemas import TemplateBodyIn, TemplateOut
 from backend.app.models.ruleset_model import Ruleset
 from backend.app.models.audit_log_model import AuditLog
 
-router = APIRouter()
+router = APIRouter(tags=["templates"])
 
 
 @router.get("/templates", response_model=List[TemplateOut])

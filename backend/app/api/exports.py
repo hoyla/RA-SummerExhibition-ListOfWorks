@@ -28,7 +28,7 @@ from backend.app.services.export_diff_service import (
     compute_diff,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["exports"])
 
 
 # ---------------------------------------------------------------------------

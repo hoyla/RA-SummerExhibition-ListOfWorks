@@ -12,7 +12,7 @@ from backend.app.models.work_model import Work
 from backend.app.models.override_model import WorkOverride
 from backend.app.models.audit_log_model import AuditLog
 
-router = APIRouter()
+router = APIRouter(tags=["overrides"])
 
 
 def _get_work_or_404(import_id: UUID, work_id: UUID, db: Session):

@@ -37,7 +37,7 @@ from backend.app.services.excel_importer import (
 )
 from backend.app.services.export_renderer import resolve_export_config
 
-router = APIRouter()
+router = APIRouter(tags=["imports"])
 
 
 @router.post("/import")

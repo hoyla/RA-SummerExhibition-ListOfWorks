@@ -15,7 +15,7 @@ from backend.app.models.import_model import Import
 from backend.app.models.work_model import Work
 from backend.app.models.ruleset_model import Ruleset
 
-router = APIRouter()
+router = APIRouter(tags=["audit"])
 
 
 def _build_audit_response(logs: list[AuditLog], db: Session) -> List[AuditLogOut]:

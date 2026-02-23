@@ -12,7 +12,7 @@ from backend.app.api.schemas import NormalisationIn
 from backend.app.models.ruleset_model import Ruleset
 from backend.app.services.normalisation_service import DEFAULT_HONORIFIC_TOKENS
 
-router = APIRouter()
+router = APIRouter(tags=["config"])
 
 
 def _get_normalisation_row(db: Session):

@@ -1,7 +1,11 @@
 import logging
+import os
+import platform
+import shutil
 import time
 import json
 import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -9,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from backend.app.config import LOG_LEVEL, CORS_ORIGINS
+from backend.app.config import LOG_LEVEL, CORS_ORIGINS, UPLOAD_DIR
 from backend.app.db import engine, Base
 
 from backend.app.models import import_model
@@ -79,6 +83,9 @@ def _setup_logging() -> None:
 
 _setup_logging()
 logger = logging.getLogger("catalogue")
+
+# Capture startup time for uptime reporting
+_start_time = time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +214,36 @@ _seed_known_artists()
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Catalogue Tool", version="1.0.0")
+app = FastAPI(
+    title="Catalogue Tool",
+    version="1.0.0",
+    openapi_tags=[
+        {
+            "name": "imports",
+            "description": "List of Works: upload, list, delete, sections, preview, warnings",
+        },
+        {
+            "name": "overrides",
+            "description": "List of Works: per-work editorial overrides and exclude toggle",
+        },
+        {
+            "name": "exports",
+            "description": "List of Works: Tagged Text, JSON, XML, CSV exports",
+        },
+        {"name": "templates", "description": "List of Works: export template CRUD"},
+        {
+            "name": "index",
+            "description": "Artists' Index: imports, artists, overrides, warnings, export",
+        },
+        {
+            "name": "known-artists",
+            "description": "Known Artists lookup rules and seed data",
+        },
+        {"name": "config", "description": "Global normalisation configuration"},
+        {"name": "audit", "description": "Audit log for all mutating operations"},
+        {"name": "ops", "description": "Health check and system info"},
+    ],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -260,18 +296,124 @@ app.include_router(import_routes.router)
 
 @app.get("/health", tags=["ops"])
 def health():
-    """Lightweight health check. Returns DB connectivity status."""
+    """Enhanced health check with system, database, and storage diagnostics."""
+    result: dict = {
+        "status": "ok",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # ── Database connectivity ──────────────────────────────────────────
+    db_info: dict = {"connected": False}
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        db_ok = True
+            db_info["connected"] = True
+
+            # PostgreSQL version
+            row = conn.execute(text("SHOW server_version")).fetchone()
+            if row:
+                db_info["version"] = row[0]
+
+            # Database size
+            row = conn.execute(
+                text("SELECT pg_size_pretty(pg_database_size(current_database()))")
+            ).fetchone()
+            if row:
+                db_info["database_size"] = row[0]
+
+            # Table row counts (lightweight reltuples estimate)
+            rows = conn.execute(
+                text(
+                    """
+                SELECT relname, reltuples::bigint
+                FROM pg_class
+                WHERE relkind = 'r'
+                  AND relnamespace = (
+                      SELECT oid FROM pg_namespace WHERE nspname = 'public'
+                  )
+                ORDER BY relname
+            """
+                )
+            ).fetchall()
+            db_info["table_rows"] = {r[0]: r[1] for r in rows}
+
+            # Active connections
+            row = conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database()"
+                )
+            ).fetchone()
+            if row:
+                db_info["active_connections"] = row[0]
+
     except Exception as exc:
         logger.error("Health check DB error: %s", exc)
-        db_ok = False
+        result["status"] = "degraded"
 
-    payload = {"status": "ok" if db_ok else "degraded", "db": db_ok}
-    code = 200 if db_ok else 503
-    return JSONResponse(content=payload, status_code=code)
+    result["database"] = db_info
+
+    # ── Disk usage ─────────────────────────────────────────────────────
+    disk: dict = {}
+    try:
+        usage = shutil.disk_usage("/")
+        disk["total_gb"] = round(usage.total / (1024**3), 1)
+        disk["used_gb"] = round(usage.used / (1024**3), 1)
+        disk["free_gb"] = round(usage.free / (1024**3), 1)
+        disk["used_pct"] = round(usage.used / usage.total * 100, 1)
+    except Exception:
+        pass
+
+    # Upload directory stats
+    upload_path = Path(UPLOAD_DIR)
+    if upload_path.is_dir():
+        files = list(upload_path.iterdir())
+        total_bytes = sum(f.stat().st_size for f in files if f.is_file())
+        disk["uploads_count"] = len([f for f in files if f.is_file()])
+        disk["uploads_size_mb"] = round(total_bytes / (1024**2), 2)
+
+    result["disk"] = disk
+
+    # ── Memory (process-level) ─────────────────────────────────────────
+    memory: dict = {}
+    try:
+        import resource
+
+        rusage = resource.getrusage(resource.RUSAGE_SELF)
+        # macOS reports in bytes, Linux in kilobytes
+        if platform.system() == "Darwin":
+            memory["rss_mb"] = round(rusage.ru_maxrss / (1024**2), 1)
+        else:
+            memory["rss_mb"] = round(rusage.ru_maxrss / 1024, 1)
+    except Exception:
+        pass
+
+    # System memory (Linux /proc/meminfo or macOS)
+    try:
+        meminfo_path = Path("/proc/meminfo")
+        if meminfo_path.exists():
+            data = meminfo_path.read_text()
+            for line in data.splitlines():
+                if line.startswith("MemTotal:"):
+                    memory["system_total_mb"] = int(line.split()[1]) // 1024
+                elif line.startswith("MemAvailable:"):
+                    memory["system_available_mb"] = int(line.split()[1]) // 1024
+    except Exception:
+        pass
+
+    if memory:
+        result["memory"] = memory
+
+    # ── System info ────────────────────────────────────────────────────
+    result["system"] = {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "pid": os.getpid(),
+        "uptime_seconds": round(time.monotonic() - _start_time, 1),
+    }
+
+    code = 200 if db_info["connected"] else 503
+    return JSONResponse(content=result, status_code=code)
 
 
 @app.get("/", tags=["ops"])
