@@ -21,6 +21,7 @@ from backend.app.models import validation_warning_model
 from backend.app.models import audit_log_model
 from backend.app.models import index_artist_model
 from backend.app.models import index_cat_number_model
+from backend.app.models import known_artist_model
 
 # ---------------------------------------------------------------------------
 # Run Alembic migrations on startup (replaces Base.metadata.create_all)
@@ -132,6 +133,69 @@ def _seed_builtin_templates() -> None:
 
 
 _seed_builtin_templates()
+
+
+# ---------------------------------------------------------------------------
+# Seed known artists from backend/seed_templates/known-artists.json
+# ---------------------------------------------------------------------------
+
+
+def _seed_known_artists() -> None:
+    from backend.app.db import SessionLocal as _SessionLocal
+    from backend.app.models.known_artist_model import KnownArtist as _KnownArtist
+
+    _seed_file = (
+        Path(__file__).resolve().parent.parent.parent
+        / "backend"
+        / "seed_templates"
+        / "known-artists.json"
+    )
+    if not _seed_file.exists():
+        return
+
+    db = _SessionLocal()
+    try:
+        with open(_seed_file, encoding="utf-8") as fp:
+            entries = json.load(fp)
+
+        added = 0
+        for entry in entries:
+            match_first = entry.get("match_first_name")
+            match_last = entry.get("match_last_name")
+            existing = (
+                db.query(_KnownArtist)
+                .filter(
+                    _KnownArtist.match_first_name == match_first,
+                    _KnownArtist.match_last_name == match_last,
+                )
+                .first()
+            )
+            if existing:
+                continue
+            db.add(
+                _KnownArtist(
+                    match_first_name=match_first,
+                    match_last_name=match_last,
+                    resolved_first_name=entry.get("resolved_first_name"),
+                    resolved_last_name=entry.get("resolved_last_name"),
+                    resolved_quals=entry.get("resolved_quals"),
+                    resolved_second_artist=entry.get("resolved_second_artist"),
+                    resolved_is_company=entry.get("resolved_is_company"),
+                    notes=entry.get("notes"),
+                )
+            )
+            added += 1
+        if added:
+            logger.info("Seeded %d known artist(s)", added)
+        db.commit()
+    except Exception as exc:  # pragma: no cover
+        logger.error("Known artists seed error: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
+_seed_known_artists()
 
 
 # ---------------------------------------------------------------------------
