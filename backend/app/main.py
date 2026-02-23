@@ -105,8 +105,9 @@ def _seed_builtin_templates() -> None:
             ).hexdigest()
             existing = db.query(_Ruleset).filter(_Ruleset.slug == slug).first()
             if existing:
-                if existing.config_hash != cfg_hash:
+                if existing.name != name:
                     existing.name = name
+                if existing.config_hash != cfg_hash:
                     existing.config = seed
                     existing.config_hash = cfg_hash
                 continue

@@ -32,7 +32,7 @@
       "field": "medium",
       "enabled": true,
       "balance_lines": true,
-      "max_line_chars": 45,
+      "max_line_chars": 52,
       "separator_after": "soft_return",
       "omit_sep_when_empty": false,
       "next_component_position": "end_of_text"
@@ -82,5 +82,7 @@
   "trailing_separator": "none",
   "thousands_separator": ",",
   "honorifics_lowercase": true,
+  "section_separator": "column_break",
+  "section_separator_style": "Spacer",
   "final_sep_from_last_component": true
 }
