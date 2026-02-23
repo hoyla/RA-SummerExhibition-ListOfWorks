@@ -1,6 +1,6 @@
-# Catalogue Tool – Roadmap
+# Catalogue Tool – roadmap
 
-## Phase 1 – Core Infrastructure ✅
+## Phase 1 – Core infrastructure ✅
 
 - Excel upload and import model
 - Sections + Works (raw and normalised fields)
@@ -10,7 +10,7 @@
 
 ---
 
-## Phase 2 – Data Integrity ✅
+## Phase 2 – Data integrity ✅
 
 - 63-test pytest suite
 - Validation warnings for unparseable fields
@@ -19,7 +19,7 @@
 
 ---
 
-## Phase 3 – Editorial Controls ✅
+## Phase 3 – Editorial controls ✅
 
 - Work overrides (title, artist, honorifics, price, edition, medium)
 - Exclude individual works from export
@@ -28,7 +28,7 @@
 
 ---
 
-## Phase 4 – Export Expansion ✅
+## Phase 4 – Export expansion ✅
 
 - JSON export
 - Configurable component order, separators, and character styles
@@ -43,7 +43,7 @@
 
 ---
 
-## Phase 5 – UI Layer ✅
+## Phase 5 – UI layer ✅
 
 - Vanilla JS SPA at `/ui`
 - Import upload
@@ -55,7 +55,7 @@
 
 ---
 
-## Phase 6 – Production Hardening ✅
+## Phase 6 – Production hardening ✅
 
 - API key authentication
 - Docker + docker-compose deployment
@@ -64,7 +64,7 @@
 
 ---
 
-## Phase 7 – Export Templates ✅
+## Phase 7 – Export templates ✅
 
 - Named export templates stored in the database (`Ruleset` model)
 - Template CRUD API (`GET/POST/PUT/DELETE /api/templates`)
@@ -76,7 +76,7 @@
 
 ---
 
-## Phase 8 – Normalisation Config & Test Expansion ✅
+## Phase 8 – Normalisation config & test expansion ✅
 
 - Global normalisation config endpoint (`GET/PUT /api/config`)
 - Configurable honorific token list persisted to the database
@@ -85,7 +85,7 @@
 
 ---
 
-## Phase 9 – Production Hardening & Code Quality ✅
+## Phase 9 – Production hardening & code quality ✅
 
 - Split monolithic `import_routes.py` (1015 lines) into 7 focused modules
 - Fixed N+1 override queries in export renderer with batch loading
@@ -100,7 +100,7 @@
 
 ---
 
-## Phase 10 – Frontend Polish ✅
+## Phase 10 – Frontend polish ✅
 
 - Toast notification system (slide-in/out, auto-dismiss, error/success/info)
 - Replaced all `alert()` calls with non-blocking toast notifications
@@ -110,7 +110,7 @@
 
 ---
 
-## Phase 11 – Spreadsheet Validation ✅
+## Phase 11 – Spreadsheet validation ✅
 
 - Validate required columns on upload (`Cat No`, `Title`, `Artist`)
 - Clear 400 error with "did you mean?" fuzzy-match suggestions for misspelled columns
@@ -121,7 +121,7 @@
 
 ---
 
-## Phase 12 – Artists' Index: Core Pipeline ✅
+## Phase 12 – Artists Index: core pipeline ✅
 
 - Index data model: `IndexArtist`, `IndexCatNumber`, `IndexArtistOverride`, `IndexArtistValidationWarning`
 - Excel import with multi-artist cell parsing (semicolons, commas, "and"/"&" separators)
@@ -138,7 +138,7 @@
 
 ---
 
-## Phase 13 – Artists' Index: Overrides & Warnings ✅
+## Phase 13 – Artists Index: overrides & warnings ✅
 
 - Per-artist override CRUD (display name, qualifier, RA status, sort key,
   second artist fields, catalogue number list)
@@ -150,7 +150,7 @@
 
 ---
 
-## Phase 14 – Artists' Index: Export Templates ✅
+## Phase 14 – Artists Index: export templates ✅
 
 - `IndexExportConfig` with 12 configurable fields
 - Separate `index_template` config_type in the Ruleset model
@@ -161,7 +161,7 @@
 
 ---
 
-## Phase 15 – Artists' Index: Letter Groups & Export ✅
+## Phase 15 – Artists Index: Letter groups & export ✅
 
 - Letter-group rendering: entries grouped by first letter of sort key
 - Configurable section separator between letter groups
@@ -175,9 +175,9 @@
 
 ---
 
-## Future Considerations
+## Future considerations
 
+- Better authentication model
 - Role-based access (read-only vs editorial vs admin)
 - Cloud storage for uploaded Excel files
-- Structured audit log viewer in UI
-- Print-preview rendering
+- LPG eccentricities (e.g. advanced title casing)
