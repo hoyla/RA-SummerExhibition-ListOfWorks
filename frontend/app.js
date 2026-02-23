@@ -959,7 +959,7 @@ async function saveTemplate(id) {
 async function renderList() {
   document.getElementById('app').innerHTML = `
     <section class="panel">
-      <h3>Import Excel File</h3>
+      <h3>Import List of Works Excel File</h3>
       <form id="upload-form" class="upload-form">
         <input type="file" id="file-input" accept=".xlsx,.xls" required>
         <button type="submit" class="btn btn-primary">Upload</button>
@@ -967,7 +967,7 @@ async function renderList() {
       <p id="upload-status" class="status-msg" style="margin-top:8px"></p>
     </section>
     <section class="panel">
-      <h3>Imports</h3>
+      <h3>List of Works Imports</h3>
       <div id="imports-list">Loading&hellip;</div>
     </section>`;
 
@@ -1860,7 +1860,7 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
 }
 
 // ===========================================================================
-// Artists' Index
+// Artists Index
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
@@ -1870,7 +1870,7 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
 async function renderIndexList() {
   document.getElementById('app').innerHTML = `
     <section class="panel">
-      <h3>Import Artists\u2019 Index</h3>
+      <h3>Import Artists Index Excel File</h3>
       <form id="index-upload-form" class="upload-form">
         <input type="file" id="index-file-input" accept=".xlsx,.xls" required>
         <button type="submit" class="btn btn-primary">Upload</button>
@@ -1878,7 +1878,7 @@ async function renderIndexList() {
       <p id="index-upload-status" class="status-msg" style="margin-top:8px"></p>
     </section>
     <section class="panel">
-      <h3>Index Imports</h3>
+      <h3>Artists Index Imports</h3>
       <div id="index-imports-list">Loading\u2026</div>
     </section>`;
 
@@ -2002,8 +2002,8 @@ async function renderIndexDetail(importId) {
 
   document.getElementById('index-detail-heading').textContent =
     importFilename
-      ? `Artists\u2019 Index \u2013 ${importFilename}`
-      : `Artists\u2019 Index \u2013 ${importId.slice(0, 8)}\u2026`;
+      ? `Artists Index \u2013 ${importFilename}`
+      : `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
 
   const [artists, warnings] = await Promise.all([
     api('GET', `/index/imports/${importId}/artists`).catch(e => ({ _error: e.message })),
@@ -2096,6 +2096,46 @@ function renderIndexArtists(importId, artists) {
     </table>`;
 }
 
+/**
+ * Build a rich HTML index name with styled honorifics and RA surname indicator.
+ * Mirrors the structure of backend build_index_name() but adds visual cues
+ * matching the character styles used in the InDesign Tagged Text export.
+ */
+function styledIndexName(a) {
+  const surname = a.last_name || a.first_name || '';
+  if (!surname) return '';
+
+  const parts = [];
+
+  // Surname — RA members get a special visual indicator
+  if (a.is_ra_member) {
+    parts.push(`<span class="idx-ra-styled" title="Styled as RA Member in print">${esc(surname)}</span>`);
+  } else {
+    parts.push(esc(surname));
+  }
+
+  // First name with optional title (only when both names present, not a company)
+  if (!a.is_company && a.last_name && a.first_name) {
+    const rest = [];
+    if (a.title) rest.push(esc(a.title));
+    rest.push(esc(a.first_name));
+    parts.push(rest.join(' '));
+  }
+
+  // Quals — shown as a pill, different styling for RA vs non-RA
+  if (a.quals) {
+    const pillClass = a.is_ra_member ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
+    parts.push(`<span class="${pillClass}">${esc(a.quals.toLowerCase())}</span>`);
+  }
+
+  // Second artist suffix
+  if (a.second_artist) {
+    parts.push(esc(a.second_artist));
+  }
+
+  return parts.join(', ');
+}
+
 function indexArtistRowHTML(importId, a, groupColor) {
   const included = a.include_in_export !== false;
   const groupStyle = groupColor ? `border-left: 4px solid ${groupColor};` : '';
@@ -2136,7 +2176,7 @@ function indexArtistRowHTML(importId, a, groupColor) {
 
   return `
     <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" onclick="toggleIndexDetail('${esc(a.id)}')">
-      <td class="col-index-name">${esc(a.index_name || '')}</td>
+      <td class="col-index-name">${styledIndexName(a)}</td>
       <td class="col-lastname">${diffCell(a.raw_last_name, a.last_name)}${secondArtistDisplay}</td>
       <td>${diffCell(a.raw_first_name, a.first_name)}</td>
       <td>${esc(a.title ?? '')}</td>

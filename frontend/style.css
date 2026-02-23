@@ -600,6 +600,20 @@ details.section-block[open] > .section-summary::before {
 .diff-row-added td { background: #f0faf0; }
 .diff-row-removed td { background: #fde8e8; text-decoration: line-through; color: #999; }
 
+/* RA surname indicator — shows that the surname word will be set in
+   the "RA Member Cap Surname" character style in the exported file */
+.idx-ra-styled {
+  border-bottom: 2px solid #5070a0;
+  padding-bottom: 0px;
+}
+
+/* RA quals pill variant — signals "RA Caps" character style */
+.idx-ra-quals {
+  background: #e8eef8;
+  border-color: #99b3d8;
+  color: #3a5a8a;
+}
+
 /* Honorifics shown inline in the works table — signals a separate character style */
 .honorifics-pill {
   display: inline-block;
@@ -866,7 +880,7 @@ details.section-block[open] > .section-summary::before {
 }
 
 /* ---------------------------------------------------------------------------
-   Artists' Index
+   Artists Index
    --------------------------------------------------------------------------- */
 
 .index-table {
