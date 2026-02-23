@@ -161,6 +161,15 @@ a:hover { text-decoration: underline; }
 
 .panel.has-warnings { border-left: 4px solid var(--warning); }
 
+/* Known artists table */
+.known-artists-table { font-size: 12px; }
+.known-artists-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 4px 6px; white-space: nowrap; }
+.known-artists-table td { padding: 2px 4px; }
+.known-artists-table input[type="text"] { width: 100%; font-size: 12px; padding: 3px 5px; border: 1px solid var(--border); border-radius: 3px; box-sizing: border-box; }
+.known-artists-table input[type="checkbox"] { margin: 0; }
+.known-artists-table .btn-sm { padding: 2px 6px; font-size: 12px; line-height: 1; }
+.known-artists-table .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+
 .page-heading {
   font-size: 18px;
   font-weight: 600;
@@ -871,12 +880,19 @@ details.section-block[open] > .section-summary::before {
 
 .index-table .col-lastname {
   font-weight: 600;
-  white-space: nowrap;
+  max-width: 170px;
+  word-break: break-word;
 }
 
-.index-table .col-ra {
+.index-table .col-quals {
+  max-width: 90px;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.index-table .col-flags {
   text-align: center;
-  width: 40px;
+  width: 100px;
 }
 
 .index-table .col-courtesy {
@@ -909,4 +925,35 @@ details.section-block[open] > .section-summary::before {
   font-weight: 600;
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+.badge-company-off {
+  background: transparent;
+  color: #ccc;
+  border: 1px dashed #ccc;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.badge-company-off:hover {
+  color: #6c757d;
+  border-color: #6c757d;
+}
+
+.badge-toggle {
+  cursor: pointer;
+  border: none;
+  line-height: 1.3;
+}
+.badge-toggle.badge-company {
+  border: 1px solid transparent;
+}
+.badge-toggle.badge-company:hover {
+  background: #545b62;
+}
+
+.badge-overridden {
+  box-shadow: 0 0 0 2px var(--ra-red);
 }

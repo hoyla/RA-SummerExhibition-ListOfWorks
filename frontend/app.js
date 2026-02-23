@@ -331,9 +331,13 @@ async function renderAuditLog() {
 async function renderSettings() {
   const app = document.getElementById('app');
   app.innerHTML = '<p class="loading" style="padding:40px 0">Loading settings&hellip;</p>';
-  let cfg;
-  try { cfg = await api('GET', '/config'); }
-  catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+  let cfg, knownArtists;
+  try {
+    [cfg, knownArtists] = await Promise.all([
+      api('GET', '/config'),
+      api('GET', '/known-artists'),
+    ]);
+  } catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
 
   // Load display prefs from localStorage
   const dispCfg = _getDisplayCfg();
@@ -370,6 +374,34 @@ async function renderSettings() {
           <input id="cfg-honorific-tokens" type="text" value="${esc(honorificTokensValue)}">
           <span class="form-hint">Comma-separated list of abbreviations stripped from the end of artist names, e.g. &ldquo;RA, HON, PRA&rdquo;</span>
         </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h4 class="panel-subheading">Known Artists</h4>
+      <p class="form-hint" style="margin:0 0 12px">Map recurring raw spreadsheet values to corrected output. Matched during import.</p>
+      <table class="data-table known-artists-table" id="known-artists-table">
+        <thead>
+          <tr>
+            <th>Match First</th>
+            <th>Match Last</th>
+            <th>&rarr; First</th>
+            <th>&rarr; Last</th>
+            <th>&rarr; Quals</th>
+            <th>&rarr; 2nd Artist</th>
+            <th>Company</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${knownArtists.map(ka => _knownArtistRow(ka)).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:8px">
+        <button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>
+        <button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:8px" title="Load entries from the built-in seed file (won&rsquo;t overwrite existing)">Seed defaults</button>
+        <span id="known-artists-status" class="status-msg" style="margin-left:8px"></span>
       </div>
     </section>
 
@@ -432,6 +464,107 @@ async function saveSettings() {
   } catch (e) {
     statusEl.textContent = `Error: ${esc(e.message)}`;
     statusEl.className = 'status-msg error';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Known Artists CRUD
+// ---------------------------------------------------------------------------
+
+function _knownArtistRow(ka) {
+  const id = ka.id || '';
+  return `<tr data-ka-id="${esc(id)}">
+    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="(any)"></td>
+    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="(any)"></td>
+    <td><input type="text" class="ka-res-first" value="${esc(ka.resolved_first_name ?? '')}" placeholder="(keep)"></td>
+    <td><input type="text" class="ka-res-last" value="${esc(ka.resolved_last_name ?? '')}" placeholder="(keep)"></td>
+    <td><input type="text" class="ka-res-quals" value="${esc(ka.resolved_quals ?? '')}" placeholder="(keep)"></td>
+    <td><input type="text" class="ka-res-second" value="${esc(ka.resolved_second_artist ?? '')}" placeholder=""></td>
+    <td style="text-align:center"><input type="checkbox" class="ka-company"${ka.resolved_is_company ? ' checked' : ''}></td>
+    <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"></td>
+    <td>
+      <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times;</button>
+      <button class="btn btn-sm" onclick="saveKnownArtistRow(this)" title="Save">&check;</button>
+    </td>
+  </tr>`;
+}
+
+function addKnownArtistRow() {
+  const tbody = document.querySelector('#known-artists-table tbody');
+  tbody.insertAdjacentHTML('beforeend', _knownArtistRow({
+    id: '', match_first_name: '', match_last_name: '',
+    resolved_first_name: '', resolved_last_name: '',
+    resolved_quals: '', resolved_second_artist: '',
+    resolved_is_company: false, notes: '',
+  }));
+}
+
+function _readKaRow(tr) {
+  const val = (cls) => tr.querySelector(cls)?.value?.trim() || null;
+  const companyEl = tr.querySelector('.ka-company');
+  // Checkbox: checked = true, unchecked = null (don't override).
+  // We use indeterminate state to distinguish "no opinion" from "not a company".
+  const isCompany = companyEl?.checked ? true : null;
+  return {
+    match_first_name:      val('.ka-match-first'),
+    match_last_name:       val('.ka-match-last'),
+    resolved_first_name:   val('.ka-res-first'),
+    resolved_last_name:    val('.ka-res-last'),
+    resolved_quals:        val('.ka-res-quals'),
+    resolved_second_artist: val('.ka-res-second'),
+    resolved_is_company:   isCompany,
+    notes:                 val('.ka-notes'),
+  };
+}
+
+async function saveKnownArtistRow(btn) {
+  const tr = btn.closest('tr');
+  const id = tr.dataset.kaId;
+  const body = _readKaRow(tr);
+  const statusEl = document.getElementById('known-artists-status');
+  try {
+    let result;
+    if (id) {
+      result = await api('PATCH', `/known-artists/${id}`, body);
+    } else {
+      result = await api('POST', '/known-artists', body);
+      tr.dataset.kaId = result.id;
+    }
+    if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+  }
+}
+
+async function deleteKnownArtist(btn) {
+  const tr = btn.closest('tr');
+  const id = tr.dataset.kaId;
+  const statusEl = document.getElementById('known-artists-status');
+  if (!id) { tr.remove(); return; }
+  if (!confirm('Delete this known artist entry?')) return;
+  try {
+    await api('DELETE', `/known-artists/${id}`);
+    tr.remove();
+    if (statusEl) { statusEl.textContent = '\u2713 Deleted'; statusEl.className = 'status-msg success'; }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+  }
+}
+
+async function seedKnownArtists() {
+  const statusEl = document.getElementById('known-artists-status');
+  try {
+    const result = await api('POST', '/known-artists/seed');
+    if (statusEl) {
+      statusEl.textContent = `\u2713 ${result.added} added, ${result.skipped} already present`;
+      statusEl.className = 'status-msg success';
+    }
+    // Reload the table
+    const knownArtists = await api('GET', '/known-artists');
+    const tbody = document.querySelector('#known-artists-table tbody');
+    tbody.innerHTML = knownArtists.map(ka => _knownArtistRow(ka)).join('');
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }
 }
 
@@ -1928,15 +2061,32 @@ function renderIndexArtists(importId, artists) {
     filterInput.addEventListener('input', () => _applyIndexFilter(filterInput.value, filterCount, artists.length));
   }
 
-  const rows = artists.map(a => indexArtistRowHTML(importId, a)).join('');
+  // Detect linked entries (same sort_key appearing more than once)
+  const sortKeyCounts = {};
+  for (const a of artists) {
+    const sk = a.sort_key || '';
+    sortKeyCounts[sk] = (sortKeyCounts[sk] || 0) + 1;
+  }
+  // Assign group colours to sort_keys with >1 entry
+  const _GROUP_COLORS = ['#e74c3c','#2980b9','#27ae60','#f39c12','#8e44ad','#16a085','#d35400','#c0392b'];
+  let colorIdx = 0;
+  const sortKeyColor = {};
+  for (const [sk, count] of Object.entries(sortKeyCounts)) {
+    if (count > 1 && sk) {
+      sortKeyColor[sk] = _GROUP_COLORS[colorIdx % _GROUP_COLORS.length];
+      colorIdx++;
+    }
+  }
+
+  const rows = artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''])).join('');
   container.innerHTML = `
     <table class="data-table index-table">
       <thead><tr>
         <th>Last Name</th>
         <th>First Name</th>
         <th>Title</th>
-        <th>Quals</th>
-        <th class="col-ra"><abbr title="Royal Academician">RA</abbr></th>
+        <th class="col-quals">Quals</th>
+        <th class="col-flags">Flags</th>
         <th>Courtesy / Company</th>
         <th>Cat Numbers</th>
         <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
@@ -1945,11 +2095,18 @@ function renderIndexArtists(importId, artists) {
     </table>`;
 }
 
-function indexArtistRowHTML(importId, a) {
+function indexArtistRowHTML(importId, a, groupColor) {
   const included = a.include_in_export !== false;
-  const raBadge = a.is_ra_member
-    ? '<span class="badge badge-ra">RA</span>'
-    : (a.is_company ? '<span class="badge badge-company">Co.</span>' : '');
+  const groupStyle = groupColor ? `border-left: 4px solid ${groupColor};` : '';
+  const badges = [];
+  if (a.is_ra_member) badges.push('<span class="badge badge-ra">RA</span>');
+  const isOverridden = a.is_company !== a.is_company_auto;
+  const overrideClass = isOverridden ? ' badge-overridden' : '';
+  if (a.is_company) {
+    badges.push(`<button class="badge badge-company badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as individual'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',false)">Company</button>`);
+  } else {
+    badges.push(`<button class="badge badge-company-off badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as company'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',true)">Company</button>`);
+  }
 
   // Group cat numbers by courtesy
   const courtesyGroups = {};
@@ -1965,19 +2122,48 @@ function indexArtistRowHTML(importId, a) {
 
   const courtesyDisplay = a.company || Object.keys(courtesyGroups).filter(k => k).join('; ');
 
+  // Normalisation diff detection
+  function diffCell(raw, normalised, label) {
+    const r = raw ?? '';
+    const n = normalised ?? '';
+    if (r === n || (!r && !n)) return esc(n);
+    return `<span class="norm-changed" title="Raw: ${esc(r)}">${esc(n)}</span>`;
+  }
+
+  // Second artist display
+  const secondArtistDisplay = a.second_artist ? ` <span class="second-artist">${esc(a.second_artist)}</span>` : '';
+
   return `
-    <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}">
-      <td class="col-lastname">${esc(a.last_name ?? '')}</td>
-      <td>${esc(a.first_name ?? '')}</td>
+    <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" onclick="toggleIndexDetail('${esc(a.id)}')">
+      <td class="col-lastname">${diffCell(a.raw_last_name, a.last_name)}${secondArtistDisplay}</td>
+      <td>${diffCell(a.raw_first_name, a.first_name)}</td>
       <td>${esc(a.title ?? '')}</td>
-      <td>${esc(a.quals ?? '')}</td>
-      <td class="col-ra">${raBadge}</td>
+      <td class="col-quals">${diffCell(a.raw_quals, a.quals)}</td>
+      <td class="col-flags">${badges.join(' ')}</td>
       <td class="col-courtesy">${esc(courtesyDisplay)}</td>
       <td class="col-catnos">${esc(catDisplay)}</td>
       <td class="col-include">
         <input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="idx-incl-${esc(a.id)}"
           ${included ? 'checked' : ''}
+          onclick="event.stopPropagation()"
           onchange="toggleIndexInclude('${esc(importId)}','${esc(a.id)}',this)">
+      </td>
+    </tr>
+    <tr id="idx-detail-${esc(a.id)}" class="index-detail-row" style="display:none">
+      <td colspan="8">
+        <div class="index-detail">
+          <table class="detail-table">
+            <thead><tr><th>Field</th><th>Spreadsheet (raw)</th><th>Normalised</th></tr></thead>
+            <tbody>
+              <tr><td>Last Name</td><td>${esc(a.raw_last_name ?? '')}</td><td class="${(a.raw_last_name ?? '') !== (a.last_name ?? '') ? 'norm-highlight' : ''}">${esc(a.last_name ?? '')}</td></tr>
+              <tr><td>First Name</td><td>${esc(a.raw_first_name ?? '')}</td><td class="${(a.raw_first_name ?? '') !== (a.first_name ?? '') ? 'norm-highlight' : ''}">${esc(a.first_name ?? '')}</td></tr>
+              <tr><td>Quals</td><td>${esc(a.raw_quals ?? '')}</td><td class="${(a.raw_quals ?? '') !== (a.quals ?? '') ? 'norm-highlight' : ''}">${esc(a.quals ?? '')}</td></tr>
+              <tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td><td>${esc(a.company ?? '')}</td></tr>
+              <tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td><td><em class="muted">courtesy field</em></td></tr>
+              ${a.second_artist ? `<tr><td>Second Artist</td><td colspan="2">${esc(a.second_artist)}</td></tr>` : ''}
+            </tbody>
+          </table>
+        </div>
       </td>
     </tr>`;
 }
@@ -1995,6 +2181,26 @@ async function toggleIndexInclude(importId, artistId, checkbox) {
     showToast(`Toggle failed: ${err.message}`, 'error');
   } finally {
     checkbox.disabled = false;
+  }
+}
+
+async function toggleIndexCompany(importId, artistId, newValue) {
+  try {
+    const resp = await api('PATCH', `/index/imports/${importId}/artists/${artistId}/company?is_company=${newValue}`);
+    // Update cache and re-render the row
+    const a = _indexArtistCache[artistId];
+    if (a) {
+      a.is_company = resp.is_company;
+      if (resp.is_company_auto !== undefined) a.is_company_auto = resp.is_company_auto;
+      const row = document.getElementById(`idx-${artistId}`);
+      if (row) {
+        const tmp = document.createElement('tbody');
+        tmp.innerHTML = indexArtistRowHTML(importId, a);
+        row.replaceWith(tmp.firstElementChild);
+      }
+    }
+  } catch (err) {
+    showToast(`Toggle failed: ${err.message}`, 'error');
   }
 }
 
