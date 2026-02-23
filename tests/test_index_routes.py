@@ -9,6 +9,7 @@ from openpyxl import Workbook
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
+from backend.app.models.index_override_model import IndexArtistOverride
 from backend.app.models.audit_log_model import AuditLog
 
 
@@ -342,6 +343,115 @@ class TestExcludeIndexArtist:
         fake_id = str(uuid.uuid4())
         r = client.patch(
             f"/index/imports/{imp.id}/artists/{fake_id}/exclude?exclude=true",
+        )
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Company toggle
+# ---------------------------------------------------------------------------
+
+
+class TestCompanyToggle:
+    def test_set_company(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]  # Adams — not a company
+        assert artist.is_company is False
+        r = client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=true",
+        )
+        assert r.status_code == 200
+        assert r.json()["is_company"] is True
+        assert r.json()["is_company_auto"] is False  # auto-detected was False
+
+    def test_set_company_creates_override_row(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=true",
+        )
+        override = (
+            db_session.query(IndexArtistOverride)
+            .filter(IndexArtistOverride.artist_id == artist.id)
+            .first()
+        )
+        assert override is not None
+        assert override.is_company_override is True
+
+    def test_set_company_does_not_mutate_artist(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=true",
+        )
+        db_session.refresh(artist)
+        assert artist.is_company is False  # original auto-detected value preserved
+
+    def test_unset_company(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]
+        # Set as company first
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=true",
+        )
+        # Unset
+        r = client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=false",
+        )
+        assert r.status_code == 200
+        assert r.json()["is_company"] is False
+
+    def test_override_reflected_in_artist_listing(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]  # Adams — auto-detected as not company
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=true",
+        )
+        r = client.get(f"/index/imports/{imp.id}/artists")
+        adams = [a for a in r.json() if a["last_name"] == "Adams"][0]
+        assert adams["is_company"] is True
+        assert adams["is_company_auto"] is False
+
+    def test_company_toggle_creates_audit_log(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=true",
+        )
+        log = db_session.query(AuditLog).filter(AuditLog.import_id == imp.id).first()
+        assert log is not None
+        assert log.action == "index_artist_company_set"
+        assert log.field == "is_company_override"
+
+    def test_company_unset_audit_log(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]
+        # Set then unset
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=true",
+        )
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=false",
+        )
+        logs = db_session.query(AuditLog).filter(AuditLog.import_id == imp.id).all()
+        assert len(logs) == 2
+        assert logs[1].action == "index_artist_company_unset"
+
+    def test_company_noop_no_extra_audit(self, client, db_session):
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]
+        # Already not a company — setting false again is noop
+        client.patch(
+            f"/index/imports/{imp.id}/artists/{artist.id}/company?is_company=false",
+        )
+        logs = db_session.query(AuditLog).filter(AuditLog.import_id == imp.id).all()
+        assert len(logs) == 0
+
+    def test_company_404_for_wrong_artist(self, client, db_session):
+        imp, _ = _seed_index_import(db_session)
+        fake_id = str(uuid.uuid4())
+        r = client.patch(
+            f"/index/imports/{imp.id}/artists/{fake_id}/company?is_company=true",
         )
         assert r.status_code == 404
 

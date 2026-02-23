@@ -15,6 +15,7 @@ import unicodedata
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
+from backend.app.models.known_artist_model import KnownArtist
 from backend.app.models.validation_warning_model import ValidationWarning
 
 
@@ -67,7 +68,7 @@ def build_sort_key(last_name: Optional[str], first_name: Optional[str]) -> str:
     primary sort token.
     """
     primary = last_name or first_name or ""
-    secondary = first_name if last_name else ""
+    secondary = (first_name or "") if last_name else ""
     raw = f"{primary} {secondary}".strip().lower()
     return _strip_accents(raw)
 
@@ -98,6 +99,122 @@ def parse_cat_nos(raw: Optional[str]) -> List[int]:
 
 
 # ---------------------------------------------------------------------------
+# Multi-artist name parsing
+# ---------------------------------------------------------------------------
+
+# Prefix patterns indicating the last_name field contains a second artist
+_SECOND_ARTIST_PREFIX = re.compile(
+    r"^(?:and|&)\s+",
+    re.IGNORECASE,
+)
+
+
+def parse_multi_artist(
+    first_name: Optional[str],
+    last_name: Optional[str],
+    quals: Optional[str],
+) -> Optional[dict]:
+    """Detect and parse multi-artist entries.
+
+    When the last_name field starts with "and " or "& ", it means the
+    spreadsheet author placed the second artist there and packed the primary
+    artist's full name (possibly with embedded quals) into first_name.
+
+    Returns None if the pattern is not detected, or a dict with keys:
+        first_name, last_name, quals, second_artist
+    representing the parsed primary artist + second artist suffix.
+    """
+    if not last_name or not _SECOND_ARTIST_PREFIX.match(str(last_name).strip()):
+        return None
+
+    second_artist = str(last_name).strip()
+    raw_primary = str(first_name).strip() if first_name else ""
+
+    if not raw_primary:
+        # No first name to parse — can't extract a surname
+        return None
+
+    # Strip known quals from the end of the primary name
+    extracted_quals: list[str] = []
+    remaining = raw_primary
+    while True:
+        m = _QUAL_IN_NAME_PATTERN.search(remaining)
+        if not m:
+            break
+        # Only strip if it's at the end (after trimming)
+        suffix = remaining[m.start() :].strip()
+        # Check the match is at the end of the remaining string
+        after_match = remaining[m.end() :].strip()
+        if _QUAL_IN_NAME_PATTERN.sub("", after_match).strip() == "":
+            # Everything from this match to the end is quals
+            extracted_quals.append(remaining[m.start() :].strip())
+            remaining = remaining[: m.start()].strip()
+            break
+        else:
+            # Qual in the middle — just extract this one token
+            extracted_quals.insert(0, m.group(0))
+            remaining = (remaining[: m.start()] + remaining[m.end() :]).strip()
+
+    # Split the remainder into first name + surname
+    # Assume the last word is the surname
+    words = remaining.split()
+    if not words:
+        return None
+
+    parsed_last = words[-1]
+    parsed_first = " ".join(words[:-1]) if len(words) > 1 else None
+
+    # Merge extracted quals with existing quals
+    all_quals_parts = []
+    if extracted_quals:
+        all_quals_parts.extend(extracted_quals)
+    if quals and str(quals).strip():
+        all_quals_parts.append(str(quals).strip())
+    merged_quals = " ".join(all_quals_parts) if all_quals_parts else quals
+
+    return {
+        "first_name": parsed_first,
+        "last_name": parsed_last,
+        "quals": merged_quals,
+        "second_artist": second_artist,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Known artist lookup
+# ---------------------------------------------------------------------------
+
+
+def _build_known_artist_cache(db: Session) -> Dict[Tuple[str, str], "KnownArtist"]:
+    """Load known_artists table into a dict keyed by (match_first, match_last).
+
+    Keys use lowered/stripped values; None fields normalise to empty string
+    so that lookups are straightforward.
+    """
+    cache: Dict[Tuple[str, str], KnownArtist] = {}
+    for ka in db.query(KnownArtist).all():
+        key = (
+            (ka.match_first_name or "").strip().lower(),
+            (ka.match_last_name or "").strip().lower(),
+        )
+        cache[key] = ka
+    return cache
+
+
+def _lookup_known_artist(
+    cache: Dict[Tuple[str, str], "KnownArtist"],
+    first_name: Optional[str],
+    last_name: Optional[str],
+) -> Optional["KnownArtist"]:
+    """Look up raw name values against the known_artists cache."""
+    key = (
+        (first_name or "").strip().lower(),
+        (last_name or "").strip().lower(),
+    )
+    return cache.get(key)
+
+
+# ---------------------------------------------------------------------------
 # Company detection
 # ---------------------------------------------------------------------------
 
@@ -115,6 +232,86 @@ def detect_company(
     # Company if last name only, no first name
     # (If quals are present it might be a single-name individual like "Assemble RA")
     return has_last and not has_first and not has_quals
+
+
+# ---------------------------------------------------------------------------
+# Multi-name detection
+# ---------------------------------------------------------------------------
+
+# Words that typically separate two people's names
+_MULTI_NAME_SEPARATORS = re.compile(
+    r"(?:\band\b|\bwith\b|\s&\s)",
+    re.IGNORECASE,
+)
+
+
+def detect_multi_name(first_name: Optional[str], last_name: Optional[str]) -> bool:
+    """Return True if the name fields appear to contain more than one person."""
+    for field in (first_name, last_name):
+        if field and _MULTI_NAME_SEPARATORS.search(str(field)):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Quals-in-name detection
+# ---------------------------------------------------------------------------
+
+# Common qualification/honorific tokens that might appear misplaced in name fields
+_KNOWN_QUAL_TOKENS = {
+    "RA",
+    "PRA",
+    "PPRA",
+    "HON RA",
+    "HONRA",
+    "RA ELECT",
+    "EX OFFICIO",
+    "OBE",
+    "CBE",
+    "MBE",
+    "DBE",
+    "KBE",
+    "GBE",
+    "CH",
+    "KCVO",
+    "GCVO",
+    "CVO",
+    "KCB",
+    "GCB",
+    "DCB",
+    "FRS",
+    "FRSA",
+    "FRIAS",
+    "FRIBA",
+    "RIBA",
+    "RDI",
+    "QPM",
+    "QC",
+    "KC",
+}
+
+_QUAL_IN_NAME_PATTERN = re.compile(
+    r"\b(?:"
+    + "|".join(re.escape(t) for t in sorted(_KNOWN_QUAL_TOKENS, key=len, reverse=True))
+    + r")\b",
+    re.IGNORECASE,
+)
+
+
+def detect_quals_in_name(
+    first_name: Optional[str], last_name: Optional[str]
+) -> Optional[str]:
+    """If a known qualification token appears in a name field, return it.
+
+    Returns the first matched token or None.
+    """
+    for field in (first_name, last_name):
+        if not field:
+            continue
+        m = _QUAL_IN_NAME_PATTERN.search(str(field))
+        if m:
+            return m.group(0)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +458,9 @@ def import_index_excel(
             )
         )
 
+    # --- Load known artists cache ---
+    known_cache = _build_known_artist_cache(db)
+
     # ---------------------------------------------------------------
     # Pass 1: Read all rows into intermediate dicts
     # ---------------------------------------------------------------
@@ -363,14 +563,24 @@ def import_index_excel(
             for r in no_courtesy_rows:
                 merged_cat_nos.extend(r["cat_nos"])
             _create_artist_entry(
-                db, import_record, merged, merged_cat_nos, courtesy=None
+                db,
+                import_record,
+                merged,
+                merged_cat_nos,
+                courtesy=None,
+                known_cache=known_cache,
             )
             artist_count += 1
 
         # Each courtesy row becomes its own artist entry
         for r in courtesy_rows:
             _create_artist_entry(
-                db, import_record, r, r["cat_nos"], courtesy=r["address"]
+                db,
+                import_record,
+                r,
+                r["cat_nos"],
+                courtesy=r["address"],
+                known_cache=known_cache,
             )
             artist_count += 1
 
@@ -394,6 +604,7 @@ def _create_artist_entry(
     row: dict,
     cat_nos: List[int],
     courtesy: Optional[str],
+    known_cache: Optional[Dict[Tuple[str, str], "KnownArtist"]] = None,
 ) -> IndexArtist:
     """Create an IndexArtist and its associated IndexCatNumber records."""
     first_name = row["first_name"]
@@ -401,9 +612,39 @@ def _create_artist_entry(
     quals = row["quals"]
     title = row["title"]
     company_name = row["company"]
+    second_artist = None
+    known_match = None
+
+    # Known artist lookup — takes priority over heuristics
+    if known_cache:
+        known_match = _lookup_known_artist(
+            known_cache, row["raw_first_name"], row["raw_last_name"]
+        )
+
+    if known_match:
+        if known_match.resolved_first_name is not None:
+            first_name = known_match.resolved_first_name or None
+        if known_match.resolved_last_name is not None:
+            last_name = known_match.resolved_last_name or None
+        if known_match.resolved_quals is not None:
+            quals = known_match.resolved_quals or None
+        if known_match.resolved_second_artist is not None:
+            second_artist = known_match.resolved_second_artist or None
+    else:
+        # Multi-artist parsing: detect "and X" / "& X" in last_name
+        multi = parse_multi_artist(first_name, last_name, quals)
+        if multi:
+            first_name = multi["first_name"]
+            last_name = multi["last_name"]
+            quals = multi["quals"]
+            second_artist = multi["second_artist"]
 
     ra_member = is_ra_member(quals)
-    is_company_flag = detect_company(first_name, last_name, quals)
+
+    if known_match and known_match.resolved_is_company is not None:
+        is_company_flag = known_match.resolved_is_company
+    else:
+        is_company_flag = detect_company(first_name, last_name, quals)
 
     # If detected as company, move last_name into company field
     if is_company_flag and not company_name:
@@ -425,6 +666,7 @@ def _create_artist_entry(
         last_name=last_name,
         quals=quals,
         company=company_name,
+        second_artist=second_artist,
         is_ra_member=ra_member,
         is_company=is_company_flag,
         sort_key=sort,
@@ -453,13 +695,46 @@ def _create_artist_entry(
             )
         )
 
-    if is_company_flag:
+    if known_match:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="known_artist_applied",
+                message=f"Row {row['row_number']}: Known artist rule applied — {known_match.notes or 'matched lookup table'}",
+            )
+        )
+
+    if is_company_flag and not known_match:
         db.add(
             ValidationWarning(
                 import_id=import_record.id,
                 work_id=None,
                 warning_type="possible_company",
                 message=f"Row {row['row_number']}: \"{last_name}\" has no first name — treated as company",
+            )
+        )
+
+    # Multi-name detection
+    if detect_multi_name(first_name, last_name):
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="multi_artist_name",
+                message=f"Row {row['row_number']}: Name may contain multiple artists: {first_name or ''} {last_name or ''}".strip(),
+            )
+        )
+
+    # Quals-in-name detection
+    embedded_qual = detect_quals_in_name(first_name, last_name)
+    if embedded_qual:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="quals_in_name_field",
+                message=f"Row {row['row_number']}: Qualification \"{embedded_qual}\" found in name field: {first_name or ''} {last_name or ''}".strip(),
             )
         )
 

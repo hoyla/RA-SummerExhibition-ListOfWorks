@@ -12,6 +12,8 @@ from uuid import UUID
 
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
+from backend.app.models.index_override_model import IndexArtistOverride
+from backend.app.services.index_override_service import resolve_index_artist
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +58,7 @@ class ArtistExportEntry:
     last_name: Optional[str]
     quals: Optional[str]
     company: Optional[str]
+    second_artist: Optional[str]
     is_ra_member: bool
     is_company: bool
     sort_key: str
@@ -78,8 +81,20 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
         .all()
     )
 
+    # Batch-fetch overrides
+    artist_ids = [a.id for a in artists]
+    overrides = (
+        db.query(IndexArtistOverride)
+        .filter(IndexArtistOverride.artist_id.in_(artist_ids))
+        .all()
+        if artist_ids
+        else []
+    )
+    override_map = {str(o.artist_id): o for o in overrides}
+
     entries: List[ArtistExportEntry] = []
     for artist in artists:
+        eff = resolve_index_artist(artist, override_map.get(str(artist.id)))
         cat_numbers = (
             db.query(IndexCatNumber)
             .filter(IndexCatNumber.artist_id == artist.id)
@@ -101,14 +116,15 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
         for courtesy_key in group_keys:
             entries.append(
                 ArtistExportEntry(
-                    title=artist.title,
-                    first_name=artist.first_name,
-                    last_name=artist.last_name,
-                    quals=artist.quals,
-                    company=artist.company,
-                    is_ra_member=artist.is_ra_member,
-                    is_company=artist.is_company,
-                    sort_key=artist.sort_key,
+                    title=eff.title,
+                    first_name=eff.first_name,
+                    last_name=eff.last_name,
+                    quals=eff.quals,
+                    company=eff.company,
+                    second_artist=eff.second_artist,
+                    is_ra_member=eff.is_ra_member,
+                    is_company=eff.is_company,
+                    sort_key=eff.sort_key,
                     courtesy=courtesy_key,
                     cat_nos=courtesy_groups[courtesy_key],
                 )
@@ -246,6 +262,10 @@ def render_index_tagged_text(
 
         # Qualifications
         line_parts.append(_render_quals(entry.quals, entry.is_ra_member, cfg))
+
+        # Second artist suffix (e.g. "and Matthias Sauerbruch")
+        if entry.second_artist:
+            line_parts.append(entry.second_artist + ", ")
 
         # Courtesy / company
         # For company entries that are also RA members (like "Adjaye Associates"),

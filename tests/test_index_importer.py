@@ -11,9 +11,12 @@ from backend.app.services.index_importer import (
     build_sort_key,
     parse_cat_nos,
     detect_company,
+    detect_multi_name,
+    detect_quals_in_name,
 )
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
+from backend.app.models.known_artist_model import KnownArtist
 from backend.app.models.validation_warning_model import ValidationWarning
 
 
@@ -126,6 +129,59 @@ class TestDetectCompany:
 
     def test_no_name(self):
         assert detect_company(None, None, None) is False
+
+
+class TestDetectMultiName:
+    def test_and_separator(self):
+        assert detect_multi_name("Louisa", "Hutton and Sauerbach") is True
+
+    def test_ampersand_separator(self):
+        assert detect_multi_name("Langlands", "Langlands & Bell") is True
+
+    def test_with_separator(self):
+        assert detect_multi_name("Jane with John", "Smith") is True
+
+    def test_and_in_first_name(self):
+        assert detect_multi_name("Louisa and Matthias", "Hutton") is True
+
+    def test_no_separator(self):
+        assert detect_multi_name("Roger", "Adams") is False
+
+    def test_none_values(self):
+        assert detect_multi_name(None, None) is False
+
+    def test_anderson_not_flagged(self):
+        """'and' inside a word like 'Anderson' should not trigger."""
+        assert detect_multi_name("Ronnie", "Anderson") is False
+
+    def test_sandy_not_flagged(self):
+        assert detect_multi_name("Sandy", "Grant") is False
+
+
+class TestDetectQualsInName:
+    def test_obe_in_first_name(self):
+        assert detect_quals_in_name("Louisa OBE", "Hutton") is not None
+
+    def test_ra_in_last_name(self):
+        assert detect_quals_in_name("Cornelia", "Parker RA") is not None
+
+    def test_cbe_in_first_name(self):
+        result = detect_quals_in_name("John CBE", "Smith")
+        assert result is not None
+        assert result.upper() == "CBE"
+
+    def test_no_quals_in_name(self):
+        assert detect_quals_in_name("Roger", "Adams") is None
+
+    def test_none_values(self):
+        assert detect_quals_in_name(None, None) is None
+
+    def test_frsa_in_name(self):
+        assert detect_quals_in_name("John FRSA", "Smith") is not None
+
+    def test_partial_match_not_flagged(self):
+        """Words containing qual tokens as substrings should not match."""
+        assert detect_quals_in_name("Cbegins", "Obelix") is None
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +391,88 @@ class TestSortKey:
         assert names == ["Abramović", "Adams", "Parker"]
 
 
+class TestMultiNameWarning:
+    def test_and_in_name_emits_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [
+                (None, "Louisa", "Hutton and Sauerbach", None, None, None, "101"),
+            ],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="multi_artist_name")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "multiple artists" in warnings[0].message.lower()
+
+    def test_normal_name_no_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [
+                (None, "Roger", "Adams", None, None, None, "101"),
+            ],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="multi_artist_name")
+            .all()
+        )
+        assert len(warnings) == 0
+
+
+class TestQualsInNameWarning:
+    def test_obe_in_first_name_emits_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [
+                (None, "Louisa OBE", "Hutton", None, None, None, "101"),
+            ],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="quals_in_name_field")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "OBE" in warnings[0].message
+
+    def test_ra_in_last_name_emits_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [
+                (None, "Cornelia", "Parker RA", None, None, None, "205"),
+            ],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="quals_in_name_field")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "RA" in warnings[0].message
+
+    def test_normal_name_no_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [
+                (None, "Roger", "Adams", None, None, None, "101"),
+            ],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="quals_in_name_field")
+            .all()
+        )
+        assert len(warnings) == 0
+
+
 class TestSingleNameArtist:
     def test_assemble(self, db_session, tmp_path):
         """Artist with only first name (Assemble) — treated as RA member."""
@@ -387,3 +525,186 @@ class TestHeaderValidation:
             .all()
         )
         assert len(warnings) == 1
+
+
+# ---------------------------------------------------------------------------
+# Known artist lookup tests
+# ---------------------------------------------------------------------------
+
+
+class TestKnownArtistLookup:
+    """Test that known_artists entries override heuristic normalisation."""
+
+    def test_company_override(self, db_session, tmp_path):
+        """Boyd & Evans: raw first='Boyd', raw last='& Evans' → company 'Boyd & Evans'."""
+        # Seed the known artist entry
+        db_session.add(
+            KnownArtist(
+                match_first_name="Boyd",
+                match_last_name="& Evans",
+                resolved_first_name="",  # empty string = clear field
+                resolved_last_name="Boyd & Evans",
+                resolved_is_company=True,
+                notes="Partnership",
+            )
+        )
+        db_session.commit()
+
+        path = _make_workbook(
+            [(None, "Boyd", "& Evans", None, None, None, "101;102")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        artists = db_session.query(IndexArtist).filter_by(import_id=imp.id).all()
+        assert len(artists) == 1
+        a = artists[0]
+        assert a.last_name == "Boyd & Evans"
+        assert a.first_name is None
+        assert a.is_company is True
+        # Sort key should use the resolved last name
+        assert a.sort_key == "boyd & evans"
+
+    def test_multi_artist_override(self, db_session, tmp_path):
+        """Caruso/St John: raw last='Adam Caruso and Peter St John' → split."""
+        db_session.add(
+            KnownArtist(
+                match_first_name=None,
+                match_last_name="Adam Caruso and Peter St John",
+                resolved_first_name="Adam",
+                resolved_last_name="Caruso",
+                resolved_second_artist="and Peter St John",
+                notes="Full multi-artist name in Last Name column",
+            )
+        )
+        db_session.commit()
+
+        path = _make_workbook(
+            [(None, None, "Adam Caruso and Peter St John", "RA", None, None, "501")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        artists = db_session.query(IndexArtist).filter_by(import_id=imp.id).all()
+        assert len(artists) == 1
+        a = artists[0]
+        assert a.first_name == "Adam"
+        assert a.last_name == "Caruso"
+        assert a.second_artist == "and Peter St John"
+        # Quals should be preserved from spreadsheet (not overridden)
+        assert a.quals == "RA"
+        assert a.is_ra_member is True
+        assert a.sort_key == "caruso adam"
+
+    def test_known_artist_emits_warning(self, db_session, tmp_path):
+        """When a known artist match is used, it should emit a warning."""
+        db_session.add(
+            KnownArtist(
+                match_first_name="Boyd",
+                match_last_name="& Evans",
+                resolved_last_name="Boyd & Evans",
+                resolved_is_company=True,
+                notes="Partnership",
+            )
+        )
+        db_session.commit()
+
+        path = _make_workbook(
+            [(None, "Boyd", "& Evans", None, None, None, "101")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="known_artist_applied")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "Partnership" in warnings[0].message
+
+    def test_known_artist_suppresses_company_heuristic_warning(
+        self, db_session, tmp_path
+    ):
+        """When a known artist sets is_company, the heuristic warning should NOT appear."""
+        db_session.add(
+            KnownArtist(
+                match_first_name="Boyd",
+                match_last_name="& Evans",
+                resolved_first_name="",
+                resolved_last_name="Boyd & Evans",
+                resolved_is_company=True,
+            )
+        )
+        db_session.commit()
+
+        path = _make_workbook(
+            [(None, "Boyd", "& Evans", None, None, None, "101")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        company_warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="possible_company")
+            .all()
+        )
+        assert len(company_warnings) == 0
+
+    def test_no_known_artist_match_uses_heuristics(self, db_session, tmp_path):
+        """When there's no known artist match, standard heuristics apply."""
+        # No known artists seeded
+        path = _make_workbook(
+            [(None, None, "AKT II", None, None, None, "787")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        artists = db_session.query(IndexArtist).filter_by(import_id=imp.id).all()
+        assert len(artists) == 1
+        assert artists[0].is_company is True
+        assert artists[0].company == "AKT II"
+
+    def test_case_insensitive_matching(self, db_session, tmp_path):
+        """Known artist matching should be case-insensitive."""
+        db_session.add(
+            KnownArtist(
+                match_first_name="boyd",
+                match_last_name="& evans",
+                resolved_last_name="Boyd & Evans",
+                resolved_is_company=True,
+            )
+        )
+        db_session.commit()
+
+        path = _make_workbook(
+            [(None, "Boyd", "& Evans", None, None, None, "101")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        artists = db_session.query(IndexArtist).filter_by(import_id=imp.id).all()
+        assert len(artists) == 1
+        assert artists[0].last_name == "Boyd & Evans"
+        assert artists[0].is_company is True
+
+    def test_plus_zatorski_as_company(self, db_session, tmp_path):
+        """Zatorski + Zatorski: raw first='Zatorski', raw last='+ Zatorski' → company."""
+        db_session.add(
+            KnownArtist(
+                match_first_name="Zatorski",
+                match_last_name="+ Zatorski",
+                resolved_first_name="",
+                resolved_last_name="Zatorski + Zatorski",
+                resolved_is_company=True,
+                notes="Uses + instead of &",
+            )
+        )
+        db_session.commit()
+
+        path = _make_workbook(
+            [(None, "Zatorski", "+ Zatorski", None, None, None, "555")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        artists = db_session.query(IndexArtist).filter_by(import_id=imp.id).all()
+        assert len(artists) == 1
+        a = artists[0]
+        assert a.last_name == "Zatorski + Zatorski"
+        assert a.first_name is None
+        assert a.is_company is True
+        assert a.sort_key == "zatorski + zatorski"

@@ -30,6 +30,7 @@ def _entry(
     courtesy=None,
     cat_nos=None,
     sort_key="",
+    second_artist=None,
 ):
     return ArtistExportEntry(
         title=title,
@@ -42,6 +43,7 @@ def _entry(
         sort_key=sort_key,
         courtesy=courtesy,
         cat_nos=cat_nos or [],
+        second_artist=second_artist,
     )
 
 

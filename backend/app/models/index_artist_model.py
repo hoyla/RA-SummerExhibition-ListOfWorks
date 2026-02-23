@@ -44,6 +44,7 @@ class IndexArtist(Base):
     last_name = Column(Text, nullable=True)  # Cleaned last name
     quals = Column(Text, nullable=True)  # Cleaned qualifications
     company = Column(Text, nullable=True)  # Detected company name
+    second_artist = Column(Text, nullable=True)  # "and Matthias Sauerbruch" suffix
     is_ra_member = Column(Boolean, nullable=False, server_default="false")
     is_company = Column(Boolean, nullable=False, server_default="false")
 

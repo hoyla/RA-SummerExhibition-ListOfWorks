@@ -278,8 +278,10 @@ class IndexArtistOut(BaseModel):
     last_name: str | None = None
     quals: str | None = None
     company: str | None = None
+    second_artist: str | None = None
     is_ra_member: bool
     is_company: bool
+    is_company_auto: bool = False
     sort_key: str
     include_in_export: bool
     cat_numbers: List[IndexCatNumberOut]
@@ -297,3 +299,44 @@ class IndexImportOut(BaseModel):
     override_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Known Artists
+# ---------------------------------------------------------------------------
+
+
+class KnownArtistOut(BaseModel):
+    id: str
+    match_first_name: str | None = None
+    match_last_name: str | None = None
+    resolved_first_name: str | None = None
+    resolved_last_name: str | None = None
+    resolved_quals: str | None = None
+    resolved_second_artist: str | None = None
+    resolved_is_company: bool | None = None
+    notes: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class KnownArtistCreate(BaseModel):
+    match_first_name: str | None = None
+    match_last_name: str | None = None
+    resolved_first_name: str | None = None
+    resolved_last_name: str | None = None
+    resolved_quals: str | None = None
+    resolved_second_artist: str | None = None
+    resolved_is_company: bool | None = None
+    notes: str | None = None
+
+
+class KnownArtistUpdate(BaseModel):
+    match_first_name: str | None = None
+    match_last_name: str | None = None
+    resolved_first_name: str | None = None
+    resolved_last_name: str | None = None
+    resolved_quals: str | None = None
+    resolved_second_artist: str | None = None
+    resolved_is_company: bool | None = None
+    notes: str | None = None

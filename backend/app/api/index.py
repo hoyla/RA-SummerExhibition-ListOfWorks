@@ -23,11 +23,13 @@ from backend.app.api.schemas import (
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
+from backend.app.models.index_override_model import IndexArtistOverride
 from backend.app.models.audit_log_model import AuditLog
 from backend.app.services.index_importer import (
     import_index_excel,
     IndexImportError,
 )
+from backend.app.services.index_override_service import resolve_index_artist
 from backend.app.services.index_renderer import (
     collect_index_entries,
     render_index_tagged_text,
@@ -152,36 +154,53 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
     for cn in cat_numbers:
         cat_map.setdefault(str(cn.artist_id), []).append(cn)
 
-    return [
-        IndexArtistOut(
-            id=str(a.id),
-            row_number=a.row_number,
-            raw_title=a.raw_title,
-            raw_first_name=a.raw_first_name,
-            raw_last_name=a.raw_last_name,
-            raw_quals=a.raw_quals,
-            raw_company=a.raw_company,
-            raw_address=a.raw_address,
-            title=a.title,
-            first_name=a.first_name,
-            last_name=a.last_name,
-            quals=a.quals,
-            company=a.company,
-            is_ra_member=a.is_ra_member,
-            is_company=a.is_company,
-            sort_key=a.sort_key,
-            include_in_export=bool(a.include_in_export),
-            cat_numbers=[
-                IndexCatNumberOut(
-                    id=str(cn.id),
-                    cat_no=cn.cat_no,
-                    courtesy=cn.courtesy,
-                )
-                for cn in cat_map.get(str(a.id), [])
-            ],
+    # Batch-fetch overrides
+    overrides = (
+        db.query(IndexArtistOverride)
+        .filter(IndexArtistOverride.artist_id.in_(artist_ids))
+        .all()
+        if artist_ids
+        else []
+    )
+    override_map: dict[str, IndexArtistOverride] = {
+        str(o.artist_id): o for o in overrides
+    }
+
+    result = []
+    for a in artists:
+        eff = resolve_index_artist(a, override_map.get(str(a.id)))
+        result.append(
+            IndexArtistOut(
+                id=str(a.id),
+                row_number=a.row_number,
+                raw_title=a.raw_title,
+                raw_first_name=a.raw_first_name,
+                raw_last_name=a.raw_last_name,
+                raw_quals=a.raw_quals,
+                raw_company=a.raw_company,
+                raw_address=a.raw_address,
+                title=eff.title,
+                first_name=eff.first_name,
+                last_name=eff.last_name,
+                quals=eff.quals,
+                company=eff.company,
+                second_artist=eff.second_artist,
+                is_ra_member=eff.is_ra_member,
+                is_company=eff.is_company,
+                is_company_auto=eff.is_company_auto,
+                sort_key=eff.sort_key,
+                include_in_export=eff.include_in_export,
+                cat_numbers=[
+                    IndexCatNumberOut(
+                        id=str(cn.id),
+                        cat_no=cn.cat_no,
+                        courtesy=cn.courtesy,
+                    )
+                    for cn in cat_map.get(str(a.id), [])
+                ],
+            )
         )
-        for a in artists
-    ]
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +283,67 @@ def set_artist_excluded(
     return {
         "artist_id": str(artist_id),
         "include_in_export": not new_excluded,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Company toggle
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/imports/{import_id}/artists/{artist_id}/company",
+    status_code=status.HTTP_200_OK,
+)
+def set_artist_company(
+    import_id: UUID,
+    artist_id: UUID,
+    is_company: bool = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Toggle is_company override for an index artist."""
+    artist = _get_artist_or_404(import_id, artist_id, db)
+
+    override = (
+        db.query(IndexArtistOverride)
+        .filter(IndexArtistOverride.artist_id == artist_id)
+        .first()
+    )
+
+    # Determine old effective value
+    old_effective = bool(artist.is_company)
+    if override and override.is_company_override is not None:
+        old_effective = override.is_company_override
+
+    if old_effective != is_company:
+        if override is None:
+            override = IndexArtistOverride(
+                artist_id=artist_id,
+                is_company_override=is_company,
+            )
+            db.add(override)
+        else:
+            override.is_company_override = is_company
+
+        db.add(
+            AuditLog(
+                import_id=import_id,
+                action=(
+                    "index_artist_company_set"
+                    if is_company
+                    else "index_artist_company_unset"
+                ),
+                field="is_company_override",
+                old_value=str(old_effective),
+                new_value=str(is_company),
+            )
+        )
+        db.commit()
+
+    return {
+        "artist_id": str(artist_id),
+        "is_company": is_company,
+        "is_company_auto": bool(artist.is_company),
     }
 
 

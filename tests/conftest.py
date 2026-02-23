@@ -35,6 +35,8 @@ import backend.app.models.audit_log_model  # noqa: F401
 import backend.app.models.export_snapshot_model  # noqa: F401
 import backend.app.models.index_artist_model  # noqa: F401
 import backend.app.models.index_cat_number_model  # noqa: F401
+import backend.app.models.index_override_model  # noqa: F401
+import backend.app.models.known_artist_model  # noqa: F401
 
 from backend.app.api.import_routes import router, get_db
 
