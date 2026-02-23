@@ -1458,7 +1458,7 @@ function showOverrideForm(importId, workId, existing) {
   const cell = document.getElementById(`ovc-${workId}`);
   cell.innerHTML = `
     <div class="override-form">
-      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy</span></h5>
+      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
       <div class="override-field-form" id="ovf-${esc(workId)}">
         <div class="form-row"><label>Title</label>
           ${hint('title_override','title_override')}
