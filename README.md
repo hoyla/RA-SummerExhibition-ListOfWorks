@@ -1,4 +1,4 @@
-# Catalogue Tool
+# Royal Academy Summer Exhibition Catalogue Tool
 
 A tool for ingesting Royal Academy exhibition catalogue Excel files, applying editorial overrides, and generating clean InDesign Tagged Text exports.
 
