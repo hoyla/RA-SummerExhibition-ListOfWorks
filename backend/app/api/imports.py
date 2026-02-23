@@ -135,7 +135,12 @@ def reimport_upload(
 
 @router.get("/imports", response_model=List[ImportOut])
 def list_imports(db: Session = Depends(get_db)):
-    imports = db.query(Import).order_by(Import.uploaded_at.desc()).all()
+    imports = (
+        db.query(Import)
+        .filter(Import.product_type == "list_of_works")
+        .order_by(Import.uploaded_at.desc())
+        .all()
+    )
 
     # Batch-fetch section counts, work counts, and override stats in one query each
     section_counts = {
