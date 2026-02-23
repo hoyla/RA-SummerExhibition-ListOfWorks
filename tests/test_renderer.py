@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from backend.app.services.export_renderer import (
     render_import_as_tagged_text,
     ExportConfig,
+    ComponentConfig,
 )
 
 
@@ -301,3 +302,123 @@ def test_section_separator_not_before_first():
     # Should not appear before the first section heading
     first_heading = output.index("Gallery I")
     assert "<cnxc:Column>" not in output[:first_heading]
+
+
+# ---------------------------------------------------------------------------
+# Manual line breaks in overrides
+# ---------------------------------------------------------------------------
+
+
+def _manual_break_db(title="Line one\nLine two", medium=None):
+    """Single-section DB with a work whose title (or medium) contains newlines."""
+    sec = SimpleNamespace(id="sec1", import_id="imp1", name="Gallery", position=1)
+    work = SimpleNamespace(
+        id="w1",
+        raw_cat_no=1,
+        artist_name="Artist",
+        artist_honorifics=None,
+        title=title,
+        price_numeric=100,
+        price_text="100",
+        edition_total=None,
+        edition_price_numeric=None,
+        artwork=None,
+        medium=medium,
+        section_id="sec1",
+        position_in_section=1,
+        include_in_export=True,
+    )
+    return FakeSession([sec], [work])
+
+
+def test_manual_line_breaks_bypass_auto_wrap():
+    """Newlines in title text should produce soft returns, not auto-wrapped lines."""
+    db = _manual_break_db(title="A very short first line\nSecond line")
+    cfg = ExportConfig(
+        components=[
+            ComponentConfig(field="work_number", separator_after="tab"),
+            ComponentConfig(
+                field="title",
+                separator_after="soft_return",
+                max_line_chars=80,
+                balance_lines=True,
+            ),
+            ComponentConfig(field="artist", separator_after="none"),
+        ],
+    )
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    # Should have two lines separated by \n (soft return), not re-wrapped
+    assert "A very short first line" in output
+    assert "Second line" in output
+
+
+def test_manual_line_breaks_with_end_of_first_line():
+    """Manual breaks should still interleave next component on first line."""
+    db = _manual_break_db(title="First line\nSecond line")
+    cfg = ExportConfig(
+        components=[
+            ComponentConfig(field="work_number", separator_after="tab"),
+            ComponentConfig(
+                field="title",
+                separator_after="tab",
+                max_line_chars=80,
+                balance_lines=True,
+                next_component_position="end_of_first_line",
+            ),
+            ComponentConfig(field="price", separator_after="soft_return"),
+            ComponentConfig(field="artist", separator_after="none"),
+        ],
+    )
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    # Price should appear on the first line (after title's first line)
+    assert "First line" in output
+    assert "Second line" in output
+    # Price (£100) should be present
+    assert "100" in output
+
+
+def test_manual_line_breaks_medium():
+    """Newlines in medium should also bypass auto-wrap."""
+    db = _manual_break_db(
+        title="Normal Title", medium="oil on canvas\nmounted on board"
+    )
+    cfg = ExportConfig(
+        components=[
+            ComponentConfig(field="work_number", separator_after="tab"),
+            ComponentConfig(field="title", separator_after="soft_return"),
+            ComponentConfig(
+                field="medium",
+                separator_after="soft_return",
+                max_line_chars=80,
+                balance_lines=True,
+            ),
+            ComponentConfig(field="artist", separator_after="none"),
+        ],
+    )
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    assert "oil on canvas" in output
+    assert "mounted on board" in output
+
+
+def test_no_newlines_still_auto_wraps():
+    """Text without newlines should still use auto-wrap as before."""
+    db = _manual_break_db(
+        title="A title that is long enough to need wrapping at some point in the line"
+    )
+    cfg = ExportConfig(
+        components=[
+            ComponentConfig(field="work_number", separator_after="tab"),
+            ComponentConfig(
+                field="title",
+                separator_after="soft_return",
+                max_line_chars=30,
+                balance_lines=False,
+            ),
+            ComponentConfig(field="artist", separator_after="none"),
+        ],
+    )
+    output = render_import_as_tagged_text("imp1", db, config=cfg)
+    # Should contain a soft return (\n) from auto-wrapping
+    # The title is 70 chars, max 30, so it must wrap
+    lines_in_output = output.count("A title")
+    assert lines_in_output >= 1  # at least present

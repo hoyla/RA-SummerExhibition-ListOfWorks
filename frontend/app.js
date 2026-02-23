@@ -1443,14 +1443,16 @@ function showOverrideForm(importId, workId, existing) {
     medium_override:                   o.medium_override                   ?? w.medium                    ?? '',
   };
 
-  // Returns a clickable hint that copies the current value into the named input
+  // Returns a clickable hint that copies the current value into the named input/textarea
   const hint = (field, inputName) => {
     const v = cur[field];
     if (v === null || v === undefined || v === '') return '';
     const safe = esc(String(v));
+    // Encode value as base64 to safely handle newlines in the onclick handler
+    const b64 = btoa(unescape(encodeURIComponent(String(v))));
     return `<button type="button" class="current-val-hint"
-      onclick="(function(){var el=document.querySelector('#ovf-${esc(workId)} [name=\\'${inputName}\\']');if(el)el.value='${safe.replace(/'/g, "\\'")}';})()">
-      ${safe}</button>`;
+      onclick="(function(){var el=document.querySelector('#ovf-${esc(workId)} [name=\\'${inputName}\\']');if(el)el.value=decodeURIComponent(escape(atob('${b64}')));})()">
+      ${safe.replace(/\n/g, ' \u23ce ')}</button>`;
   };
 
   const cell = document.getElementById(`ovc-${workId}`);
@@ -1460,10 +1462,10 @@ function showOverrideForm(importId, workId, existing) {
       <div class="override-field-form" id="ovf-${esc(workId)}">
         <div class="form-row"><label>Title</label>
           ${hint('title_override','title_override')}
-          <input type="text" name="title_override" value="${val('title_override')}" placeholder="Override title"></div>
+          <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
         <div class="form-row"><label>Artist</label>
           ${hint('artist_name_override','artist_name_override')}
-          <input type="text" name="artist_name_override" value="${val('artist_name_override')}" placeholder="Override artist"></div>
+          <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
         <div class="form-row"><label>Honorifics</label>
           ${hint('artist_honorifics_override','artist_honorifics_override')}
           <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
@@ -1484,7 +1486,7 @@ function showOverrideForm(importId, workId, existing) {
           <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
         <div class="form-row"><label>Medium</label>
           ${hint('medium_override','medium_override')}
-          <input type="text" name="medium_override" value="${val('medium_override')}" placeholder="Override medium"></div>
+          <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
         <div class="form-actions">
           <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
           ${existing ? `<button class="btn btn-danger" onclick="deleteOverride('${esc(importId)}','${esc(workId)}')">Delete Override</button>` : ''}

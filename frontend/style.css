@@ -404,6 +404,22 @@ details.section-block[open] > .section-summary::before {
   box-shadow: 0 0 0 2px rgba(80, 112, 160, 0.15);
 }
 
+.form-row textarea {
+  font-size: 13px;
+  font-family: var(--font);
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+  resize: vertical;
+  min-height: 36px;
+}
+.form-row textarea:focus {
+  outline: none;
+  border-color: #5070a0;
+  box-shadow: 0 0 0 2px rgba(80, 112, 160, 0.15);
+}
+
 .form-row select {
   font-size: 13px;
   font-family: var(--font);

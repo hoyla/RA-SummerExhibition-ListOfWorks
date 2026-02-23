@@ -364,6 +364,7 @@ def _raw_text_for_field(field: str, w: dict) -> str:
     mapping = {
         "work_number": lambda: str(w["number"]) if w["number"] else "",
         "title": lambda: w["title"] or "",
+        "artist": lambda: w["artist"] or "",
         "medium": lambda: w["medium"] or "",
         "artwork": lambda: str(w["artwork"]) if w["artwork"] else "",
     }
@@ -521,10 +522,14 @@ def render_import_as_tagged_text(
                 end_of_first_line = comp.next_component_position == "end_of_first_line"
                 if should_wrap:
                     raw = _raw_text_for_field(comp.field, w)
-                    _wrap_fn = (
-                        _balance_wrap_lines if comp.balance_lines else _wrap_lines
-                    )
-                    wrapped = _wrap_fn(raw, comp.max_line_chars) if raw else []
+                    # Manual line breaks (\n in overridden text) bypass auto-wrap
+                    if raw and "\n" in raw:
+                        wrapped = [line for line in raw.split("\n") if line]
+                    else:
+                        _wrap_fn = (
+                            _balance_wrap_lines if comp.balance_lines else _wrap_lines
+                        )
+                        wrapped = _wrap_fn(raw, comp.max_line_chars) if raw else []
                     style = _field_char_style(config, comp.field)
                     eff_sep = (
                         final_sep_override
