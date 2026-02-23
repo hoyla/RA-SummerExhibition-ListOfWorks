@@ -13,7 +13,11 @@ from uuid import UUID
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
-from backend.app.services.index_override_service import resolve_index_artist
+from backend.app.services.index_override_service import (
+    resolve_index_artist,
+    build_known_artist_cache,
+    lookup_known_artist,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -92,9 +96,15 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
     )
     override_map = {str(o.artist_id): o for o in overrides}
 
+    # Build known artist cache
+    known_cache = build_known_artist_cache(db)
+
     entries: List[ArtistExportEntry] = []
     for artist in artists:
-        eff = resolve_index_artist(artist, override_map.get(str(artist.id)))
+        known = lookup_known_artist(
+            known_cache, artist.raw_first_name, artist.raw_last_name
+        )
+        eff = resolve_index_artist(artist, override_map.get(str(artist.id)), known)
         cat_numbers = (
             db.query(IndexCatNumber)
             .filter(IndexCatNumber.artist_id == artist.id)
@@ -130,6 +140,8 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
                 )
             )
 
+    # Re-sort by resolved sort key (known artists may change ordering)
+    entries.sort(key=lambda e: e.sort_key)
     return entries
 
 

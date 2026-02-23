@@ -29,7 +29,11 @@ from backend.app.services.index_importer import (
     import_index_excel,
     IndexImportError,
 )
-from backend.app.services.index_override_service import resolve_index_artist
+from backend.app.services.index_override_service import (
+    resolve_index_artist,
+    build_known_artist_cache,
+    lookup_known_artist,
+)
 from backend.app.services.index_renderer import (
     collect_index_entries,
     render_index_tagged_text,
@@ -130,7 +134,7 @@ def list_index_imports(db: Session = Depends(get_db)):
     response_model=List[IndexArtistOut],
 )
 def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
-    """List all artists for an index import, ordered by sort key."""
+    """List all artists for an index import, ordered by resolved sort key."""
     _get_index_import_or_404(import_id, db)
 
     artists = (
@@ -166,9 +170,13 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
         str(o.artist_id): o for o in overrides
     }
 
+    # Build known artist cache
+    known_cache = build_known_artist_cache(db)
+
     result = []
     for a in artists:
-        eff = resolve_index_artist(a, override_map.get(str(a.id)))
+        known = lookup_known_artist(known_cache, a.raw_first_name, a.raw_last_name)
+        eff = resolve_index_artist(a, override_map.get(str(a.id)), known)
         result.append(
             IndexArtistOut(
                 id=str(a.id),
@@ -179,6 +187,7 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                 raw_quals=a.raw_quals,
                 raw_company=a.raw_company,
                 raw_address=a.raw_address,
+                index_name=eff.index_name,
                 title=eff.title,
                 first_name=eff.first_name,
                 last_name=eff.last_name,
@@ -200,6 +209,9 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                 ],
             )
         )
+
+    # Re-sort by resolved sort key (known artists may change ordering)
+    result.sort(key=lambda r: (r.sort_key, r.row_number or 0))
     return result
 
 

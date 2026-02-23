@@ -878,9 +878,14 @@ details.section-block[open] > .section-summary::before {
   vertical-align: top;
 }
 
-.index-table .col-lastname {
+.index-table .col-index-name {
   font-weight: 600;
-  max-width: 170px;
+  max-width: 260px;
+  word-break: break-word;
+}
+
+.index-table .col-lastname {
+  max-width: 140px;
   word-break: break-word;
 }
 

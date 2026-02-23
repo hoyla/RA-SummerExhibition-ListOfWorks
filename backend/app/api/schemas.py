@@ -273,6 +273,7 @@ class IndexArtistOut(BaseModel):
     raw_quals: str | None = None
     raw_company: str | None = None
     raw_address: str | None = None
+    index_name: str
     title: str | None = None
     first_name: str | None = None
     last_name: str | None = None

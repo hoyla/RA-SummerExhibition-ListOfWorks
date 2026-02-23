@@ -474,11 +474,11 @@ async function saveSettings() {
 function _knownArtistRow(ka) {
   const id = ka.id || '';
   return `<tr data-ka-id="${esc(id)}">
-    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="(any)"></td>
-    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="(any)"></td>
-    <td><input type="text" class="ka-res-first" value="${esc(ka.resolved_first_name ?? '')}" placeholder="(keep)"></td>
-    <td><input type="text" class="ka-res-last" value="${esc(ka.resolved_last_name ?? '')}" placeholder="(keep)"></td>
-    <td><input type="text" class="ka-res-quals" value="${esc(ka.resolved_quals ?? '')}" placeholder="(keep)"></td>
+    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder=""></td>
+    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder=""></td>
+    <td><input type="text" class="ka-res-first" value="${esc(ka.resolved_first_name ?? '')}" placeholder="no change"></td>
+    <td><input type="text" class="ka-res-last" value="${esc(ka.resolved_last_name ?? '')}" placeholder="no change"></td>
+    <td><input type="text" class="ka-res-quals" value="${esc(ka.resolved_quals ?? '')}" placeholder="no change"></td>
     <td><input type="text" class="ka-res-second" value="${esc(ka.resolved_second_artist ?? '')}" placeholder=""></td>
     <td style="text-align:center"><input type="checkbox" class="ka-company"${ka.resolved_is_company ? ' checked' : ''}></td>
     <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"></td>
@@ -2082,6 +2082,7 @@ function renderIndexArtists(importId, artists) {
   container.innerHTML = `
     <table class="data-table index-table">
       <thead><tr>
+        <th>Index Name</th>
         <th>Last Name</th>
         <th>First Name</th>
         <th>Title</th>
@@ -2135,6 +2136,7 @@ function indexArtistRowHTML(importId, a, groupColor) {
 
   return `
     <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" onclick="toggleIndexDetail('${esc(a.id)}')">
+      <td class="col-index-name">${esc(a.index_name || '')}</td>
       <td class="col-lastname">${diffCell(a.raw_last_name, a.last_name)}${secondArtistDisplay}</td>
       <td>${diffCell(a.raw_first_name, a.first_name)}</td>
       <td>${esc(a.title ?? '')}</td>
@@ -2150,7 +2152,7 @@ function indexArtistRowHTML(importId, a, groupColor) {
       </td>
     </tr>
     <tr id="idx-detail-${esc(a.id)}" class="index-detail-row" style="display:none">
-      <td colspan="8">
+      <td colspan="9">
         <div class="index-detail">
           <table class="detail-table">
             <thead><tr><th>Field</th><th>Spreadsheet (raw)</th><th>Normalised</th></tr></thead>
@@ -2166,6 +2168,12 @@ function indexArtistRowHTML(importId, a, groupColor) {
         </div>
       </td>
     </tr>`;
+}
+
+function toggleIndexDetail(artistId) {
+  const detailRow = document.getElementById(`idx-detail-${artistId}`);
+  if (!detailRow) return;
+  detailRow.style.display = detailRow.style.display === 'none' ? '' : 'none';
 }
 
 async function toggleIndexInclude(importId, artistId, checkbox) {

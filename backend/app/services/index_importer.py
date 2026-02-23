@@ -8,14 +8,13 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy.orm import Session
 from difflib import get_close_matches
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import re
 import unicodedata
 
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
-from backend.app.models.known_artist_model import KnownArtist
 from backend.app.models.validation_warning_model import ValidationWarning
 
 
@@ -178,40 +177,6 @@ def parse_multi_artist(
         "quals": merged_quals,
         "second_artist": second_artist,
     }
-
-
-# ---------------------------------------------------------------------------
-# Known artist lookup
-# ---------------------------------------------------------------------------
-
-
-def _build_known_artist_cache(db: Session) -> Dict[Tuple[str, str], "KnownArtist"]:
-    """Load known_artists table into a dict keyed by (match_first, match_last).
-
-    Keys use lowered/stripped values; None fields normalise to empty string
-    so that lookups are straightforward.
-    """
-    cache: Dict[Tuple[str, str], KnownArtist] = {}
-    for ka in db.query(KnownArtist).all():
-        key = (
-            (ka.match_first_name or "").strip().lower(),
-            (ka.match_last_name or "").strip().lower(),
-        )
-        cache[key] = ka
-    return cache
-
-
-def _lookup_known_artist(
-    cache: Dict[Tuple[str, str], "KnownArtist"],
-    first_name: Optional[str],
-    last_name: Optional[str],
-) -> Optional["KnownArtist"]:
-    """Look up raw name values against the known_artists cache."""
-    key = (
-        (first_name or "").strip().lower(),
-        (last_name or "").strip().lower(),
-    )
-    return cache.get(key)
 
 
 # ---------------------------------------------------------------------------
@@ -458,9 +423,6 @@ def import_index_excel(
             )
         )
 
-    # --- Load known artists cache ---
-    known_cache = _build_known_artist_cache(db)
-
     # ---------------------------------------------------------------
     # Pass 1: Read all rows into intermediate dicts
     # ---------------------------------------------------------------
@@ -568,7 +530,6 @@ def import_index_excel(
                 merged,
                 merged_cat_nos,
                 courtesy=None,
-                known_cache=known_cache,
             )
             artist_count += 1
 
@@ -580,7 +541,6 @@ def import_index_excel(
                 r,
                 r["cat_nos"],
                 courtesy=r["address"],
-                known_cache=known_cache,
             )
             artist_count += 1
 
@@ -604,7 +564,6 @@ def _create_artist_entry(
     row: dict,
     cat_nos: List[int],
     courtesy: Optional[str],
-    known_cache: Optional[Dict[Tuple[str, str], "KnownArtist"]] = None,
 ) -> IndexArtist:
     """Create an IndexArtist and its associated IndexCatNumber records."""
     first_name = row["first_name"]
@@ -613,38 +572,18 @@ def _create_artist_entry(
     title = row["title"]
     company_name = row["company"]
     second_artist = None
-    known_match = None
 
-    # Known artist lookup — takes priority over heuristics
-    if known_cache:
-        known_match = _lookup_known_artist(
-            known_cache, row["raw_first_name"], row["raw_last_name"]
-        )
-
-    if known_match:
-        if known_match.resolved_first_name is not None:
-            first_name = known_match.resolved_first_name or None
-        if known_match.resolved_last_name is not None:
-            last_name = known_match.resolved_last_name or None
-        if known_match.resolved_quals is not None:
-            quals = known_match.resolved_quals or None
-        if known_match.resolved_second_artist is not None:
-            second_artist = known_match.resolved_second_artist or None
-    else:
-        # Multi-artist parsing: detect "and X" / "& X" in last_name
-        multi = parse_multi_artist(first_name, last_name, quals)
-        if multi:
-            first_name = multi["first_name"]
-            last_name = multi["last_name"]
-            quals = multi["quals"]
-            second_artist = multi["second_artist"]
+    # Multi-artist parsing: detect "and X" / "& X" in last_name
+    multi = parse_multi_artist(first_name, last_name, quals)
+    if multi:
+        first_name = multi["first_name"]
+        last_name = multi["last_name"]
+        quals = multi["quals"]
+        second_artist = multi["second_artist"]
 
     ra_member = is_ra_member(quals)
 
-    if known_match and known_match.resolved_is_company is not None:
-        is_company_flag = known_match.resolved_is_company
-    else:
-        is_company_flag = detect_company(first_name, last_name, quals)
+    is_company_flag = detect_company(first_name, last_name, quals)
 
     # If detected as company, move last_name into company field
     if is_company_flag and not company_name:
@@ -695,17 +634,7 @@ def _create_artist_entry(
             )
         )
 
-    if known_match:
-        db.add(
-            ValidationWarning(
-                import_id=import_record.id,
-                work_id=None,
-                warning_type="known_artist_applied",
-                message=f"Row {row['row_number']}: Known artist rule applied — {known_match.notes or 'matched lookup table'}",
-            )
-        )
-
-    if is_company_flag and not known_match:
+    if is_company_flag:
         db.add(
             ValidationWarning(
                 import_id=import_record.id,
