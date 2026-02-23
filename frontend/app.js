@@ -390,6 +390,7 @@ async function renderSettings() {
             <th>&rarr; Quals</th>
             <th>&rarr; 2nd Artist</th>
             <th>Company</th>
+            <th>Index Name Preview</th>
             <th>Notes</th>
             <th></th>
           </tr>
@@ -441,6 +442,9 @@ async function renderSettings() {
       <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
       <span id="settings-status" class="status-msg"></span>
     </div>`;
+
+  // Populate Index Name previews now that the DOM is ready
+  _refreshAllKaPreviews();
 }
 
 async function saveSettings() {
@@ -471,16 +475,87 @@ async function saveSettings() {
 // Known Artists CRUD
 // ---------------------------------------------------------------------------
 
+/**
+ * Check if a quals string contains an RA-type designation.
+ * Mirrors backend is_ra_member() logic.
+ */
+function _isRaMember(quals) {
+  if (!quals) return false;
+  return /\b(?:EX OFFICIO|RA ELECT|HON RA|HONRA|PPRA|PRA|RA)\b/i.test(quals);
+}
+
+/**
+ * Build a styled Index Name preview from a Known Artist row's fields.
+ * Uses resolved values where set, falling back to match values.
+ */
+function _kaPreviewIndexName(tr) {
+  const v = (cls) => tr.querySelector(cls)?.value?.trim() || '';
+  const resFirst = v('.ka-res-first');
+  const resLast = v('.ka-res-last');
+  const matchFirst = v('.ka-match-first');
+  const matchLast = v('.ka-match-last');
+  const resQuals = v('.ka-res-quals');
+  const resSecond = v('.ka-res-second');
+  const isCompany = tr.querySelector('.ka-company')?.checked || false;
+
+  // Effective values: resolved overrides match
+  const firstName = resFirst || matchFirst;
+  const lastName = resLast || matchLast;
+  const quals = resQuals; // no fallback — original quals unknown
+  const surname = lastName || firstName || '';
+  if (!surname) return '<span class="muted">&mdash;</span>';
+
+  const isRa = _isRaMember(quals);
+  const parts = [];
+
+  // Surname — RA members shown in uppercase
+  if (isRa) {
+    parts.push(`<span class="idx-ra-styled" title="RA Member styling">${esc(surname)}</span>`);
+  } else {
+    parts.push(esc(surname));
+  }
+
+  // First name (only when both names present and not a company)
+  if (!isCompany && lastName && firstName) {
+    parts.push(esc(firstName));
+  }
+
+  // Quals as a pill
+  if (quals) {
+    const pillClass = isRa ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
+    parts.push(`<span class="${pillClass}">${esc(quals)}</span>`);
+  }
+
+  // Second artist
+  if (resSecond) {
+    parts.push(esc(resSecond));
+  }
+
+  return parts.join(', ');
+}
+
+/** Update the preview cell in a Known Artist row. */
+function _updateKaPreview(tr) {
+  const cell = tr.querySelector('.ka-preview');
+  if (cell) cell.innerHTML = _kaPreviewIndexName(tr);
+}
+
+/** Refresh all Known Artist preview cells (call after table body changes). */
+function _refreshAllKaPreviews() {
+  document.querySelectorAll('#known-artists-table tbody tr').forEach(_updateKaPreview);
+}
+
 function _knownArtistRow(ka) {
   const id = ka.id || '';
   return `<tr data-ka-id="${esc(id)}">
-    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder=""></td>
-    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder=""></td>
-    <td><input type="text" class="ka-res-first" value="${esc(ka.resolved_first_name ?? '')}" placeholder="no change"></td>
-    <td><input type="text" class="ka-res-last" value="${esc(ka.resolved_last_name ?? '')}" placeholder="no change"></td>
-    <td><input type="text" class="ka-res-quals" value="${esc(ka.resolved_quals ?? '')}" placeholder="no change"></td>
-    <td><input type="text" class="ka-res-second" value="${esc(ka.resolved_second_artist ?? '')}" placeholder=""></td>
-    <td style="text-align:center"><input type="checkbox" class="ka-company"${ka.resolved_is_company ? ' checked' : ''}></td>
+    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    <td><input type="text" class="ka-res-first" value="${esc(ka.resolved_first_name ?? '')}" placeholder="no change" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    <td><input type="text" class="ka-res-last" value="${esc(ka.resolved_last_name ?? '')}" placeholder="no change" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    <td><input type="text" class="ka-res-quals" value="${esc(ka.resolved_quals ?? '')}" placeholder="no change" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    <td><input type="text" class="ka-res-second" value="${esc(ka.resolved_second_artist ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    <td style="text-align:center"><input type="checkbox" class="ka-company" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_is_company ? ' checked' : ''}></td>
+    <td class="ka-preview col-index-name"></td>
     <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"></td>
     <td>
       <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times;</button>
@@ -563,6 +638,7 @@ async function seedKnownArtists() {
     const knownArtists = await api('GET', '/known-artists');
     const tbody = document.querySelector('#known-artists-table tbody');
     tbody.innerHTML = knownArtists.map(ka => _knownArtistRow(ka)).join('');
+    _refreshAllKaPreviews();
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }
@@ -2125,7 +2201,7 @@ function styledIndexName(a) {
   // Quals — shown as a pill, different styling for RA vs non-RA
   if (a.quals) {
     const pillClass = a.is_ra_member ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
-    parts.push(`<span class="${pillClass}">${esc(a.quals.toLowerCase())}</span>`);
+    parts.push(`<span class="${pillClass}">${esc(a.quals)}</span>`);
   }
 
   // Second artist suffix

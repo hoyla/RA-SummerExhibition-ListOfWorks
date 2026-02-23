@@ -603,8 +603,8 @@ details.section-block[open] > .section-summary::before {
 /* RA surname indicator — shows that the surname word will be set in
    the "RA Member Cap Surname" character style in the exported file */
 .idx-ra-styled {
-  border-bottom: 2px solid #5070a0;
-  padding-bottom: 0px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 /* RA quals pill variant — signals "RA Caps" character style */
