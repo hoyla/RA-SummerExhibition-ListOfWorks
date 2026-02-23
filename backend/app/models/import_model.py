@@ -15,6 +15,9 @@ class Import(Base):
     disk_filename = Column(Text, nullable=True)  # UUID-prefixed name on disk
     notes = Column(Text, nullable=True)
 
+    # 'list_of_works' | 'artists_index'
+    product_type = Column(Text, nullable=False, server_default="list_of_works")
+
     uploaded_at = Column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

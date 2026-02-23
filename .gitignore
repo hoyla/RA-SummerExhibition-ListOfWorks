@@ -15,6 +15,7 @@ uploads/*
 # Test artifacts
 .pytest_cache/
 test*.txt
+test_sample_files/*
 
 # Environment
 .env

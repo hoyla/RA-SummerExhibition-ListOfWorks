@@ -19,6 +19,8 @@ from backend.app.models import override_model
 from backend.app.models import ruleset_model
 from backend.app.models import validation_warning_model
 from backend.app.models import audit_log_model
+from backend.app.models import index_artist_model
+from backend.app.models import index_cat_number_model
 
 # ---------------------------------------------------------------------------
 # Run Alembic migrations on startup (replaces Base.metadata.create_all)
