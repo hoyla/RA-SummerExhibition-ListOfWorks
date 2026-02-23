@@ -485,6 +485,48 @@ function _isRaMember(quals) {
 }
 
 /**
+ * Split trailing RA tokens from a second_artist string.
+ * Returns { name, quals } where quals contains any trailing RA tokens.
+ * E.g. "Peter St John ra" → { name: "Peter St John", quals: "ra" }
+ *      "Peter St John"    → { name: "Peter St John", quals: "" }
+ *      "Peter St John cbe ra" → { name: "Peter St John cbe", quals: "ra" }
+ */
+function _splitSecondArtistQuals(text) {
+  if (!text) return { name: '', quals: '' };
+  const raPattern = /\b(?:EX OFFICIO|RA ELECT|HON RA|HONRA|PPRA|PRA|RA)\b/gi;
+  const words = text.trim().split(/\s+/);
+  // Walk backwards collecting RA tokens
+  const qualTokens = [];
+  let i = words.length - 1;
+  while (i >= 0) {
+    // Check for two-word tokens first ("HON RA", "RA ELECT", "EX OFFICIO")
+    if (i >= 1) {
+      const twoWord = words[i - 1] + ' ' + words[i];
+      if (raPattern.test(twoWord)) {
+        raPattern.lastIndex = 0;
+        qualTokens.unshift(twoWord);
+        i -= 2;
+        continue;
+      }
+      raPattern.lastIndex = 0;
+    }
+    // Check single-word token
+    const oneWord = words[i];
+    if (raPattern.test(oneWord)) {
+      raPattern.lastIndex = 0;
+      qualTokens.unshift(oneWord);
+      i -= 1;
+      continue;
+    }
+    raPattern.lastIndex = 0;
+    break;
+  }
+  const namePart = words.slice(0, i + 1).join(' ');
+  const qualsPart = qualTokens.join(' ');
+  return { name: namePart, quals: qualsPart };
+}
+
+/**
  * Build a styled Index Name preview from a Known Artist row's fields.
  * Uses resolved values where set, falling back to match values.
  * Respects the "cleared" state (empty string = clear the field).
@@ -533,10 +575,18 @@ function _kaPreviewIndexName(tr) {
     nameParts.push(`<span class="${pillClass}">${esc(quals)}</span>`);
   }
 
-  // Second artist (comma-separated)
+  // Second artist (comma-separated) — detect trailing RA tokens and style them
   const suffixes = [];
   if (secondArtist) {
-    suffixes.push(esc(secondArtist));
+    const sa = _splitSecondArtistQuals(secondArtist);
+    if (sa.quals) {
+      const parts = [];
+      if (sa.name) parts.push(esc(sa.name));
+      parts.push(`<span class="honorifics-pill idx-ra-quals">${esc(sa.quals)}</span>`);
+      suffixes.push(parts.join(' '));
+    } else {
+      suffixes.push(esc(secondArtist));
+    }
   }
 
   let result = commaParts.join(', ');
@@ -2277,9 +2327,18 @@ function styledIndexName(a) {
   }
 
   // Second artist suffix (never for companies — name is already complete)
+  // Detect trailing RA tokens and style them as honorifics pills
   const suffixes = [];
   if (a.second_artist && !a.is_company) {
-    suffixes.push(esc(a.second_artist));
+    const sa = _splitSecondArtistQuals(a.second_artist);
+    if (sa.quals) {
+      const parts = [];
+      if (sa.name) parts.push(esc(sa.name));
+      parts.push(`<span class="honorifics-pill idx-ra-quals">${esc(sa.quals)}</span>`);
+      suffixes.push(parts.join(' '));
+    } else {
+      suffixes.push(esc(a.second_artist));
+    }
   }
 
   let result = commaParts.join(', ');

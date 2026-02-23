@@ -18,6 +18,7 @@ from backend.app.services.index_override_service import (
     build_known_artist_cache,
     lookup_known_artist,
 )
+from backend.app.services.index_importer import is_ra_member, RA_MEMBER_TOKENS
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +248,35 @@ def _render_courtesy(courtesy: Optional[str], company: Optional[str]) -> str:
     return ""
 
 
+def _split_second_artist_quals(second_artist: str) -> Tuple[str, Optional[str]]:
+    """Split trailing RA-type tokens from a second_artist string.
+
+    Returns (name_part, quals_part).  quals_part is None if no RA tokens
+    are found at the end.
+
+    Example:
+        'and Peter St John ra' -> ('and Peter St John', 'ra')
+        'and Matthias Sauerbruch' -> ('and Matthias Sauerbruch', None)
+    """
+    import re
+
+    # Build a pattern that matches one or more RA tokens at the end
+    token_pattern = "|".join(
+        re.escape(t) for t in sorted(RA_MEMBER_TOKENS, key=len, reverse=True)
+    )
+    # Match trailing quals: one or more RA tokens (space-separated) at end
+    m = re.search(
+        r"\s+((?:(?:" + token_pattern + r")(?:\s+|$))+)$",
+        second_artist,
+        re.IGNORECASE,
+    )
+    if not m:
+        return (second_artist, None)
+    quals = m.group(1).strip()
+    name = second_artist[: m.start()].rstrip()
+    return (name, quals)
+
+
 def _render_cat_nos(cat_nos: List[int], cfg: IndexExportConfig) -> str:
     """Render catalogue numbers, each individually styled.
 
@@ -282,9 +312,17 @@ def render_index_tagged_text(
         # Qualifications
         line_parts.append(_render_quals(entry.quals, entry.is_ra_member, cfg))
 
-        # Second artist suffix (e.g. "and Matthias Sauerbruch")
+        # Second artist suffix (e.g. "and Peter St John ra")
+        # Detect and style any trailing RA tokens
         if entry.second_artist:
-            line_parts.append(entry.second_artist + ", ")
+            sa_name, sa_quals = _split_second_artist_quals(entry.second_artist)
+            line_parts.append(sa_name)
+            if sa_quals:
+                display_q = sa_quals.lower() if cfg.quals_lowercase else sa_quals
+                line_parts.append(" ")
+                line_parts.append(_cstyle(cfg.ra_caps_style, display_q + ", "))
+            else:
+                line_parts.append(", ")
 
         # Courtesy / company
         # For company entries that are also RA members (like "Adjaye Associates"),

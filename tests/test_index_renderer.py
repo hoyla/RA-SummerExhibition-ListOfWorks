@@ -11,6 +11,7 @@ from backend.app.services.index_renderer import (
     _render_courtesy,
     _render_cat_nos,
     _cstyle,
+    _split_second_artist_quals,
 )
 
 
@@ -372,5 +373,96 @@ class TestFullRender:
             "<cstyle:RA Caps>om obe ra, <cstyle:>"
             "Adjaye Associates, "
             "<cstyle:Index works numbers>124<cstyle:>"
+        )
+        assert line == expected
+
+
+# ---------------------------------------------------------------------------
+# _split_second_artist_quals
+# ---------------------------------------------------------------------------
+
+
+class TestSplitSecondArtistQuals:
+    def test_no_quals(self):
+        name, quals = _split_second_artist_quals("and Peter St John")
+        assert name == "and Peter St John"
+        assert quals is None
+
+    def test_trailing_ra(self):
+        name, quals = _split_second_artist_quals("and Peter St John ra")
+        assert name == "and Peter St John"
+        assert quals == "ra"
+
+    def test_trailing_pra(self):
+        name, quals = _split_second_artist_quals("and Jane Doe PRA")
+        assert name == "and Jane Doe"
+        assert quals == "PRA"
+
+    def test_trailing_hon_ra(self):
+        name, quals = _split_second_artist_quals("and Foo Bar HON RA")
+        assert name == "and Foo Bar"
+        assert quals == "HON RA"
+
+    def test_trailing_ra_elect(self):
+        name, quals = _split_second_artist_quals("and Someone RA Elect")
+        assert name == "and Someone"
+        assert quals == "RA Elect"
+
+    def test_non_ra_quals_not_stripped(self):
+        """Non-RA tokens like CBE should remain with the name."""
+        name, quals = _split_second_artist_quals("and Peter cbe")
+        assert name == "and Peter cbe"
+        assert quals is None
+
+    def test_empty_string(self):
+        name, quals = _split_second_artist_quals("")
+        assert name == ""
+        assert quals is None
+
+
+# ---------------------------------------------------------------------------
+# Full render — second_artist with RA tokens
+# ---------------------------------------------------------------------------
+
+
+class TestSecondArtistRaStyling:
+    def test_second_artist_ra_styling(self):
+        """Second artist RA tokens should be styled with RA Caps."""
+        entries = [
+            _entry(
+                last_name="Sauerbruch",
+                first_name="Matthias",
+                second_artist="and Peter St John ra",
+                cat_nos=[42],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "Sauerbruch, Matthias, "
+            "and Peter St John "
+            "<cstyle:RA Caps>ra, <cstyle:>"
+            "<cstyle:Index works numbers>42<cstyle:>"
+        )
+        assert line == expected
+
+    def test_second_artist_no_ra_tokens(self):
+        """Second artist without RA tokens should render plain."""
+        entries = [
+            _entry(
+                last_name="Sauerbruch",
+                first_name="Matthias",
+                second_artist="and Peter St John",
+                cat_nos=[42],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "Sauerbruch, Matthias, "
+            "and Peter St John, "
+            "<cstyle:Index works numbers>42<cstyle:>"
         )
         assert line == expected
