@@ -552,7 +552,7 @@ details.section-block[open] > .section-summary::before {
 /* ------------------------------------------------------------------ */
 
 .warnings-table th { color: #8a6000; }
-.warnings-table .col-work { min-width: 300px; white-space: normal; word-break: break-word; }
+.warnings-table .col-work { min-width: 300px; white-space: normal; word-break: break-word; text-align: left; }
 
 .warnings-toggle {
   font-size: 12px;
