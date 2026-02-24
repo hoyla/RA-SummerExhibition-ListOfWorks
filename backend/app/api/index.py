@@ -45,6 +45,10 @@ from backend.app.services.index_renderer import (
     DEFAULT_INDEX_CONFIG,
     _letter_key,
 )
+from backend.app.services.export_diff_service import (
+    save_index_export_snapshot,
+    compute_index_diff,
+)
 
 router = APIRouter(prefix="/index", tags=["index"])
 
@@ -317,10 +321,30 @@ def export_index_tags(
     cfg = _resolve_index_template(db, template_id)
     output = render_index_tagged_text(entries, cfg)
 
+    # Snapshot on full export (not per-letter)
+    if not letter:
+        save_index_export_snapshot(import_id, template_id, db)
+
     return Response(
         content=escape_for_mac_roman(output).encode("mac_roman"),
         media_type="text/plain",
     )
+
+
+# ---------------------------------------------------------------------------
+# Export diff
+# ---------------------------------------------------------------------------
+
+
+@router.get("/imports/{import_id}/export-diff")
+def get_index_export_diff(
+    import_id: UUID,
+    template_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Compare current index data against the last exported snapshot."""
+    _get_index_import_or_404(import_id, db)
+    return compute_index_diff(import_id, template_id, db)
 
 
 # ---------------------------------------------------------------------------

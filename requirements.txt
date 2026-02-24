@@ -9,3 +9,4 @@ openpyxl==3.1.5
 aiofiles==25.1.0
 python-dotenv==1.2.1
 httpx==0.28.1  # required by starlette TestClient for tests
+pytest==9.0.2

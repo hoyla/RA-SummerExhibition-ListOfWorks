@@ -2320,6 +2320,113 @@ function _renderDiffPanel(diff) {
 }
 
 // ---------------------------------------------------------------------------
+// Index export diff viewer
+// ---------------------------------------------------------------------------
+
+async function showIndexExportDiff(importId, btnEl) {
+  const sel = document.getElementById(`idx-tmpl-select-${importId}`);
+  const tid = sel?.value || null;
+  const panel = document.getElementById(`index-diff-panel-${importId}`);
+  if (!panel) return;
+
+  // Toggle off if already showing
+  if (panel.dataset.visible === '1') {
+    panel.innerHTML = '';
+    panel.dataset.visible = '';
+    return;
+  }
+
+  const restore = btnLoading(btnEl, 'Loading');
+  try {
+    let path = `/index/imports/${importId}/export-diff`;
+    if (tid) path += `?template_id=${encodeURIComponent(tid)}`;
+    const diff = await api('GET', path);
+    panel.dataset.visible = '1';
+    panel.innerHTML = _renderIndexDiffPanel(diff);
+  } catch (err) {
+    panel.innerHTML = `<p class="error" style="margin-top:8px">${esc(err.message)}</p>`;
+  } finally {
+    restore();
+  }
+}
+
+function _renderIndexDiffPanel(diff) {
+  if (diff.no_previous_export) {
+    return `<div class="diff-result diff-info">
+      <p><strong>No previous export found.</strong> Export the index first, then use this to see what changed before the next export.</p>
+    </div>`;
+  }
+
+  if (!diff.has_changes) {
+    return `<div class="diff-result diff-ok">
+      <p>\u2713 No changes since last export <span class="muted">(${esc(formatDate(diff.previous_exported_at))})</span></p>
+    </div>`;
+  }
+
+  const parts = [];
+  parts.push(`<div class="diff-result">`);
+  parts.push(`<p class="diff-summary">Changes since last export <span class="muted">(${esc(formatDate(diff.previous_exported_at))})</span>:</p>`);
+
+  // Summary badges
+  const badges = [];
+  if (diff.added.length)   badges.push(`<span class="badge badge-added">${diff.added.length} added</span>`);
+  if (diff.removed.length) badges.push(`<span class="badge badge-removed">${diff.removed.length} removed</span>`);
+  if (diff.changed.length) badges.push(`<span class="badge badge-changed">${diff.changed.length} changed</span>`);
+  if (diff.unchanged_count) badges.push(`<span class="badge badge-unchanged">${diff.unchanged_count} unchanged</span>`);
+  parts.push(`<div class="diff-badges">${badges.join(' ')}</div>`);
+
+  // Changed entries — field-level detail
+  if (diff.changed.length) {
+    parts.push('<h4 class="diff-heading">Changed entries</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Artist</th><th>Courtesy</th><th>Field</th><th>Previous</th><th>Current</th></tr></thead><tbody>');
+    for (const e of diff.changed) {
+      const rowspan = e.fields.length;
+      e.fields.forEach((f, i) => {
+        parts.push('<tr>');
+        if (i === 0) parts.push(`<td rowspan="${rowspan}" class="diff-catno">${esc(e.name)}</td><td rowspan="${rowspan}">${esc(e.courtesy ?? '\u2014')}</td>`);
+        const oldVal = _formatIndexDiffVal(f.field, f.old);
+        const newVal = _formatIndexDiffVal(f.field, f.new);
+        parts.push(`<td><code>${esc(f.field)}</code></td>`);
+        parts.push(`<td class="diff-old">${oldVal}</td>`);
+        parts.push(`<td class="diff-new">${newVal}</td>`);
+        parts.push('</tr>');
+      });
+    }
+    parts.push('</tbody></table>');
+  }
+
+  // Added entries
+  if (diff.added.length) {
+    parts.push('<h4 class="diff-heading">Added entries</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Artist</th><th>Courtesy</th><th>Cat Nos</th></tr></thead><tbody>');
+    for (const e of diff.added) {
+      parts.push(`<tr class="diff-row-added"><td>${esc(e.name)}</td><td>${esc(e.courtesy ?? '\u2014')}</td><td>${esc((e.cat_nos || []).join(', '))}</td></tr>`);
+    }
+    parts.push('</tbody></table>');
+  }
+
+  // Removed entries
+  if (diff.removed.length) {
+    parts.push('<h4 class="diff-heading">Removed entries</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Artist</th><th>Courtesy</th><th>Cat Nos</th></tr></thead><tbody>');
+    for (const e of diff.removed) {
+      parts.push(`<tr class="diff-row-removed"><td>${esc(e.name)}</td><td>${esc(e.courtesy ?? '\u2014')}</td><td>${esc((e.cat_nos || []).join(', '))}</td></tr>`);
+    }
+    parts.push('</tbody></table>');
+  }
+
+  parts.push('</div>');
+  return parts.join('');
+}
+
+function _formatIndexDiffVal(field, val) {
+  if (val == null) return '<span class="muted">\u2014</span>';
+  if (field === 'cat_nos' && Array.isArray(val)) return esc(val.join(', '));
+  if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  return esc(String(val));
+}
+
+// ---------------------------------------------------------------------------
 // Export download
 // ---------------------------------------------------------------------------
 
@@ -2542,7 +2649,9 @@ async function renderIndexDetail(importId) {
         <select id="idx-tmpl-select-${esc(importId)}"${idxTemplates.length ? '' : ' disabled'}>${idxTmplOpts}</select>
         <button class="btn btn-primary" onclick="downloadIndexExport('${esc(importId)}',this)">Export InDesign Tags (.txt)</button>
       </div>
-    </div>`;
+      <button class="btn btn-secondary btn-diff" onclick="showIndexExportDiff('${esc(importId)}',this)">Show changes since last export</button>
+    </div>
+    <div id="index-diff-panel-${esc(importId)}"></div>`;
   const _idxTmplSel = document.getElementById(`idx-tmpl-select-${importId}`);
   if (_idxTmplSel) _idxTmplSel.addEventListener('change', () => localStorage.setItem(_lastIdxTmplKey, _idxTmplSel.value));
 
