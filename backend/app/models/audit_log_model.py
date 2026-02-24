@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Text, TIMESTAMP, ForeignKey, Index
+from sqlalchemy import Column, Text, TIMESTAMP, ForeignKey, Index, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import uuid
@@ -49,6 +49,10 @@ class AuditLog(Base):
     old_value = Column(Text, nullable=True)
     new_value = Column(Text, nullable=True)
 
+    # Who performed the action (email from Cognito JWT; "anonymous" when auth
+    # is disabled or for legacy API-key sessions).
+    user_email = Column(Text, nullable=True)
+
     created_at = Column(
         TIMESTAMP(timezone=True),
         server_default=func.now(),
@@ -61,3 +65,18 @@ class AuditLog(Base):
         Index("idx_audit_logs_artist", "artist_id"),
         Index("idx_audit_logs_template", "template_id"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Auto-populate user_email from the request-scoped context variable.
+# This fires just before each INSERT, so no route handler code needs changing.
+# ---------------------------------------------------------------------------
+
+
+@event.listens_for(AuditLog, "init")
+def _set_user_email(target, args, kwargs):
+    """Set user_email from context if not explicitly provided."""
+    if "user_email" not in kwargs:
+        from backend.app.api.user_context import current_user_email
+
+        target.user_email = current_user_email.get("anonymous")

@@ -60,13 +60,154 @@ function btnLoading(btn, loadingText) {
 // Auth state
 // ---------------------------------------------------------------------------
 
+let _authMode = 'none';  // 'cognito' | 'api_key' | 'none' — set at startup
+let _cognitoConfig = {};  // { userPoolId, clientId, region }
+
+// Legacy API-key auth
 let _apiKey = localStorage.getItem('ra_api_key') || '';
+
+// Cognito auth
+let _idToken = localStorage.getItem('ra_id_token') || '';
+let _refreshToken = localStorage.getItem('ra_refresh_token') || '';
+let _userEmail = '';
+let _tokenExpiry = 0;  // epoch ms
+
 let _userRole = 'admin';  // default; will be fetched from /me
 let _roleOverride = localStorage.getItem('ra_role_override') || '';  // dev role switcher
 
-/** Build common headers for API calls (API key + optional role override). */
+/** Discover auth mode from the server. */
+async function _initAuth() {
+  try {
+    const res = await fetch('/auth/config');
+    if (res.ok) {
+      const cfg = await res.json();
+      _authMode = cfg.mode || 'none';
+      if (_authMode === 'cognito') {
+        _cognitoConfig = { userPoolId: cfg.userPoolId, clientId: cfg.clientId, region: cfg.region };
+        // Try to restore session from stored tokens
+        if (_idToken) {
+          try {
+            const payload = JSON.parse(atob(_idToken.split('.')[1]));
+            _userEmail = payload.email || payload['cognito:username'] || '';
+            _tokenExpiry = (payload.exp || 0) * 1000;
+            if (Date.now() > _tokenExpiry) {
+              // Token expired — try refresh
+              if (_refreshToken) {
+                await _refreshCognitoTokens();
+              } else {
+                _clearCognitoSession();
+              }
+            }
+          } catch (_) { _clearCognitoSession(); }
+        }
+      }
+    }
+  } catch (_) { /* keep defaults */ }
+}
+
+function _clearCognitoSession() {
+  _idToken = '';
+  _refreshToken = '';
+  _userEmail = '';
+  _tokenExpiry = 0;
+  localStorage.removeItem('ra_id_token');
+  localStorage.removeItem('ra_refresh_token');
+}
+
+/** Call Cognito InitiateAuth / RespondToAuthChallenge via fetch. */
+async function _cognitoCall(action, body) {
+  const url = `https://cognito-idp.${_cognitoConfig.region}.amazonaws.com/`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${action}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const msg = data.message || data.__type || 'Authentication failed';
+    throw new Error(msg);
+  }
+  return data;
+}
+
+/** Authenticate with email + password. */
+async function _cognitoLogin(email, password) {
+  const data = await _cognitoCall('InitiateAuth', {
+    AuthFlow: 'USER_PASSWORD_AUTH',
+    ClientId: _cognitoConfig.clientId,
+    AuthParameters: { USERNAME: email, PASSWORD: password },
+  });
+
+  if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+    return { challenge: 'NEW_PASSWORD_REQUIRED', session: data.Session, email };
+  }
+
+  _storeCognitoTokens(data.AuthenticationResult);
+  return { success: true };
+}
+
+/** Respond to NEW_PASSWORD_REQUIRED challenge. */
+async function _cognitoNewPassword(session, email, newPassword) {
+  const data = await _cognitoCall('RespondToAuthChallenge', {
+    ChallengeName: 'NEW_PASSWORD_REQUIRED',
+    ClientId: _cognitoConfig.clientId,
+    Session: session,
+    ChallengeResponses: {
+      USERNAME: email,
+      NEW_PASSWORD: newPassword,
+    },
+  });
+  _storeCognitoTokens(data.AuthenticationResult);
+  return { success: true };
+}
+
+/** Refresh tokens using the refresh token. */
+async function _refreshCognitoTokens() {
+  try {
+    const data = await _cognitoCall('InitiateAuth', {
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      ClientId: _cognitoConfig.clientId,
+      AuthParameters: { REFRESH_TOKEN: _refreshToken },
+    });
+    _storeCognitoTokens(data.AuthenticationResult);
+  } catch (_) {
+    _clearCognitoSession();
+  }
+}
+
+/** Store tokens from a successful auth. */
+function _storeCognitoTokens(result) {
+  _idToken = result.IdToken;
+  if (result.RefreshToken) _refreshToken = result.RefreshToken;
+  localStorage.setItem('ra_id_token', _idToken);
+  if (_refreshToken) localStorage.setItem('ra_refresh_token', _refreshToken);
+  try {
+    const payload = JSON.parse(atob(_idToken.split('.')[1]));
+    _userEmail = payload.email || payload['cognito:username'] || '';
+    _tokenExpiry = (payload.exp || 0) * 1000;
+  } catch (_) { /* ignore */ }
+}
+
+/** Ensure the ID token is fresh (auto-refresh if expiring soon). */
+async function _ensureFreshToken() {
+  if (_authMode !== 'cognito' || !_idToken) return;
+  // Refresh if within 5 minutes of expiry
+  if (Date.now() > _tokenExpiry - 5 * 60 * 1000) {
+    if (_refreshToken) await _refreshCognitoTokens();
+  }
+}
+
+/** Build common headers for API calls. */
 function _apiHeaders() {
-  const h = { 'X-API-Key': _apiKey };
+  if (_authMode === 'cognito' && _idToken) {
+    const h = { 'Authorization': `Bearer ${_idToken}` };
+    return h;
+  }
+  const h = {};
+  if (_apiKey) h['X-API-Key'] = _apiKey;
   if (_roleOverride) h['X-User-Role'] = _roleOverride;
   return h;
 }
@@ -74,10 +215,12 @@ function _apiHeaders() {
 /** Fetch the current user's role from the server. */
 async function _fetchRole() {
   try {
+    await _ensureFreshToken();
     const res = await fetch('/me', { headers: _apiHeaders() });
     if (res.ok) {
       const data = await res.json();
       _userRole = data.role || 'admin';
+      if (data.email && data.email !== 'anonymous') _userEmail = data.email;
     }
   } catch (_) { /* keep default */ }
 }
@@ -95,8 +238,35 @@ function canEdit() { return _userRole === 'editor' || _userRole === 'admin'; }
 function canAdmin() { return _userRole === 'admin'; }
 
 function _syncHeader() {
+  // --- Logout / change-key button ---
   const existing = document.getElementById('logout-btn');
-  if (_apiKey) {
+  if (_authMode === 'cognito' && _idToken) {
+    if (!existing) {
+      const wrap = document.createElement('span');
+      wrap.id = 'logout-btn';
+      wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-left:auto';
+      const emailSpan = document.createElement('span');
+      emailSpan.className = 'header-email';
+      emailSpan.style.cssText = 'font-size:0.75rem;color:#aaa';
+      emailSpan.textContent = _userEmail;
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm btn-secondary';
+      btn.style.cssText = 'font-size:0.75rem';
+      btn.textContent = 'Logout';
+      btn.addEventListener('click', () => {
+        _clearCognitoSession();
+        _userRole = 'admin';
+        _syncHeader();
+        renderLogin();
+      });
+      wrap.appendChild(emailSpan);
+      wrap.appendChild(btn);
+      document.querySelector('.site-header').appendChild(wrap);
+    } else {
+      const emailSpan = existing.querySelector('.header-email');
+      if (emailSpan) emailSpan.textContent = _userEmail;
+    }
+  } else if (_authMode === 'api_key' && _apiKey) {
     if (!existing) {
       const btn = document.createElement('button');
       btn.id = 'logout-btn';
@@ -115,32 +285,36 @@ function _syncHeader() {
     if (existing) existing.remove();
   }
 
-  // Role switcher dropdown (dev testing aid)
-  let roleSwitcher = document.getElementById('role-switcher');
-  if (!roleSwitcher) {
-    const wrap = document.createElement('div');
-    wrap.className = 'role-switcher-wrap';
-    wrap.innerHTML = `<label class="role-switcher-label">Role:</label>
-      <select id="role-switcher" class="role-switcher">
-        <option value="">auto</option>
-        <option value="viewer">viewer</option>
-        <option value="editor">editor</option>
-        <option value="admin">admin</option>
-      </select>`;
-    document.querySelector('.site-header').appendChild(wrap);
-    roleSwitcher = document.getElementById('role-switcher');
-    roleSwitcher.addEventListener('change', async () => {
-      _roleOverride = roleSwitcher.value;
-      if (_roleOverride) localStorage.setItem('ra_role_override', _roleOverride);
-      else localStorage.removeItem('ra_role_override');
-      await _fetchRole();
-      _syncHeader();
-      router();
-    });
+  // Role switcher dropdown — only shown in non-Cognito modes (dev aid)
+  let roleSwitcherWrap = document.querySelector('.role-switcher-wrap');
+  if (_authMode === 'cognito') {
+    if (roleSwitcherWrap) roleSwitcherWrap.remove();
+  } else {
+    let roleSwitcher = document.getElementById('role-switcher');
+    if (!roleSwitcher) {
+      const wrap = document.createElement('div');
+      wrap.className = 'role-switcher-wrap';
+      wrap.innerHTML = `<label class="role-switcher-label">Role:</label>
+        <select id="role-switcher" class="role-switcher">
+          <option value="">auto</option>
+          <option value="viewer">viewer</option>
+          <option value="editor">editor</option>
+          <option value="admin">admin</option>
+        </select>`;
+      document.querySelector('.site-header').appendChild(wrap);
+      roleSwitcher = document.getElementById('role-switcher');
+      roleSwitcher.addEventListener('change', async () => {
+        _roleOverride = roleSwitcher.value;
+        if (_roleOverride) localStorage.setItem('ra_role_override', _roleOverride);
+        else localStorage.removeItem('ra_role_override');
+        await _fetchRole();
+        _syncHeader();
+        router();
+      });
+    }
+    roleSwitcher.value = _roleOverride;
+    roleSwitcher.className = `role-switcher role-${_userRole}`;
   }
-  roleSwitcher.value = _roleOverride;
-  // Update visual indicator
-  roleSwitcher.className = `role-switcher role-${_userRole}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +322,7 @@ function _syncHeader() {
 // ---------------------------------------------------------------------------
 
 async function api(method, path, body) {
+  await _ensureFreshToken();
   const opts = { method, headers: _apiHeaders() };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
@@ -155,7 +330,11 @@ async function api(method, path, body) {
   }
   const res = await fetch(path, opts);
   if (res.status === 204) return null;
-  if (res.status === 401) { renderLogin('Invalid or missing API key.'); throw new Error('Unauthorised'); }
+  if (res.status === 401) {
+    if (_authMode === 'cognito') _clearCognitoSession();
+    renderLogin('Your session has expired. Please log in again.');
+    throw new Error('Unauthorised');
+  }
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try { const j = await res.json(); msg = j.detail || JSON.stringify(j); } catch {}
@@ -174,25 +353,125 @@ async function api(method, path, body) {
 
 function renderLogin(errorMsg) {
   _syncHeader();
+  if (_authMode === 'cognito') {
+    document.getElementById('app').innerHTML = `
+      <section class="panel" style="max-width:420px;margin:60px auto">
+        <h3>Sign In</h3>
+        <p style="line-height:1.5">Enter your email and password to access the Catalogue Tool.</p>
+        ${errorMsg ? `<p class="error">${esc(errorMsg)}</p>` : ''}
+        <div class="form-row" style="margin-top:16px">
+          <label style="width:90px">Email</label>
+          <input id="login-email" type="email" autocomplete="username"
+                 placeholder="you@example.com" style="flex:1">
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <label style="width:90px">Password</label>
+          <input id="login-password" type="password" autocomplete="current-password"
+                 placeholder="Password" style="flex:1">
+        </div>
+        <div class="form-actions" style="margin-top:12px">
+          <button id="login-btn" class="btn btn-primary" onclick="handleCognitoLogin()">Sign In</button>
+        </div>
+      </section>`;
+    setTimeout(() => document.getElementById('login-email')?.focus(), 0);
+    ['login-email', 'login-password'].forEach(id => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleCognitoLogin();
+      });
+    });
+  } else {
+    document.getElementById('app').innerHTML = `
+      <section class="panel" style="max-width:420px;margin:60px auto">
+        <h3>API Key Required</h3>
+        <p style="line-height:1.5">Enter the API key configured on this server.
+           Leave blank if the server is running without authentication (development mode).</p>
+        ${errorMsg ? `<p class="error">${esc(errorMsg)}</p>` : ''}
+        <div class="form-row" style="margin-top:16px">
+          <label style="width:90px">API Key</label>
+          <input id="login-key-input" type="password" autocomplete="current-password"
+                 placeholder="Paste your API key here" style="flex:1">
+        </div>
+        <div class="form-actions" style="margin-top:12px">
+          <button class="btn btn-primary" onclick="handleLogin()">Connect</button>
+        </div>
+      </section>`;
+    setTimeout(() => document.getElementById('login-key-input')?.focus(), 0);
+    document.getElementById('login-key-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLogin();
+    });
+  }
+}
+
+function _renderNewPasswordForm(session, email, errorMsg) {
   document.getElementById('app').innerHTML = `
     <section class="panel" style="max-width:420px;margin:60px auto">
-      <h3>API Key Required</h3>
-      <p style="line-height:1.5">Enter the API key configured on this server.
-         Leave blank if the server is running without authentication (development mode).</p>
+      <h3>Set New Password</h3>
+      <p style="line-height:1.5">You must set a new password on first login.</p>
       ${errorMsg ? `<p class="error">${esc(errorMsg)}</p>` : ''}
       <div class="form-row" style="margin-top:16px">
-        <label style="width:90px">API Key</label>
-        <input id="login-key-input" type="password" autocomplete="current-password"
-               placeholder="Paste your API key here" style="flex:1">
+        <label style="width:90px">New Password</label>
+        <input id="new-password" type="password" autocomplete="new-password"
+               placeholder="At least 12 characters" style="flex:1">
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <label style="width:90px">Confirm</label>
+        <input id="new-password-confirm" type="password" autocomplete="new-password"
+               placeholder="Confirm new password" style="flex:1">
       </div>
       <div class="form-actions" style="margin-top:12px">
-        <button class="btn btn-primary" onclick="handleLogin()">Connect</button>
+        <button id="set-password-btn" class="btn btn-primary">Set Password</button>
       </div>
     </section>`;
-  setTimeout(() => document.getElementById('login-key-input')?.focus(), 0);
-  document.getElementById('login-key-input')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') handleLogin();
+  setTimeout(() => document.getElementById('new-password')?.focus(), 0);
+  document.getElementById('set-password-btn').addEventListener('click', async () => {
+    const pwd = document.getElementById('new-password').value;
+    const confirm = document.getElementById('new-password-confirm').value;
+    if (pwd !== confirm) {
+      _renderNewPasswordForm(session, email, 'Passwords do not match.');
+      return;
+    }
+    if (pwd.length < 12) {
+      _renderNewPasswordForm(session, email, 'Password must be at least 12 characters.');
+      return;
+    }
+    const btn = document.getElementById('set-password-btn');
+    const restore = btnLoading(btn, 'Setting\u2026');
+    try {
+      await _cognitoNewPassword(session, email, pwd);
+      _syncHeader();
+      await _fetchRole();
+      router();
+    } catch (err) {
+      restore();
+      _renderNewPasswordForm(session, email, err.message);
+    }
   });
+  ['new-password', 'new-password-confirm'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('set-password-btn')?.click();
+    });
+  });
+}
+
+async function handleCognitoLogin() {
+  const email = (document.getElementById('login-email')?.value ?? '').trim();
+  const password = (document.getElementById('login-password')?.value ?? '').trim();
+  if (!email || !password) { renderLogin('Please enter both email and password.'); return; }
+  const btn = document.getElementById('login-btn');
+  const restore = btnLoading(btn, 'Signing in\u2026');
+  try {
+    const result = await _cognitoLogin(email, password);
+    if (result.challenge === 'NEW_PASSWORD_REQUIRED') {
+      _renderNewPasswordForm(result.session, result.email);
+      return;
+    }
+    _syncHeader();
+    await _fetchRole();
+    router();
+  } catch (err) {
+    restore();
+    renderLogin(err.message);
+  }
 }
 
 async function handleLogin() {
@@ -252,6 +531,8 @@ function router() {
 
 window.addEventListener('hashchange', router);
 window.addEventListener('DOMContentLoaded', async () => {
+  // Discover auth mode before anything else
+  await _initAuth();
   _syncHeader();
   // Show environment banner for non-production hosts
   if (/^staging[.-]/i.test(location.hostname)) {
@@ -260,6 +541,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     banner.textContent = 'STAGING';
     document.body.insertBefore(banner, document.body.firstChild);
     document.title = '[STAGING] ' + document.title;
+  }
+  // If Cognito mode and not logged in, show login
+  if (_authMode === 'cognito' && !_idToken) {
+    renderLogin();
+    return;
   }
   await _fetchRole();
   router();
@@ -321,8 +607,13 @@ function _auditLogTable(logs) {
       change = `<code>${esc(log.field)}</code>: ${parts.join(' ')}`;
     }
 
+    const user = log.user_email && log.user_email !== 'anonymous'
+      ? `<span class="muted" style="font-size:0.8em">${esc(log.user_email)}</span>`
+      : '<span class="muted">—</span>';
+
     return `<tr>
       <td class="col-ts muted">${esc(formatDate(log.created_at))}</td>
+      <td>${user}</td>
       <td><span class="badge badge-audit">${esc(_auditActionLabel(log.action))}</span></td>
       <td>${workCell}</td>
       <td>${change}</td>
@@ -330,7 +621,7 @@ function _auditLogTable(logs) {
   }).join('');
 
   return `<table class="data-table audit-table">
-    <thead><tr><th class="col-ts">Time</th><th>Action</th><th>Subject</th><th>Change</th></tr></thead>
+    <thead><tr><th class="col-ts">Time</th><th>User</th><th>Action</th><th>Subject</th><th>Change</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }

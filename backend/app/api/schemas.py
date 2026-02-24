@@ -145,6 +145,8 @@ class AuditLogOut(BaseModel):
     index_artist_name: str | None = None
     # Denormalised template context
     template_name: str | None = None
+    # User attribution
+    user_email: str | None = None
 
 
 # ---------------------------------------------------------------------------

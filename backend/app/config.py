@@ -11,9 +11,15 @@ DATABASE_URL: str = os.getenv(
     "postgresql://localhost/catalogue_tool",
 )
 
-# Shared API key for all requests.
+# Shared API key for all requests (LEGACY – ignored when Cognito is configured).
 # If empty or unset, authentication is disabled (useful for local development).
 API_KEY: str = os.getenv("API_KEY", "")
+
+# Cognito settings.  When COGNITO_USER_POOL_ID is set, JWT auth is used
+# instead of the shared API key.
+COGNITO_USER_POOL_ID: str = os.getenv("COGNITO_USER_POOL_ID", "")
+COGNITO_CLIENT_ID: str = os.getenv("COGNITO_CLIENT_ID", "")
+COGNITO_REGION: str = os.getenv("COGNITO_REGION", os.getenv("AWS_REGION", "eu-north-1"))
 
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 

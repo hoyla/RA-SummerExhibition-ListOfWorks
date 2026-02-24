@@ -61,6 +61,7 @@ def _build_audit_response(logs: list[AuditLog], db: Session) -> List[AuditLogOut
                 title=w.title if w else None,
                 index_artist_name=_index_artist_display(a) if a else None,
                 template_name=t.name if t else None,
+                user_email=log.user_email,
             )
         )
     return result

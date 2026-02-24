@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from backend.app.config import LOG_LEVEL, CORS_ORIGINS
+from backend.app.config import LOG_LEVEL, CORS_ORIGINS, API_KEY
 from backend.app.db import engine, Base
 from backend.app.api.auth import get_current_role, Role
 
@@ -286,6 +286,26 @@ async def _log_requests(request: Request, call_next):
 
 
 # ---------------------------------------------------------------------------
+# User-context middleware
+# Sets the current_user_email context var so audit log entries are
+# automatically attributed to the authenticated user.
+# ---------------------------------------------------------------------------
+
+from backend.app.api.user_context import current_user_email
+from backend.app.api.auth import get_current_user as _resolve_user
+
+
+@app.middleware("http")
+async def _set_user_context(request: Request, call_next):
+    email = _resolve_user(request)
+    tok = current_user_email.set(email)
+    try:
+        return await call_next(request)
+    finally:
+        current_user_email.reset(tok)
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -421,15 +441,42 @@ def root():
     return {"status": "Catalogue tool running"}
 
 
+@app.get("/auth/config", tags=["ops"])
+def auth_config():
+    """Public endpoint returning auth configuration for the frontend.
+
+    The frontend checks this at startup to decide whether to show the
+    Cognito login flow or the legacy API-key prompt.
+    """
+    from backend.app.api.auth import _USE_COGNITO
+    from backend.app.config import (
+        COGNITO_USER_POOL_ID,
+        COGNITO_CLIENT_ID,
+        COGNITO_REGION,
+    )
+
+    if _USE_COGNITO:
+        return {
+            "mode": "cognito",
+            "userPoolId": COGNITO_USER_POOL_ID,
+            "clientId": COGNITO_CLIENT_ID,
+            "region": COGNITO_REGION,
+        }
+    return {"mode": "api_key" if API_KEY else "none"}
+
+
 @app.get("/me", tags=["ops"])
-def get_current_user(
+def get_me(
+    request: Request,
     role: "Role" = Depends(get_current_role),
 ):
-    """Return the current user's role.
+    """Return the current user's role and email.
 
     Used by the frontend to show/hide controls based on permissions.
     """
-    return {"role": role.name}
+    from backend.app.api.auth import get_current_user as _get_user
+
+    return {"role": role.name, "email": _get_user(request)}
 
 
 # ---------------------------------------------------------------------------
