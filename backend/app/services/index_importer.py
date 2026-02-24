@@ -667,4 +667,34 @@ def _create_artist_entry(
             )
         )
 
+    # Non-ASCII character detection
+    _non_ascii_fields = {
+        "last_name": last_name,
+        "first_name": first_name,
+        "quals": quals,
+        "title": title,
+        "company": company_name,
+        "second_artist": second_artist,
+    }
+    non_ascii_hits = []
+    for field_name, value in _non_ascii_fields.items():
+        if not value:
+            continue
+        chars = sorted({ch for ch in value if ord(ch) > 127}, key=ord)
+        if chars:
+            samples = ", ".join(f"{ch!r} (U+{ord(ch):04X})" for ch in chars[:5])
+            non_ascii_hits.append(f"{field_name}: {samples}")
+    if non_ascii_hits:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="non_ascii_characters",
+                message=(
+                    f"Row {row['row_number']}: Non-ASCII characters will be "
+                    "unicode-escaped in export — " + "; ".join(non_ascii_hits)
+                ),
+            )
+        )
+
     return artist

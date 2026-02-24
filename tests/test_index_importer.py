@@ -524,3 +524,69 @@ class TestHeaderValidation:
             .all()
         )
         assert len(warnings) == 1
+
+
+# ---------------------------------------------------------------------------
+# Non-ASCII character warnings
+# ---------------------------------------------------------------------------
+
+
+class TestNonAsciiWarning:
+    """Non-ASCII characters in artist fields should produce a warning."""
+
+    def test_accented_last_name(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "José", "García", None, None, None, "10")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="non_ascii_characters")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "last_name" in warnings[0].message
+        assert "first_name" in warnings[0].message
+
+    def test_ascii_only_no_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Roger", "Adams", "RA", None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="non_ascii_characters")
+            .all()
+        )
+        assert len(warnings) == 0
+
+    def test_unicode_in_quals(self, db_session, tmp_path):
+        # Unusual but possible: non-ASCII in quals
+        path = _make_workbook(
+            [(None, "Tom", "Baker", "RA\u2020", None, None, "3")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="non_ascii_characters")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "quals" in warnings[0].message
+
+    def test_message_includes_code_point(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Ren\u00e9", "Smith", None, None, None, "7")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        w = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="non_ascii_characters")
+            .first()
+        )
+        assert w is not None
+        assert "U+00E9" in w.message
