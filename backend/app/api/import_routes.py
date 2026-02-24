@@ -20,6 +20,7 @@ from backend.app.api import (
     index,
     index_templates,
     known_artists,
+    users,
 )
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
@@ -33,3 +34,4 @@ router.include_router(audit.router)
 router.include_router(index.router)
 router.include_router(index_templates.router)
 router.include_router(known_artists.router)
+router.include_router(users.router)
