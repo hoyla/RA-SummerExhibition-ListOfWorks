@@ -538,18 +538,21 @@ details.section-block[open] > .section-summary::before {
 }
 .current-val-hint:hover { background: #f0f4ff; border-color: #99b; color: #335; }
 
-/* Highlight flash when scrolled to from warnings panel */
-@keyframes row-flash {
-  0%   { background: #fff3cd; }
+/* Highlight pulse when scrolled to from warnings panel */
+@keyframes row-pulse {
+  0%   { background: #ffeeba; }
+  25%  { background: #fff8e1; }
+  50%  { background: #ffeeba; }
+  75%  { background: #fff8e1; }
   100% { background: transparent; }
 }
-.row-highlight { animation: row-flash 2s ease-out forwards; }
+.row-highlight { animation: row-pulse 2.5s ease-in-out forwards; }
 
 /* Warnings table                                                      */
 /* ------------------------------------------------------------------ */
 
 .warnings-table th { color: #8a6000; }
-.warnings-table .col-work { max-width: 220px; white-space: normal; word-break: break-word; }
+.warnings-table .col-work { min-width: 300px; white-space: normal; word-break: break-word; }
 
 .warnings-toggle {
   font-size: 12px;

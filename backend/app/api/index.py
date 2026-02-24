@@ -570,6 +570,8 @@ def set_artist_company(
 @router.get("/imports/{import_id}/warnings")
 def list_index_warnings(import_id: UUID, db: Session = Depends(get_db)):
     """List validation warnings for an index import."""
+    import re as _re
+
     from backend.app.models.validation_warning_model import ValidationWarning
 
     _get_index_import_or_404(import_id, db)
@@ -581,14 +583,36 @@ def list_index_warnings(import_id: UUID, db: Session = Depends(get_db)):
         .all()
     )
 
-    return [
-        {
-            "id": str(w.id),
-            "warning_type": w.warning_type,
-            "message": w.message,
-        }
-        for w in warnings
-    ]
+    # Build row_number → artist_id lookup so the frontend can link warnings
+    # back to the artist row in the table.
+    artists = (
+        db.query(IndexArtist.row_number, IndexArtist.id)
+        .filter(IndexArtist.import_id == import_id)
+        .all()
+    )
+    row_to_artist = {a.row_number: str(a.id) for a in artists}
+
+    _ROW_RE = _re.compile(r"^Row (\d+):")
+
+    result = []
+    for w in warnings:
+        row_number = None
+        artist_id = None
+        m = _ROW_RE.match(w.message)
+        if m:
+            row_number = int(m.group(1))
+            artist_id = row_to_artist.get(row_number)
+        result.append(
+            {
+                "id": str(w.id),
+                "warning_type": w.warning_type,
+                "message": w.message,
+                "row_number": row_number,
+                "artist_id": artist_id,
+            }
+        )
+
+    return result
 
 
 # ---------------------------------------------------------------------------

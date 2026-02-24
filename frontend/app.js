@@ -1783,8 +1783,11 @@ function scrollToWork(workId) {
     el = el.parentElement;
   }
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.remove('row-highlight');
+  // Force reflow so re-adding the class restarts the animation
+  void row.offsetWidth;
   row.classList.add('row-highlight');
-  setTimeout(() => row.classList.remove('row-highlight'), 2000);
+  setTimeout(() => row.classList.remove('row-highlight'), 2500);
 }
 
 function _applyWorksFilter(query, countEl, totalWorks) {
@@ -2504,10 +2507,16 @@ function _buildIndexWarningsPanel() {
 
   // Detailed rows — filtered by hidden types
   const visible = warnings.filter(w => !_hiddenIndexWarningTypes.has(w.warning_type));
-  const rows = visible.map(w => `<tr>
-    <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
-    <td>${esc(w.message)}</td>
-  </tr>`).join('');
+  const rows = visible.map(w => {
+    const rowCell = (w.artist_id && w.row_number)
+      ? `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(w.artist_id)}')">${esc('Row ' + w.row_number)}</button>`
+      : (w.row_number ? esc('Row ' + w.row_number) : '\u2014');
+    return `<tr>
+      <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
+      <td>${esc(w.message)}</td>
+      <td class="muted col-work">${rowCell}</td>
+    </tr>`;
+  }).join('');
 
   const hiddenCount = warnings.length - visible.length;
   const countLabel = hiddenCount > 0
@@ -2520,7 +2529,7 @@ function _buildIndexWarningsPanel() {
     <details>
       <summary class="warnings-toggle">Show detail</summary>
       <table class="data-table warnings-table" style="margin-top:10px">
-        <thead><tr><th>Type</th><th>Message</th></tr></thead>
+        <thead><tr><th>Type</th><th>Message</th><th>Row</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </details>`;
@@ -2537,6 +2546,23 @@ function _buildIndexWarningsPanel() {
       _buildIndexWarningsPanel();
     });
   });
+}
+
+function scrollToIndexArtist(artistId) {
+  const row = document.getElementById('idx-' + artistId);
+  if (!row) return;
+  // Ensure parent <details> (letter section) is open
+  let el = row.parentElement;
+  while (el) {
+    if (el.tagName === 'DETAILS') el.open = true;
+    el = el.parentElement;
+  }
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.remove('row-highlight');
+  // Force reflow so re-adding the class restarts the animation
+  void row.offsetWidth;
+  row.classList.add('row-highlight');
+  setTimeout(() => row.classList.remove('row-highlight'), 2500);
 }
 
 function renderIndexArtists(importId, artists) {

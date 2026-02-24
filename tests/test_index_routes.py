@@ -537,3 +537,47 @@ class TestIndexWarnings:
         fake_id = str(uuid.uuid4())
         r = client.get(f"/index/imports/{fake_id}/warnings")
         assert r.status_code == 404
+
+    def test_warnings_include_row_number_and_artist_id(self, client, db_session):
+        """Warning response should include row_number & artist_id for linkable warnings."""
+        from backend.app.models.validation_warning_model import ValidationWarning
+
+        imp, artists = _seed_index_import(db_session)
+        # Manually add a warning referencing row 2 (same row_number as artist Adams)
+        db_session.add(
+            ValidationWarning(
+                import_id=imp.id,
+                work_id=None,
+                warning_type="test_warning",
+                message="Row 2: Something about Adams",
+            )
+        )
+        db_session.commit()
+
+        r = client.get(f"/index/imports/{imp.id}/warnings")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["row_number"] == 2
+        assert data[0]["artist_id"] == str(artists[0].id)
+
+    def test_warnings_no_row_number_for_import_level(self, client, db_session):
+        """Import-level warnings (no 'Row N:' prefix) should have null row_number."""
+        from backend.app.models.validation_warning_model import ValidationWarning
+
+        imp, _ = _seed_index_import(db_session)
+        db_session.add(
+            ValidationWarning(
+                import_id=imp.id,
+                work_id=None,
+                warning_type="duplicate_filename",
+                message="A previous import with filename 'test.xlsx' already exists",
+            )
+        )
+        db_session.commit()
+
+        r = client.get(f"/index/imports/{imp.id}/warnings")
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["row_number"] is None
+        assert data[0]["artist_id"] is None
