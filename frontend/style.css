@@ -457,14 +457,13 @@ details.section-block[open] > .section-summary::before {
 
 .inline-check {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 5px;
   font-size: 12px;
   font-weight: 400;
   color: var(--text);
   text-transform: none;
   letter-spacing: 0;
-  white-space: nowrap;
   cursor: pointer;
 }
 .inline-check input[type="checkbox"] {
