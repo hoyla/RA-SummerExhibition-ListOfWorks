@@ -175,9 +175,71 @@
 
 ---
 
+## Phase 16 – Permissions & operations parity ✅
+
+- Three-tier role model: Viewer / Editor / Admin (`Role` IntEnum)
+- `require_role()` guard on all 8 route modules
+- Frontend role-aware UI: viewer sees read-only, editor/admin unlock editing
+- Dev role switcher in header (`<select>` + `localStorage` persistence)
+- `_apiHeaders()` centralises HTTP headers (API key + role override)
+- Audit log parity for Index: `artist_id` FK on AuditLog, enriched API, panel in UI
+- Export diff for Index: `save_index_export_snapshot`, `compute_index_diff`,
+  `GET /index/imports/{id}/export-diff`, diff panel in frontend
+- Re-import for Index: `reimport_index_excel` service matching by `sort_key` + courtesy,
+  override/exclusion snapshot+restore, audit log, `PUT /index/imports/{id}/reimport`
+- Frontend reimport panel with filename mismatch warning
+- Duplicate name merge/unmerge for Index
+- Non-ASCII character warnings
+- 560 tests total
+
+---
+
+## Phase 17 – AWS deployment & cloud infrastructure (planned)
+
+### Storage
+
+- Migrate uploaded Excel files from local Docker volume to **Amazon S3**
+- Presigned URLs for upload/download (avoid passing file bytes through the API)
+- Configurable bucket name via `S3_BUCKET` / `AWS_REGION` env vars
+- Retain local-disk fallback for development (`STORAGE_BACKEND=local|s3`)
+
+### Compute & networking
+
+- **ECS Fargate** (or App Runner) for the FastAPI container — no EC2 management
+- **RDS PostgreSQL** replacing the Docker Compose Postgres container
+- **ALB** (Application Load Balancer) with TLS termination
+- Health check endpoint (`/health`) already exists for ALB target-group probes
+
+### User authentication
+
+- Replace single API key with **Amazon Cognito** user pool
+- OAuth 2.0 / OIDC token flow: frontend redirects to Cognito hosted UI,
+  receives JWT, sends `Authorization: Bearer <token>` header
+- Backend validates JWT signature + claims via `python-jose` / `authlib`
+- Map Cognito groups → application roles (Viewer / Editor / Admin)
+- Existing `require_role()` guard unchanged — role source switches from
+  header to JWT claim
+- Optional: Cognito-backed login page replaces the current API-key prompt
+
+### CI / CD
+
+- **GitHub Actions** pipeline: lint → test → Docker build → push to ECR → deploy to ECS
+- Alembic migrations run automatically on container startup (already implemented)
+- Separate staging and production environments via environment variables
+
+### Secrets & configuration
+
+- **AWS Secrets Manager** for `DATABASE_URL`, Cognito client secret, etc.
+- **Parameter Store** for non-secret config (bucket names, feature flags)
+- `.env` file used only for local development
+
+---
+
 ## Future considerations
 
-- Better authentication model
-- Role-based access (read-only vs editorial vs admin)
-- Cloud storage for uploaded Excel files
-- LPG eccentricities (e.g. advanced title casing)
+- Advanced title casing rules (LPG eccentricities)
+- Undo / revision history for overrides
+- Bulk override import from Excel
+- Multi-user conflict resolution (optimistic locking)
+- PDF preview generation
+- Webhook / notification on import completion
