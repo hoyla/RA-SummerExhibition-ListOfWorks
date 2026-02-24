@@ -35,16 +35,18 @@ Excel Upload
 
 ## 2. Technology stack
 
-| Layer      | Technology                        |
-| ---------- | --------------------------------- |
-| API        | Python 3.12, FastAPI, Uvicorn     |
-| ORM        | SQLAlchemy 2.0                    |
-| Migrations | Alembic                           |
-| Validation | Pydantic v2                       |
-| Database   | PostgreSQL 16                     |
-| Frontend   | Vanilla JS SPA, served by FastAPI |
-| Deployment | Docker / docker-compose           |
-| Testing    | pytest (448 tests)                |
+| Layer      | Technology                              |
+| ---------- | --------------------------------------- |
+| API        | Python 3.12, FastAPI, Uvicorn           |
+| ORM        | SQLAlchemy 2.0                          |
+| Migrations | Alembic                                 |
+| Validation | Pydantic v2                             |
+| Auth       | AWS Cognito (JWT) / API key (legacy)    |
+| Database   | PostgreSQL 16 (RDS in production)       |
+| Frontend   | Vanilla JS SPA, served by FastAPI       |
+| Deployment | Docker, ECS Fargate, GitHub Actions     |
+| Storage    | Local disk / Amazon S3                  |
+| Testing    | pytest (577 tests across 24 test files) |
 
 ---
 
@@ -97,6 +99,9 @@ Recorded when a raw field cannot be parsed to its expected type.
 ### AuditLog
 
 Records all mutating API calls for traceability.
+
+- `user_email` — email of the authenticated user who performed the action
+  (populated automatically from request context via `ContextVar`)
 
 ### Ruleset
 
@@ -490,9 +495,16 @@ Routes are split across focused modules under `backend/app/api/`:
 - `schemas.py` — centralised Pydantic request/response models
 - `deps.py` — shared dependencies (DB session)
 - `import_routes.py` — thin aggregation hub that includes all sub-routers
-- `auth.py` — API key middleware
+- `auth.py` — authentication and role-based access control (Cognito JWT / API key / no-auth)
+- `user_context.py` — request-scoped `ContextVar` for current user email
+- `users.py` — Cognito user management CRUD (admin-only)
 
-All routes under `/`. Protected by API key if `API_KEY` env var is set.
+All routes under `/`. Authentication is determined by environment:
+
+- **Cognito mode** (production): `COGNITO_USER_POOL_ID` is set; JWT required.
+- **API key mode** (legacy): only `API_KEY` is set; shared key required.
+- **No-auth mode** (local dev): neither is set; all requests are admin.
+
 CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 
 ### List of Works routes
@@ -621,7 +633,126 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 
 ---
 
-## 10. Design principles
+## 10. Authentication & user management
+
+### Authentication modes
+
+The system supports three authentication modes, selected automatically based
+on environment configuration:
+
+| Mode    | Trigger                       | Token header              | Role source          |
+| ------- | ----------------------------- | ------------------------- | -------------------- |
+| Cognito | `COGNITO_USER_POOL_ID` is set | `Authorization: Bearer …` | Cognito groups       |
+| API key | Only `API_KEY` is set         | `X-Api-Key`               | `X-User-Role` header |
+| No auth | Neither env var set           | —                         | Defaults to admin    |
+
+#### Cognito JWT validation
+
+- JWKS fetched once per process from the Cognito well-known endpoint and cached.
+- Token signature, expiry, audience (`aud`), and issuer (`iss`) are verified
+  using `python-jose`.
+- User email extracted from the `email` claim.
+- Role derived from Cognito groups mapped to the `Role` IntEnum
+  (admin=3 > editor=2 > viewer=1); highest-precedence group wins.
+
+#### User context
+
+`backend/app/api/user_context.py` — a `ContextVar[str]` holding the current
+user's email (default `"anonymous"`). Set by middleware on each request.
+Used by the `AuditLog` model's SQLAlchemy `init` event to automatically
+populate `user_email` on every audit log entry.
+
+### User management
+
+`backend/app/api/users.py` — admin-only CRUD operations against Cognito via boto3.
+
+| Method | Path                               | Description                          |
+| ------ | ---------------------------------- | ------------------------------------ |
+| GET    | `/users`                           | List all Cognito users with roles    |
+| POST   | `/users`                           | Create user (email + role + temp pw) |
+| PUT    | `/users/{username}`                | Change user role (re-assign group)   |
+| POST   | `/users/{username}/disable`        | Disable user account                 |
+| POST   | `/users/{username}/enable`         | Enable user account                  |
+| POST   | `/users/{username}/reset-password` | Set temporary password               |
+
+IAM permissions for Cognito admin operations are granted to the ECS task role
+via the `catalogue-cognito-admin` inline policy.
+
+### Frontend auth flow
+
+1. If Cognito is configured (`/auth/config` returns pool + client IDs),
+   the frontend shows a login form (email + password).
+2. Cognito `USER_PASSWORD_AUTH` flow via the AWS Cognito API.
+3. `NEW_PASSWORD_REQUIRED` challenge handled inline (force-change on first login).
+4. Tokens stored in `sessionStorage`; auto-refresh via refresh token.
+5. Role badge displayed in the header (admin=red, editor=blue, viewer=grey).
+6. Fallback: if Cognito is not configured, shows a legacy API key input.
+
+---
+
+## 11. AWS infrastructure
+
+### Production environment
+
+| Component       | Service                  | Details                                               |
+| --------------- | ------------------------ | ----------------------------------------------------- |
+| Compute         | ECS Fargate              | Cluster: `catalogue`, services: prod + staging        |
+| Container image | ECR                      | Repository: `catalogue-app`                           |
+| Database        | RDS PostgreSQL 16        | Private subnet, encrypted                             |
+| File storage    | Amazon S3                | Upload bucket, local fallback for dev                 |
+| Load balancer   | ALB                      | HTTPS termination, host-based routing                 |
+| DNS             | External (Namecheap)     | `catalogue.hoy.la` (prod), `staging-catalogue.hoy.la` |
+| TLS             | ACM                      | Certificates for both domains                         |
+| Auth            | Cognito User Pool        | Pool: `eu-north-1_ThfApt8C5`                          |
+| Secrets         | Secrets Manager          | `DATABASE_URL`, API keys                              |
+| Monitoring      | CloudWatch               | Container logs, metrics                               |
+| Region          | `eu-north-1` (Stockholm) |                                                       |
+
+### IAM roles
+
+- `catalogue-ecs-task` — ECS task role with inline policies:
+  - `catalogue-s3-access` — S3 read/write to the upload bucket
+  - `catalogue-cognito-admin` — Cognito user management operations
+- `catalogue-ecs-execution` — ECS execution role (ECR pull, CloudWatch logs, Secrets Manager)
+- `catalogue-github-actions` — OIDC-federated role for CI/CD deployments
+
+### Networking
+
+- VPC with public and private subnets
+- Security groups: ALB (80/443 inbound), ECS tasks (8000 from ALB), RDS (5432 from ECS)
+- ALB listeners: HTTPS on 443 (host-based routing), HTTP on 80 (redirect to HTTPS)
+
+---
+
+## 12. CI/CD
+
+`.github/workflows/ci.yml` — GitHub Actions pipeline.
+
+### Branch-based deployment strategy
+
+| Trigger                     | Pipeline                                        |
+| --------------------------- | ----------------------------------------------- |
+| Push to any non-main branch | test → docker build → push ECR → deploy staging |
+| Push to `main`              | test → docker build → push ECR → deploy prod    |
+| PR to `main`                | test → docker build (no deploy)                 |
+
+### Workflow
+
+Daily working branches (e.g. `dev/2026-02-24`) are used for development.
+Pushing to a working branch triggers an automatic staging deployment.
+Merging to `main` via PR triggers production deployment.
+
+### Pipeline stages
+
+1. **test** — Python 3.12 + `pytest` on Ubuntu
+2. **docker** — Build image + docker-compose smoke test (health check)
+3. **push-ecr** — Authenticate via OIDC, build and push to ECR (pushes only)
+4. **deploy-staging** — Render ECS task definition, deploy to staging service
+5. **deploy-prod** — Render ECS task definition, deploy to prod service
+
+---
+
+## 13. Design principles
 
 - Raw data is sacred and never mutated
 - Normalisation is deterministic and idempotent

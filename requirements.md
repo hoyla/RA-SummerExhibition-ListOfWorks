@@ -203,6 +203,25 @@ The system must provide:
 | DELETE | `/index/templates/{id}`                      | Delete index template                                     |
 | POST   | `/index/templates/{id}/duplicate`            | Clone index template                                      |
 
+#### User Management (admin-only, Cognito mode)
+
+| Method | Path                               | Description                          |
+| ------ | ---------------------------------- | ------------------------------------ |
+| GET    | `/users`                           | List all Cognito users with roles    |
+| POST   | `/users`                           | Create user (email + role + temp pw) |
+| PUT    | `/users/{username}`                | Change user role (re-assign group)   |
+| POST   | `/users/{username}/disable`        | Disable user account                 |
+| POST   | `/users/{username}/enable`         | Enable user account                  |
+| POST   | `/users/{username}/reset-password` | Set temporary password               |
+
+#### Authentication & Configuration
+
+| Method | Path           | Description                                         |
+| ------ | -------------- | --------------------------------------------------- |
+| GET    | `/auth/config` | Returns Cognito pool/client IDs for frontend config |
+| GET    | `/me`          | Returns current user email and role                 |
+| GET    | `/health`      | Health check (used by ALB target group)             |
+
 ---
 
 ### 2.7 Export
@@ -244,6 +263,10 @@ The system must provide a browser-based single-page application that allows:
 - Managing export templates for both LoW and Index on a combined Templates page.
 - Exporting the full import, a single section (LoW), or a letter group (Index) as Tagged Text.
 - Collapsible sections (LoW) and letter groups (Index) for focused editing.
+- Login via Cognito (email + password) or legacy API key.
+- Role badge in header showing current user role.
+- Admin-only user management panel: create users, change roles, enable/disable, reset passwords.
+- Staging environment banner.
 
 ---
 
@@ -255,8 +278,13 @@ The system must provide a browser-based single-page application that allows:
 - REST API compliant.
 - Versionable export specification.
 - Stable ordering guarantees.
-- API key authentication (optional; disabled when `API_KEY` env var is unset).
-- Deployable via Docker / docker-compose.
+- Per-user authentication via AWS Cognito JWT (with API key fallback for legacy use).
+- Three-tier role model: Viewer / Editor / Admin (mapped from Cognito groups).
+- In-app user management for admins (create, role change, enable/disable, password reset).
+- Audit log with user attribution (email recorded per action).
+- Deployable via Docker / ECS Fargate with GitHub Actions CI/CD.
+- Branch-based deployment: working branches → staging, main → production.
+- HTTPS with ACM certificates and ALB termination.
 
 ---
 
@@ -290,7 +318,9 @@ The system must provide a browser-based single-page application that allows:
 
 ## 7. Future Considerations
 
-- Role-based access (read-only vs editorial vs admin).
-- Cloud storage for uploaded Excel files.
-- Structured audit log viewer in UI.
-- Print-preview rendering.
+- Advanced title casing rules (LPG eccentricities).
+- Undo / revision history for overrides.
+- Bulk override import from Excel.
+- Multi-user conflict resolution (optimistic locking).
+- PDF preview generation.
+- Webhook / notification on import completion.

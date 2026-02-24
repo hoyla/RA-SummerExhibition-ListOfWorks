@@ -4,7 +4,7 @@ The Royal Academy's annual Summer Exhibition features a printed catalogue.
 The editorial team prepares exhibition data in Excel spreadsheets. This tool
 ingests those spreadsheets, lets editors review and correct the data, and
 generates InDesign Tagged Text files ready for import into the catalogue
-layouts. It replaces a manual copy-and-format workflow that involved hundreds 
+layouts. It replaces a manual copy-and-format workflow that involved hundreds
 of time-consuming and error-prone regex and find-and-replace operations.
 
 Supports two data products:
@@ -49,20 +49,24 @@ Supports two data products:
 - Built-in seed templates (upserted from `backend/seed_templates/*.json` on startup)
 - InDesign Tagged Text export (ASCII-MAC encoding, Mac Roman)
 - JSON export
-- API key authentication
-- Audit logging for all mutating operations
+- Per-user authentication via **AWS Cognito** (JWT), with API key fallback
+- Three-tier role model: Viewer / Editor / Admin (mapped from Cognito groups)
+- In-app user management panel for admins (create, role change, enable/disable, password reset)
+- Audit logging for all mutating operations with user attribution
 - Full frontend UI (vanilla JS SPA)
-- Docker / docker-compose deployment
+- AWS deployment: ECS Fargate, RDS PostgreSQL, S3, ALB with HTTPS
+- CI/CD via GitHub Actions (branch-based: working branches → staging, main → production)
 
 ---
 
 ## Tech stack
 
 - Python 3.12 / FastAPI / Uvicorn
-- SQLAlchemy 2.0 + PostgreSQL 16
+- SQLAlchemy 2.0 + PostgreSQL 16 (RDS in production)
 - Pydantic v2
+- AWS Cognito (authentication) + boto3 (user management)
 - Vanilla JS single-page frontend
-- Docker / docker-compose
+- Docker / ECS Fargate / GitHub Actions CI/CD
 
 ---
 
@@ -125,6 +129,9 @@ backend/app/
     exports.py
     templates.py
     known_artists.py
+    users.py      # Cognito user management (admin-only)
+    auth.py       # Authentication (Cognito JWT / API key / no-auth)
+    user_context.py # Request-scoped user context
     schemas.py    # Centralised Pydantic models
   models/         # SQLAlchemy ORM models
   services/       # Business logic
@@ -145,7 +152,11 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (448 tests across 19 test files)
+tests/            # pytest suite (577 tests across 24 test files)
+.github/workflows/
+  ci.yml          # GitHub Actions CI/CD pipeline
+.aws/
+  task-definition.json  # ECS task definition
 docs/
   architecture_v1.md
   export_spec_v1.md
@@ -175,13 +186,20 @@ This project uses Alembic for database migrations.
 
 ## Environment variables
 
-| Variable            | Default                   | Description                               |
-| ------------------- | ------------------------- | ----------------------------------------- |
-| `DATABASE_URL`      | —                         | PostgreSQL connection string              |
-| `POSTGRES_PASSWORD` | `changeme`                | Used by docker-compose                    |
-| `API_KEY`           | _(empty — auth disabled)_ | Bearer token required on all API requests |
-| `LOG_LEVEL`         | `INFO`                    | Uvicorn log level                         |
-| `CORS_ORIGINS`      | _(empty — disabled)_      | Comma-separated allowed origins for CORS  |
+| Variable               | Default                   | Description                                         |
+| ---------------------- | ------------------------- | --------------------------------------------------- |
+| `DATABASE_URL`         | —                         | PostgreSQL connection string                        |
+| `POSTGRES_PASSWORD`    | `changeme`                | Used by docker-compose                              |
+| `COGNITO_USER_POOL_ID` | _(empty)_                 | Cognito User Pool ID (enables JWT auth)             |
+| `COGNITO_CLIENT_ID`    | _(empty)_                 | Cognito App Client ID                               |
+| `COGNITO_REGION`       | `eu-north-1`              | AWS region for Cognito                              |
+| `API_KEY`              | _(empty — auth disabled)_ | Legacy shared API key (ignored when Cognito is set) |
+| `STORAGE_BACKEND`      | `local`                   | File storage: `local` or `s3`                       |
+| `S3_BUCKET`            | _(empty)_                 | S3 bucket name (when `STORAGE_BACKEND=s3`)          |
+| `AWS_REGION`           | —                         | AWS region for S3 and other services                |
+| `LOG_LEVEL`            | `INFO`                    | Uvicorn log level                                   |
+| `CORS_ORIGINS`         | _(empty — disabled)_      | Comma-separated allowed origins for CORS            |
+| `UPLOAD_DIR`           | `uploads`                 | Local directory for uploaded files                  |
 
 ---
 
