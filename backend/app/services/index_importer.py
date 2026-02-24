@@ -8,13 +8,16 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy.orm import Session
 from difflib import get_close_matches
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import re
 import unicodedata
+import uuid as _uuid
 
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
+from backend.app.models.index_override_model import IndexArtistOverride
+from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.validation_warning_model import ValidationWarning
 
 
@@ -361,6 +364,172 @@ def _artist_merge_key(
 
 
 # ---------------------------------------------------------------------------
+# Workbook parsing helper (shared by import & reimport)
+# ---------------------------------------------------------------------------
+
+
+def _open_and_parse_index_workbook(file_path: str) -> Tuple[List[dict], List[str]]:
+    """Open an xlsx file and return (raw_rows, header_warnings).
+
+    Each element of *raw_rows* is a dict with normalised fields plus the
+    original ``raw_*`` values and a ``cat_nos`` list.  This does NOT touch
+    the database — it only parses the file.
+    """
+    try:
+        workbook = load_workbook(filename=file_path, data_only=True)
+    except InvalidFileException:
+        raise IndexImportError("The uploaded file is not a valid Excel (.xlsx) file.")
+    except Exception as exc:
+        raise IndexImportError(f"Could not read the uploaded file: {exc}")
+
+    sheet = workbook.active
+    if sheet is None or sheet.max_row is None or sheet.max_row < 1:
+        raise IndexImportError("The spreadsheet is empty (no rows found).")
+
+    headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
+    header_warnings = _validate_headers(headers)
+
+    def _cell_value(cell):
+        v = cell.value
+        if cell.quotePrefix and isinstance(v, str):
+            v = "'" + v
+        return v
+
+    raw_rows: List[dict] = []
+    for row_idx, row in enumerate(sheet.iter_rows(min_row=2), start=2):
+        row_dict = {h: _cell_value(c) for h, c in zip(headers, row)}
+
+        raw_title = row_dict.get("Title")
+        raw_first = row_dict.get("First Name")
+        raw_last = row_dict.get("Last Name")
+        raw_quals = row_dict.get("Quals")
+        raw_company = row_dict.get("Company")
+        raw_address = row_dict.get("Address 1")
+        raw_cat_nos = row_dict.get("Cat Nos")
+
+        if not any(
+            [
+                raw_title,
+                raw_first,
+                raw_last,
+                raw_quals,
+                raw_company,
+                raw_address,
+                raw_cat_nos,
+            ]
+        ):
+            continue
+
+        title = str(raw_title).strip() if raw_title else None
+        first_name = str(raw_first).strip() if raw_first else None
+        last_name = str(raw_last).strip() if raw_last else None
+        quals = str(raw_quals).strip().rstrip() if raw_quals else None
+        company = str(raw_company).strip() if raw_company else None
+        address = str(raw_address).strip() if raw_address else None
+
+        if raw_last is not None and not isinstance(raw_last, str):
+            last_name = str(raw_last)
+            raw_last = str(raw_last)
+
+        if raw_first is not None and not isinstance(raw_first, str):
+            first_name = str(raw_first)
+            raw_first = str(raw_first)
+
+        cat_nos = parse_cat_nos(str(raw_cat_nos) if raw_cat_nos is not None else None)
+
+        raw_rows.append(
+            {
+                "row_number": row_idx,
+                "raw_title": str(raw_title) if raw_title is not None else None,
+                "raw_first_name": str(raw_first) if raw_first is not None else None,
+                "raw_last_name": str(raw_last) if raw_last is not None else None,
+                "raw_quals": str(raw_quals) if raw_quals is not None else None,
+                "raw_company": str(raw_company) if raw_company is not None else None,
+                "raw_address": str(raw_address) if raw_address is not None else None,
+                "title": title,
+                "first_name": first_name,
+                "last_name": last_name,
+                "quals": quals,
+                "company": company,
+                "address": address,
+                "cat_nos": cat_nos,
+            }
+        )
+
+    return raw_rows, header_warnings
+
+
+# ---------------------------------------------------------------------------
+# Artist creation from parsed rows (shared by import & reimport)
+# ---------------------------------------------------------------------------
+
+
+def _create_artists_from_parsed_rows(
+    db: Session,
+    import_record: Import,
+    raw_rows: List[dict],
+) -> int:
+    """Merge and create IndexArtist + IndexCatNumber records from *raw_rows*.
+
+    Returns the number of artist entries created.
+    """
+    artist_groups: Dict[str, List[dict]] = defaultdict(list)
+    for row in raw_rows:
+        key = _artist_merge_key(
+            row["title"], row["first_name"], row["last_name"], row["quals"]
+        )
+        artist_groups[key].append(row)
+
+    artist_count = 0
+    for key, rows in artist_groups.items():
+        courtesy_rows = [r for r in rows if r["address"]]
+        no_courtesy_rows = [r for r in rows if not r["address"]]
+
+        if no_courtesy_rows:
+            merged = no_courtesy_rows[0].copy()
+            merged_cat_entries: List[tuple] = []
+            for r in no_courtesy_rows:
+                for cn in r["cat_nos"]:
+                    merged_cat_entries.append((cn, r["row_number"]))
+            _create_artist_entry(
+                db, import_record, merged, merged_cat_entries, courtesy=None
+            )
+            artist_count += 1
+
+            if len(no_courtesy_rows) > 1:
+                row_nums = sorted(r["row_number"] for r in no_courtesy_rows)
+                rows_str = ", ".join(str(n) for n in row_nums)
+                name = f"{no_courtesy_rows[0]['first_name'] or ''} {no_courtesy_rows[0]['last_name'] or ''}".strip()
+                db.add(
+                    ValidationWarning(
+                        import_id=import_record.id,
+                        work_id=None,
+                        warning_type="duplicate_name_merged",
+                        message=f'Rows {rows_str}: Identical name "{name}" merged into one entry',
+                    )
+                )
+
+        for r in courtesy_rows:
+            cat_entries = [(cn, r["row_number"]) for cn in r["cat_nos"]]
+            _create_artist_entry(
+                db, import_record, r, cat_entries, courtesy=r["address"]
+            )
+            artist_count += 1
+
+    if artist_count == 0:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="empty_spreadsheet",
+                message="The spreadsheet has column headers but no data rows.",
+            )
+        )
+
+    return artist_count
+
+
+# ---------------------------------------------------------------------------
 # Main import function
 # ---------------------------------------------------------------------------
 
@@ -376,21 +545,7 @@ def import_index_excel(
     IndexCatNumber records.  Rows for the same artist with no courtesy
     distinction are merged (cat numbers combined).
     """
-    # --- Open workbook ---
-    try:
-        workbook = load_workbook(filename=file_path, data_only=True)
-    except InvalidFileException:
-        raise IndexImportError("The uploaded file is not a valid Excel (.xlsx) file.")
-    except Exception as exc:
-        raise IndexImportError(f"Could not read the uploaded file: {exc}")
-
-    sheet = workbook.active
-    if sheet is None or sheet.max_row is None or sheet.max_row < 1:
-        raise IndexImportError("The spreadsheet is empty (no rows found).")
-
-    # --- Read & validate headers ---
-    headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
-    header_warnings = _validate_headers(headers)
+    raw_rows, header_warnings = _open_and_parse_index_workbook(file_path)
 
     record_name = display_name or file_path
 
@@ -423,152 +578,7 @@ def import_index_excel(
             )
         )
 
-    # ---------------------------------------------------------------
-    # Pass 1: Read all rows into intermediate dicts
-    # ---------------------------------------------------------------
-
-    def _cell_value(cell):
-        v = cell.value
-        if cell.quotePrefix and isinstance(v, str):
-            v = "'" + v
-        return v
-
-    raw_rows: List[dict] = []
-    for row_idx, row in enumerate(sheet.iter_rows(min_row=2), start=2):
-        row_dict = {h: _cell_value(c) for h, c in zip(headers, row)}
-
-        raw_title = row_dict.get("Title")
-        raw_first = row_dict.get("First Name")
-        raw_last = row_dict.get("Last Name")
-        raw_quals = row_dict.get("Quals")
-        raw_company = row_dict.get("Company")
-        raw_address = row_dict.get("Address 1")
-        raw_cat_nos = row_dict.get("Cat Nos")
-
-        # Skip completely blank rows
-        if not any(
-            [
-                raw_title,
-                raw_first,
-                raw_last,
-                raw_quals,
-                raw_company,
-                raw_address,
-                raw_cat_nos,
-            ]
-        ):
-            continue
-
-        # Normalise values
-        title = str(raw_title).strip() if raw_title else None
-        first_name = str(raw_first).strip() if raw_first else None
-        last_name = str(raw_last).strip() if raw_last else None
-        quals = str(raw_quals).strip().rstrip() if raw_quals else None
-        company = str(raw_company).strip() if raw_company else None
-        address = str(raw_address).strip() if raw_address else None
-
-        # Convert numeric last_name to string (e.g. 8014)
-        if raw_last is not None and not isinstance(raw_last, str):
-            last_name = str(raw_last)
-            raw_last = str(raw_last)
-
-        if raw_first is not None and not isinstance(raw_first, str):
-            first_name = str(raw_first)
-            raw_first = str(raw_first)
-
-        cat_nos = parse_cat_nos(str(raw_cat_nos) if raw_cat_nos is not None else None)
-
-        raw_rows.append(
-            {
-                "row_number": row_idx,
-                "raw_title": str(raw_title) if raw_title is not None else None,
-                "raw_first_name": str(raw_first) if raw_first is not None else None,
-                "raw_last_name": str(raw_last) if raw_last is not None else None,
-                "raw_quals": str(raw_quals) if raw_quals is not None else None,
-                "raw_company": str(raw_company) if raw_company is not None else None,
-                "raw_address": str(raw_address) if raw_address is not None else None,
-                "title": title,
-                "first_name": first_name,
-                "last_name": last_name,
-                "quals": quals,
-                "company": company,
-                "address": address,
-                "cat_nos": cat_nos,
-            }
-        )
-
-    # ---------------------------------------------------------------
-    # Pass 2: Merge rows with same artist identity and no courtesy
-    # ---------------------------------------------------------------
-    # Artists with courtesy lines stay as separate entries.
-    # Artists without courtesy lines are merged by identity key.
-
-    # Group rows by artist identity
-    artist_groups: Dict[str, List[dict]] = defaultdict(list)
-    for row in raw_rows:
-        key = _artist_merge_key(
-            row["title"], row["first_name"], row["last_name"], row["quals"]
-        )
-        artist_groups[key].append(row)
-
-    # Build final artist records
-    artist_count = 0
-    for key, rows in artist_groups.items():
-        # Separate rows with and without courtesy
-        courtesy_rows = [r for r in rows if r["address"]]
-        no_courtesy_rows = [r for r in rows if not r["address"]]
-
-        # Merge all no-courtesy rows into one artist entry
-        if no_courtesy_rows:
-            merged = no_courtesy_rows[0].copy()
-            merged_cat_entries: List[tuple] = []
-            for r in no_courtesy_rows:
-                for cn in r["cat_nos"]:
-                    merged_cat_entries.append((cn, r["row_number"]))
-            _create_artist_entry(
-                db,
-                import_record,
-                merged,
-                merged_cat_entries,
-                courtesy=None,
-            )
-            artist_count += 1
-
-            # Warn when multiple rows were silently merged
-            if len(no_courtesy_rows) > 1:
-                row_nums = sorted(r["row_number"] for r in no_courtesy_rows)
-                rows_str = ", ".join(str(n) for n in row_nums)
-                name = f"{no_courtesy_rows[0]['first_name'] or ''} {no_courtesy_rows[0]['last_name'] or ''}".strip()
-                db.add(
-                    ValidationWarning(
-                        import_id=import_record.id,
-                        work_id=None,
-                        warning_type="duplicate_name_merged",
-                        message=f'Rows {rows_str}: Identical name "{name}" merged into one entry',
-                    )
-                )
-
-        # Each courtesy row becomes its own artist entry
-        for r in courtesy_rows:
-            cat_entries = [(cn, r["row_number"]) for cn in r["cat_nos"]]
-            _create_artist_entry(
-                db,
-                import_record,
-                r,
-                cat_entries,
-                courtesy=r["address"],
-            )
-            artist_count += 1
-
-    if artist_count == 0:
-        db.add(
-            ValidationWarning(
-                import_id=import_record.id,
-                work_id=None,
-                warning_type="empty_spreadsheet",
-                message="The spreadsheet has column headers but no data rows.",
-            )
-        )
+    _create_artists_from_parsed_rows(db, import_record, raw_rows)
 
     db.commit()
     return import_record
@@ -718,3 +728,188 @@ def _create_artist_entry(
         )
 
     return artist
+
+
+# ---------------------------------------------------------------------------
+# Re-import (replace spreadsheet, preserving overrides)
+# ---------------------------------------------------------------------------
+
+# Override columns that should be snapshotted / restored across reimports.
+_INDEX_OVERRIDE_FIELDS = [
+    "is_company_override",
+    "first_name_override",
+    "last_name_override",
+    "title_override",
+    "quals_override",
+    "second_artist_override",
+]
+
+
+def _artist_identity_key(artist: IndexArtist) -> str:
+    """Build a composite key for matching artists across reimports.
+
+    Uses ``sort_key`` (accent-stripped, lowercase last+first) combined
+    with the first courtesy address (or empty) so that courtesy vs.
+    non-courtesy entries for the same name are treated as distinct.
+    """
+    # Find courtesy from the artist's cat numbers — courtesy rows store one
+    # address value.  We use the first non-None courtesy found.
+    courtesy = ""
+    if hasattr(artist, "_reimport_courtesy"):
+        # fast-path: populated during snapshot
+        courtesy = artist._reimport_courtesy or ""
+    return f"{artist.sort_key or ''}|{courtesy}"
+
+
+def reimport_index_excel(
+    import_id: _uuid.UUID,
+    file_path: str,
+    db: Session,
+    display_name: Optional[str] = None,
+) -> Tuple[Import, Dict[str, int]]:
+    """Re-import an Artists' Index spreadsheet into an existing Import,
+    preserving overrides and ``include_in_export`` flags.
+
+    Artists are matched by ``sort_key`` + courtesy.  Returns
+    ``(import_record, stats)`` with keys: ``matched``, ``added``,
+    ``removed``, ``overrides_preserved``.
+    """
+    import_record = db.query(Import).filter(Import.id == import_id).first()
+    if import_record is None:
+        raise IndexImportError("Import not found.")
+
+    # 1. Parse new file — fail fast before touching existing data
+    raw_rows, header_warnings = _open_and_parse_index_workbook(file_path)
+
+    # 2. Snapshot existing overrides + include_in_export, keyed by identity
+    existing_artists = (
+        db.query(IndexArtist).filter(IndexArtist.import_id == import_id).all()
+    )
+    artist_ids = [a.id for a in existing_artists]
+
+    # Load overrides
+    existing_overrides: Dict[str, IndexArtistOverride] = {}
+    if artist_ids:
+        existing_overrides = {
+            str(o.artist_id): o
+            for o in db.query(IndexArtistOverride)
+            .filter(IndexArtistOverride.artist_id.in_(artist_ids))
+            .all()
+        }
+
+    # Load courtesy per artist (first courtesy from cat numbers)
+    courtesy_map: Dict[str, str] = {}
+    if artist_ids:
+        cat_numbers = (
+            db.query(IndexCatNumber)
+            .filter(IndexCatNumber.artist_id.in_(artist_ids))
+            .all()
+        )
+        for cn in cat_numbers:
+            aid = str(cn.artist_id)
+            if aid not in courtesy_map and cn.courtesy:
+                courtesy_map[aid] = cn.courtesy
+
+    # Build preservation map: identity_key → {include_in_export, override_fields}
+    preserve: Dict[str, dict] = {}
+    for a in existing_artists:
+        a._reimport_courtesy = courtesy_map.get(str(a.id), "")
+        key = _artist_identity_key(a)
+        entry: dict = {"include_in_export": a.include_in_export}
+        ovr = existing_overrides.get(str(a.id))
+        if ovr:
+            entry["override"] = {f: getattr(ovr, f) for f in _INDEX_OVERRIDE_FIELDS}
+        preserve[key] = entry
+
+    # 3. Delete old data (CASCADE will handle cat_numbers, overrides,
+    #    artist-level audit logs)
+    if artist_ids:
+        db.query(IndexArtistOverride).filter(
+            IndexArtistOverride.artist_id.in_(artist_ids)
+        ).delete(synchronize_session=False)
+        db.query(IndexCatNumber).filter(
+            IndexCatNumber.artist_id.in_(artist_ids)
+        ).delete(synchronize_session=False)
+    db.query(ValidationWarning).filter(ValidationWarning.import_id == import_id).delete(
+        synchronize_session=False
+    )
+    db.query(IndexArtist).filter(IndexArtist.import_id == import_id).delete(
+        synchronize_session=False
+    )
+    db.flush()
+
+    # 4. Import-level warnings (header issues)
+    for msg in header_warnings:
+        db.add(
+            ValidationWarning(
+                import_id=import_id,
+                work_id=None,
+                warning_type="missing_column",
+                message=msg,
+            )
+        )
+
+    # 5. Re-create artists from new spreadsheet
+    _create_artists_from_parsed_rows(db, import_record, raw_rows)
+    db.flush()
+
+    # 6. Restore overrides + include_in_export for matched artists
+    new_artists = db.query(IndexArtist).filter(IndexArtist.import_id == import_id).all()
+    # Build courtesy map for new artists
+    new_cat_numbers = (
+        (
+            db.query(IndexCatNumber)
+            .filter(IndexCatNumber.artist_id.in_([a.id for a in new_artists]))
+            .all()
+        )
+        if new_artists
+        else []
+    )
+    new_courtesy_map: Dict[str, str] = {}
+    for cn in new_cat_numbers:
+        aid = str(cn.artist_id)
+        if aid not in new_courtesy_map and cn.courtesy:
+            new_courtesy_map[aid] = cn.courtesy
+
+    stats = {"matched": 0, "added": 0, "removed": 0, "overrides_preserved": 0}
+    matched_keys: set = set()
+
+    for a in new_artists:
+        a._reimport_courtesy = new_courtesy_map.get(str(a.id), "")
+        key = _artist_identity_key(a)
+        if key in preserve and key not in matched_keys:
+            matched_keys.add(key)
+            entry = preserve[key]
+            a.include_in_export = entry["include_in_export"]
+            if "override" in entry:
+                ovr = IndexArtistOverride(artist_id=a.id, **entry["override"])
+                db.add(ovr)
+                stats["overrides_preserved"] += 1
+            stats["matched"] += 1
+        else:
+            stats["added"] += 1
+
+    stats["removed"] = len(set(preserve.keys()) - matched_keys)
+
+    # 7. Update import record filename if provided
+    if display_name:
+        import_record.filename = display_name
+
+    # 8. Audit log entry
+    db.add(
+        AuditLog(
+            import_id=import_id,
+            artist_id=None,
+            action="reimport",
+            field=None,
+            old_value=None,
+            new_value=(
+                f"matched={stats['matched']}, added={stats['added']}, "
+                f"removed={stats['removed']}, "
+                f"overrides_preserved={stats['overrides_preserved']}"
+            ),
+        )
+    )
+
+    db.commit()
+    return import_record, stats

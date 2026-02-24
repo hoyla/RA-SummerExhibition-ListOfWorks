@@ -2590,6 +2590,45 @@ async function handleIndexDelete(id, filename, btnEl) {
 }
 
 // ---------------------------------------------------------------------------
+// Index — reimport
+// ---------------------------------------------------------------------------
+
+async function handleIndexReimport(importId, file) {
+  const statusEl = document.getElementById('index-reimport-status');
+  const btn = document.querySelector('#index-reimport-form .btn-primary');
+  const restore = btnLoading(btn, 'Re-importing');
+  statusEl.textContent = 'Re-importing\u2026';
+  statusEl.className = 'status-msg';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`/index/imports/${importId}/reimport`, {
+      method: 'PUT', body: form, headers: _apiHeaders(),
+    });
+    if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
+    if (!res.ok) { const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    const parts = [];
+    if (data.matched)  parts.push(`${data.matched} matched`);
+    if (data.added)    parts.push(`${data.added} added`);
+    if (data.removed)  parts.push(`${data.removed} removed`);
+    if (data.overrides_preserved) parts.push(`${data.overrides_preserved} overrides preserved`);
+    const summary = parts.join(', ') || 'No changes';
+    statusEl.textContent = `\u2713 Re-imported: ${summary}`;
+    statusEl.className = 'status-msg success';
+    showToast(`Re-import complete: ${summary}`, 'success', 5000);
+    document.getElementById('index-reimport-file').value = '';
+    await renderIndexDetail(importId);
+  } catch (err) {
+    statusEl.textContent = `Re-import failed: ${err.message}`;
+    statusEl.className = 'status-msg error';
+    showToast(`Re-import failed: ${err.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Index — detail page
 // ---------------------------------------------------------------------------
 
@@ -2600,6 +2639,16 @@ async function renderIndexDetail(importId) {
   document.getElementById('app').innerHTML = `
     <div class="breadcrumb"><a href="#/index">\u2190 All Index Imports</a></div>
     <h2 class="page-heading" id="index-detail-heading">Loading\u2026</h2>
+    ${ifEditor(`<section class="panel reimport-panel">
+      <h3>Update Import</h3>
+      <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
+      <form id="index-reimport-form" class="upload-form">
+        <input type="file" id="index-reimport-file" accept=".xlsx,.xls" required>
+        <button type="submit" class="btn btn-primary">Re-import</button>
+      </form>
+      <p id="index-reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
+      <p id="index-reimport-status" class="status-msg" style="margin-top:8px"></p>
+    </section>`)}
     <section class="panel">
       <h3>Export</h3>
       <div id="index-export-panel"><p class="loading" style="padding:4px 0">Loading templates…</p></div>
@@ -2615,6 +2664,13 @@ async function renderIndexDetail(importId) {
     </section>
     <section class="panel" id="index-audit-panel"><p class="loading">Loading audit log\u2026</p></section>`;
 
+  // Wire up index re-import form
+  document.getElementById('index-reimport-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('index-reimport-file').files[0];
+    if (file) await handleIndexReimport(importId, file);
+  });
+
   // Fetch import metadata
   let importFilename = null;
   try {
@@ -2627,6 +2683,23 @@ async function renderIndexDetail(importId) {
     importFilename
       ? `Artists Index \u2013 ${importFilename}`
       : `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
+
+  // Filename mismatch warning for reimport
+  const idxFileInput = document.getElementById('index-reimport-file');
+  const idxWarnEl = document.getElementById('index-reimport-warn');
+  if (idxFileInput) {
+    idxFileInput.addEventListener('change', () => {
+      const selected = idxFileInput.files[0];
+      if (!selected || !importFilename) { idxWarnEl.style.display = 'none'; return; }
+      if (selected.name !== importFilename) {
+        idxWarnEl.textContent = `\u26a0 Selected file "${selected.name}" differs from the original "${importFilename}". This will replace the current data.`;
+        idxWarnEl.className = 'status-msg warning';
+        idxWarnEl.style.display = '';
+      } else {
+        idxWarnEl.style.display = 'none';
+      }
+    });
+  }
 
   const [artists, warnings, idxTemplates, auditLogs] = await Promise.all([
     api('GET', `/index/imports/${importId}/artists`).catch(e => ({ _error: e.message })),

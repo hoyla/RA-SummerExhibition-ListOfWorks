@@ -23,6 +23,7 @@ from backend.app.api.schemas import (
     IndexCatNumberOut,
     IndexArtistOverrideIn,
     IndexArtistOverrideOut,
+    ReimportOut,
 )
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
@@ -31,6 +32,7 @@ from backend.app.models.index_override_model import IndexArtistOverride
 from backend.app.models.audit_log_model import AuditLog
 from backend.app.services.index_importer import (
     import_index_excel,
+    reimport_index_excel,
     IndexImportError,
 )
 from backend.app.services.index_override_service import (
@@ -345,6 +347,60 @@ def get_index_export_diff(
     """Compare current index data against the last exported snapshot."""
     _get_index_import_or_404(import_id, db)
     return compute_index_diff(import_id, template_id, db)
+
+
+# ---------------------------------------------------------------------------
+# Reimport
+# ---------------------------------------------------------------------------
+
+
+@router.put(
+    "/imports/{import_id}/reimport",
+    response_model=ReimportOut,
+    dependencies=[Depends(require_role("editor"))],
+)
+def reimport_index_upload(
+    import_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Re-import an Artists' Index spreadsheet, preserving overrides."""
+    import_record = _get_index_import_or_404(import_id, db)
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    original_name = file.filename or "upload.xlsx"
+    safe_name = Path(original_name).name
+    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
+    file_path = os.path.join(UPLOAD_DIR, disk_name)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        _record, stats = reimport_index_excel(
+            import_id,
+            file_path,
+            db,
+            display_name=original_name,
+        )
+    except IndexImportError as exc:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    # Remove the previous upload file if it exists
+    _remove_disk_file(import_record.disk_filename)
+    # Track the new on-disk filename
+    import_record.disk_filename = disk_name
+    db.commit()
+
+    return ReimportOut(
+        import_id=str(import_id),
+        matched=stats["matched"],
+        added=stats["added"],
+        removed=stats["removed"],
+        overrides_preserved=stats["overrides_preserved"],
+    )
 
 
 # ---------------------------------------------------------------------------
