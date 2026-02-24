@@ -301,7 +301,9 @@ def _section_sep(name: str, style: str = "") -> str:
         return f"{prefix}<cnxc:Frame>\r"
     if name == "page_break":
         return f"{prefix}<cnxc:Page>\r"
-    # Default: paragraph (blank line)
+    if name == "2paragraph":
+        return f"{prefix}\r{prefix}\r"
+    # Default: paragraph (1 blank line)
     return f"{prefix}\r"
 
 

@@ -958,11 +958,12 @@ async function renderIndexTemplateEdit(id) {
   }).join('');
 
   const _idxSectionSepOpts = (val) => [
-    ['paragraph',    'Paragraph return (blank line)'],
-    ['column_break', 'Column break'],
-    ['frame_break',  'Frame break'],
-    ['page_break',   'Page break'],
-    ['none',         'None (continuous)'],
+    ['paragraph',     '1 paragraph return (blank line)'],
+    ['2paragraph',    '2 paragraph returns (blank lines)'],
+    ['column_break',  'Column break'],
+    ['frame_break',   'Frame break'],
+    ['none',          'None (continuous)'],
+    ['page_break',    'Page break'],
   ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
 
   app.innerHTML = `
