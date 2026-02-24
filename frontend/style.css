@@ -111,6 +111,20 @@ a:hover { text-decoration: underline; }
 .role-switcher.role-editor { background: #2980b9; color: #fff; }
 .role-switcher.role-admin  { background: #c0392b; color: #fff; }
 
+/* Header role badge (Cognito mode) */
+.header-role-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #6c757d;
+  color: #fff;
+}
+.header-role-badge[data-role="editor"] { background: #2980b9; }
+.header-role-badge[data-role="admin"]  { background: #c0392b; }
+
 /* ------------------------------------------------------------------ */
 /* Site nav                                                            */
 /* ------------------------------------------------------------------ */

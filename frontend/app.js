@@ -249,6 +249,10 @@ function _syncHeader() {
       emailSpan.className = 'header-email';
       emailSpan.style.cssText = 'font-size:0.75rem;color:#aaa';
       emailSpan.textContent = _userEmail;
+      const roleBadge = document.createElement('span');
+      roleBadge.className = 'header-role-badge';
+      roleBadge.textContent = _userRole;
+      roleBadge.dataset.role = _userRole;
       const btn = document.createElement('button');
       btn.className = 'btn btn-sm btn-secondary';
       btn.style.cssText = 'font-size:0.75rem';
@@ -260,11 +264,14 @@ function _syncHeader() {
         renderLogin();
       });
       wrap.appendChild(emailSpan);
+      wrap.appendChild(roleBadge);
       wrap.appendChild(btn);
       document.querySelector('.site-header').appendChild(wrap);
     } else {
       const emailSpan = existing.querySelector('.header-email');
       if (emailSpan) emailSpan.textContent = _userEmail;
+      const roleBadge = existing.querySelector('.header-role-badge');
+      if (roleBadge) { roleBadge.textContent = _userRole; roleBadge.dataset.role = _userRole; }
     }
   } else if (_authMode === 'api_key' && _apiKey) {
     if (!existing) {
