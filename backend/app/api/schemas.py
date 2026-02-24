@@ -283,6 +283,7 @@ class IndexCatNumberOut(BaseModel):
     id: str
     cat_no: int
     courtesy: str | None = None
+    source_row: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -311,6 +312,7 @@ class IndexArtistOut(BaseModel):
     sort_key: str
     include_in_export: bool
     cat_numbers: List[IndexCatNumberOut]
+    merged_from_rows: List[int] | None = None
 
     model_config = {"from_attributes": True}
 

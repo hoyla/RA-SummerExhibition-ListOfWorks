@@ -2738,6 +2738,9 @@ function indexArtistRowHTML(importId, a, groupColor) {
   if (hasNorm) badges.push('<span class="badge badge-normalised" title="Values changed by normalisation">Norm</span>');
   if (a.has_known_artist) badges.push('<span class="badge badge-known" title="Matched a Known Artist rule">Known</span>');
   if (a.has_override) badges.push('<span class="badge badge-override" title="Has a user override">Override</span>');
+  if (a.merged_from_rows && a.merged_from_rows.length > 1) {
+    badges.push(`<span class="badge badge-merged" title="Merged from spreadsheet rows ${a.merged_from_rows.join(', ')}">Merged</span>`);
+  }
 
   // Group cat numbers by courtesy
   const courtesyGroups = {};
@@ -2798,6 +2801,7 @@ function indexArtistRowHTML(importId, a, groupColor) {
           <div style="margin-top:8px">
             <button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
               onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>
+            ${a.merged_from_rows && a.merged_from_rows.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); unmergeArtist('${esc(importId)}','${esc(a.id)}')" title="Split back into ${a.merged_from_rows.length} separate entries (rows ${a.merged_from_rows.join(', ')})">Unmerge (rows ${a.merged_from_rows.join(', ')})</button>` : ''}
           </div>
           <div id="idx-ovc-${esc(a.id)}"></div>
         </div>
@@ -2844,6 +2848,21 @@ async function toggleIndexCompany(importId, artistId, newValue) {
     }
   } catch (err) {
     showToast(`Toggle failed: ${err.message}`, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Unmerge
+// ---------------------------------------------------------------------------
+
+async function unmergeArtist(importId, artistId) {
+  if (!confirm('Split this merged entry back into separate entries?')) return;
+  try {
+    const resp = await api('POST', `/index/imports/${importId}/artists/${artistId}/unmerge`);
+    showToast(`Unmerged into ${(resp.new_artist_ids?.length ?? 0) + 1} entries`, 'success');
+    renderIndexDetail(importId);
+  } catch (err) {
+    showToast(`Unmerge failed: ${err.message}`, 'error');
   }
 }
 

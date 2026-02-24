@@ -521,25 +521,41 @@ def import_index_excel(
         # Merge all no-courtesy rows into one artist entry
         if no_courtesy_rows:
             merged = no_courtesy_rows[0].copy()
-            merged_cat_nos = []
+            merged_cat_entries: List[tuple] = []
             for r in no_courtesy_rows:
-                merged_cat_nos.extend(r["cat_nos"])
+                for cn in r["cat_nos"]:
+                    merged_cat_entries.append((cn, r["row_number"]))
             _create_artist_entry(
                 db,
                 import_record,
                 merged,
-                merged_cat_nos,
+                merged_cat_entries,
                 courtesy=None,
             )
             artist_count += 1
 
+            # Warn when multiple rows were silently merged
+            if len(no_courtesy_rows) > 1:
+                row_nums = sorted(r["row_number"] for r in no_courtesy_rows)
+                rows_str = ", ".join(str(n) for n in row_nums)
+                name = f"{no_courtesy_rows[0]['first_name'] or ''} {no_courtesy_rows[0]['last_name'] or ''}".strip()
+                db.add(
+                    ValidationWarning(
+                        import_id=import_record.id,
+                        work_id=None,
+                        warning_type="duplicate_name_merged",
+                        message=f'Rows {rows_str}: Identical name "{name}" merged into one entry',
+                    )
+                )
+
         # Each courtesy row becomes its own artist entry
         for r in courtesy_rows:
+            cat_entries = [(cn, r["row_number"]) for cn in r["cat_nos"]]
             _create_artist_entry(
                 db,
                 import_record,
                 r,
-                r["cat_nos"],
+                cat_entries,
                 courtesy=r["address"],
             )
             artist_count += 1
@@ -562,10 +578,13 @@ def _create_artist_entry(
     db: Session,
     import_record: Import,
     row: dict,
-    cat_nos: List[int],
+    cat_entries: List[tuple],
     courtesy: Optional[str],
 ) -> IndexArtist:
-    """Create an IndexArtist and its associated IndexCatNumber records."""
+    """Create an IndexArtist and its associated IndexCatNumber records.
+
+    cat_entries is a list of (cat_no, source_row) tuples.
+    """
     first_name = row["first_name"]
     last_name = row["last_name"]
     quals = row["quals"]
@@ -614,17 +633,18 @@ def _create_artist_entry(
     db.flush()
 
     # Create cat number entries
-    for num in cat_nos:
+    for num, src_row in cat_entries:
         db.add(
             IndexCatNumber(
                 artist_id=artist.id,
                 cat_no=num,
                 courtesy=courtesy,
+                source_row=src_row,
             )
         )
 
     # Validation warnings
-    if not cat_nos:
+    if not cat_entries:
         db.add(
             ValidationWarning(
                 import_id=import_record.id,

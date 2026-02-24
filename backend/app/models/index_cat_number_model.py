@@ -28,6 +28,10 @@ class IndexCatNumber(Base):
     # "Courtesy of Cristea Roberts Gallery", etc. NULL = no courtesy.
     courtesy = Column(Text, nullable=True)
 
+    # Which spreadsheet row this cat number originally came from.
+    # Used to power the unmerge feature when duplicate names are merged.
+    source_row = Column(Integer, nullable=True)
+
     artist = relationship("IndexArtist", back_populates="cat_numbers")
 
     __table_args__ = (

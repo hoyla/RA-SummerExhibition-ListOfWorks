@@ -48,6 +48,13 @@ from backend.app.services.index_renderer import (
 router = APIRouter(prefix="/index", tags=["index"])
 
 
+def _merged_from_rows(cat_numbers: list) -> list[int] | None:
+    """Return sorted unique source_rows if the artist was merged from
+    multiple spreadsheet rows, otherwise None."""
+    rows = sorted({cn.source_row for cn in cat_numbers if cn.source_row is not None})
+    return rows if len(rows) > 1 else None
+
+
 # ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
@@ -210,9 +217,11 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                         id=str(cn.id),
                         cat_no=cn.cat_no,
                         courtesy=cn.courtesy,
+                        source_row=cn.source_row,
                     )
                     for cn in cat_map.get(str(a.id), [])
                 ],
+                merged_from_rows=_merged_from_rows(cat_map.get(str(a.id), [])),
             )
         )
 
@@ -565,6 +574,112 @@ def set_artist_company(
         "artist_id": str(artist_id),
         "is_company": is_company,
         "is_company_auto": bool(artist.is_company),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Unmerge
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/imports/{import_id}/artists/{artist_id}/unmerge",
+    status_code=status.HTTP_200_OK,
+)
+def unmerge_artist(
+    import_id: UUID,
+    artist_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Split a merged artist back into separate entries, one per source row.
+
+    The original artist record keeps the cat numbers from its own row_number.
+    New artist records are created for each additional source row.
+    """
+    from backend.app.services.index_importer import (
+        is_ra_member,
+        detect_company,
+        build_sort_key,
+        parse_multi_artist,
+    )
+
+    artist = _get_artist_or_404(import_id, artist_id, db)
+
+    # Group cat numbers by source_row
+    cat_numbers = (
+        db.query(IndexCatNumber)
+        .filter(IndexCatNumber.artist_id == artist_id)
+        .order_by(IndexCatNumber.cat_no)
+        .all()
+    )
+
+    groups: dict[int, list] = {}
+    for cn in cat_numbers:
+        src = cn.source_row if cn.source_row is not None else artist.row_number
+        if src is not None:
+            groups.setdefault(src, []).append(cn)
+
+    if len(groups) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Artist was not merged — nothing to unmerge",
+        )
+
+    # The original artist keeps cat numbers from its own row_number
+    keep_row = artist.row_number
+    if keep_row not in groups:
+        # Fall back to the lowest row number
+        keep_row = min(groups.keys())
+
+    new_artist_ids = []
+    for src_row, cns in sorted(groups.items()):
+        if src_row == keep_row:
+            # These stay with the original artist — no change needed
+            continue
+
+        # Create a new artist cloned from the original
+        new_artist = IndexArtist(
+            import_id=import_id,
+            row_number=src_row,
+            raw_title=artist.raw_title,
+            raw_first_name=artist.raw_first_name,
+            raw_last_name=artist.raw_last_name,
+            raw_quals=artist.raw_quals,
+            raw_company=artist.raw_company,
+            raw_address=artist.raw_address,
+            title=artist.title,
+            first_name=artist.first_name,
+            last_name=artist.last_name,
+            quals=artist.quals,
+            company=artist.company,
+            second_artist=artist.second_artist,
+            is_ra_member=artist.is_ra_member,
+            is_company=artist.is_company,
+            sort_key=artist.sort_key,
+        )
+        db.add(new_artist)
+        db.flush()
+
+        # Move cat numbers to the new artist
+        for cn in cns:
+            cn.artist_id = new_artist.id
+
+        new_artist_ids.append(str(new_artist.id))
+
+    db.add(
+        AuditLog(
+            import_id=import_id,
+            action="index_artist_unmerged",
+            field="unmerge",
+            old_value=str(artist_id),
+            new_value=",".join(new_artist_ids),
+        )
+    )
+    db.commit()
+
+    return {
+        "original_artist_id": str(artist_id),
+        "new_artist_ids": new_artist_ids,
     }
 
 

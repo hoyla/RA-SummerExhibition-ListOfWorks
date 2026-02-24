@@ -88,9 +88,9 @@ def _seed_index_import(db):
     db.add_all([a1, a2])
     db.flush()
 
-    cn1 = IndexCatNumber(artist_id=a1.id, cat_no=101)
-    cn2 = IndexCatNumber(artist_id=a2.id, cat_no=205)
-    cn3 = IndexCatNumber(artist_id=a2.id, cat_no=300)
+    cn1 = IndexCatNumber(artist_id=a1.id, cat_no=101, source_row=2)
+    cn2 = IndexCatNumber(artist_id=a2.id, cat_no=205, source_row=3)
+    cn3 = IndexCatNumber(artist_id=a2.id, cat_no=300, source_row=3)
     db.add_all([cn1, cn2, cn3])
     db.commit()
 
@@ -581,3 +581,171 @@ class TestIndexWarnings:
         assert len(data) == 1
         assert data[0]["row_number"] is None
         assert data[0]["artist_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Merge / Unmerge
+# ---------------------------------------------------------------------------
+
+
+class TestMergeUnmerge:
+    """Test duplicate-name merging and the unmerge endpoint."""
+
+    def test_import_merges_duplicate_names(self, client, db_session):
+        """Two rows with same name + no courtesy -> merged into one artist."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "John", "Smith", None, None, None, "205"),
+        ]
+        r = _upload_index(client, rows)
+        assert r.status_code == 200
+        import_id = r.json()["import_id"]
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert len(artists) == 1
+
+        a = artists[0]
+        cat_nos = sorted(cn["cat_no"] for cn in a["cat_numbers"])
+        assert cat_nos == [101, 205]
+        # source_row should track where each cat came from
+        source_rows = sorted(cn["source_row"] for cn in a["cat_numbers"])
+        assert source_rows == [2, 3]
+
+    def test_import_merge_creates_warning(self, client, db_session):
+        """Merging duplicate names should produce a validation warning."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "John", "Smith", None, None, None, "205"),
+        ]
+        r = _upload_index(client, rows)
+        import_id = r.json()["import_id"]
+
+        warnings = client.get(f"/index/imports/{import_id}/warnings").json()
+        merge_warnings = [
+            w for w in warnings if w["warning_type"] == "duplicate_name_merged"
+        ]
+        assert len(merge_warnings) == 1
+        assert "Rows 2, 3" in merge_warnings[0]["message"]
+        assert "John Smith" in merge_warnings[0]["message"]
+
+    def test_merged_from_rows_in_artist_response(self, client, db_session):
+        """Artists merged from multiple rows should have merged_from_rows."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "John", "Smith", None, None, None, "205"),
+        ]
+        r = _upload_index(client, rows)
+        import_id = r.json()["import_id"]
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert len(artists) == 1
+        assert artists[0]["merged_from_rows"] == [2, 3]
+
+    def test_non_merged_artist_has_null_merged_from_rows(self, client, db_session):
+        """An artist from a single row should not have merged_from_rows."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "Jane", "Doe", None, None, None, "205"),
+        ]
+        r = _upload_index(client, rows)
+        import_id = r.json()["import_id"]
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert len(artists) == 2
+        for a in artists:
+            assert a["merged_from_rows"] is None
+
+    def test_unmerge_splits_artist(self, client, db_session):
+        """POST unmerge should split a merged artist into separate entries."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "John", "Smith", None, None, None, "205"),
+        ]
+        r = _upload_index(client, rows)
+        import_id = r.json()["import_id"]
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert len(artists) == 1
+        artist_id = artists[0]["id"]
+
+        # Unmerge
+        r = client.post(f"/index/imports/{import_id}/artists/{artist_id}/unmerge")
+        assert r.status_code == 200
+        resp = r.json()
+        assert len(resp["new_artist_ids"]) == 1
+
+        # Now should have 2 artists with 1 cat number each
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert len(artists) == 2
+        for a in artists:
+            assert len(a["cat_numbers"]) == 1
+            assert a["merged_from_rows"] is None
+
+        # Verify cat numbers distributed correctly
+        all_cats = {a["cat_numbers"][0]["cat_no"] for a in artists}
+        assert all_cats == {101, 205}
+
+    def test_unmerge_preserves_row_numbers(self, client, db_session):
+        """Unmerged artists should have correct row_number values."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "John", "Smith", None, None, None, "205"),
+        ]
+        r = _upload_index(client, rows)
+        import_id = r.json()["import_id"]
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        artist_id = artists[0]["id"]
+
+        client.post(f"/index/imports/{import_id}/artists/{artist_id}/unmerge")
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        row_numbers = sorted(a["row_number"] for a in artists)
+        assert row_numbers == [2, 3]
+
+    def test_unmerge_non_merged_returns_400(self, client, db_session):
+        """Trying to unmerge an artist that wasn't merged should return 400."""
+        imp, artists = _seed_index_import(db_session)
+        artist_id = str(artists[0].id)
+
+        r = client.post(f"/index/imports/{imp.id}/artists/{artist_id}/unmerge")
+        assert r.status_code == 400
+        assert "not merged" in r.json()["detail"].lower()
+
+    def test_unmerge_three_rows(self, client, db_session):
+        """Unmerging an artist merged from 3 rows creates 2 new entries."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "John", "Smith", None, None, None, "205"),
+            (None, "John", "Smith", None, None, None, "310"),
+        ]
+        r = _upload_index(client, rows)
+        import_id = r.json()["import_id"]
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert len(artists) == 1
+        assert sorted(artists[0]["merged_from_rows"]) == [2, 3, 4]
+        artist_id = artists[0]["id"]
+
+        r = client.post(f"/index/imports/{import_id}/artists/{artist_id}/unmerge")
+        assert r.status_code == 200
+        assert len(r.json()["new_artist_ids"]) == 2
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert len(artists) == 3
+        all_cats = sorted(cn["cat_no"] for a in artists for cn in a["cat_numbers"])
+        assert all_cats == [101, 205, 310]
+
+    def test_courtesy_rows_not_merged(self, client, db_session):
+        """Rows with an address (courtesy) should stay as separate entries."""
+        rows = [
+            (None, "John", "Smith", None, None, None, "101"),
+            (None, "John", "Smith", None, None, "Courtesy of Gallery", "205"),
+        ]
+        r = _upload_index(client, rows)
+        import_id = r.json()["import_id"]
+
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        # Should be 2 separate entries -- no merge because one has courtesy
+        assert len(artists) == 2
+        for a in artists:
+            assert a["merged_from_rows"] is None

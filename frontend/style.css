@@ -1010,6 +1010,16 @@ details.section-block[open] > .section-summary::before {
   border-radius: 3px;
 }
 
+.badge-merged {
+  background: #fce4ec;
+  color: #b71c1c;
+  border: 1px solid #ef9a9a;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
 /* Known Artist resolved field cells */
 .ka-res-cell {
   position: relative;
