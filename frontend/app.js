@@ -1716,17 +1716,19 @@ async function renderDetail(importId) {
   // Warn on filename mismatch
   const fileInput = document.getElementById('reimport-file');
   const warnEl = document.getElementById('reimport-warn');
-  fileInput.addEventListener('change', () => {
-    const selected = fileInput.files[0];
-    if (!selected || !originalFilename) { warnEl.style.display = 'none'; return; }
-    if (selected.name !== originalFilename) {
-      warnEl.textContent = `\u26a0 Selected file "${selected.name}" differs from the original "${originalFilename}". This will replace the current data.`;
-      warnEl.className = 'status-msg warning';
-      warnEl.style.display = '';
-    } else {
-      warnEl.style.display = 'none';
-    }
-  });
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      const selected = fileInput.files[0];
+      if (!selected || !originalFilename) { warnEl.style.display = 'none'; return; }
+      if (selected.name !== originalFilename) {
+        warnEl.textContent = `\u26a0 Selected file "${selected.name}" differs from the original "${originalFilename}". This will replace the current data.`;
+        warnEl.className = 'status-msg warning';
+        warnEl.style.display = '';
+      } else {
+        warnEl.style.display = 'none';
+      }
+    });
+  }
 
   const cfg = _getDisplayCfg();
 
