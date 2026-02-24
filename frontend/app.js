@@ -745,6 +745,22 @@ async function renderSettings() {
   app.innerHTML = `
     <h2 class="page-heading">Settings</h2>
 
+    ${canAdmin() && _authMode === 'cognito' ? `
+    <h3 class="settings-group-heading">Users</h3>
+    <p class="settings-group-desc">Manage who can access the Catalogue Tool and their permission level.</p>
+    <section class="panel" id="users-panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h4 class="panel-subheading" style="margin:0">User Accounts</h4>
+        <button class="btn btn-sm btn-primary" onclick="_showCreateUserForm()">+ New User</button>
+      </div>
+      <div id="create-user-form-slot"></div>
+      <table class="data-table" id="users-table">
+        <thead><tr><th>Email</th><th>Role</th><th>Status</th><th style="width:180px">Actions</th></tr></thead>
+        <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
+      </table>
+    </section>
+    ` : ''}
+
     <h3 class="settings-group-heading">Normalisation</h3>
     <p class="settings-group-desc">Applied when an Excel file is imported. Changes here take effect on the <em>next</em> import.</p>
     <section class="panel">
@@ -826,6 +842,9 @@ async function renderSettings() {
 
   // Populate Index Name previews now that the DOM is ready
   _refreshAllKaPreviews();
+
+  // Load users table (admin + Cognito only)
+  if (canAdmin() && _authMode === 'cognito') _loadUsersTable();
 }
 
 async function saveSettings() {
@@ -849,6 +868,130 @@ async function saveSettings() {
   } catch (e) {
     statusEl.textContent = `Error: ${esc(e.message)}`;
     statusEl.className = 'status-msg error';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// User management (admin-only, Cognito mode)
+// ---------------------------------------------------------------------------
+
+async function _loadUsersTable() {
+  const tbody = document.querySelector('#users-table tbody');
+  if (!tbody) return;
+  try {
+    const users = await api('GET', '/users');
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">No users found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(u => {
+      const statusBadge = u.enabled
+        ? (u.status === 'CONFIRMED' ? '<span class="badge badge-ok">Active</span>'
+           : `<span class="badge badge-warn">${esc(u.status)}</span>`)
+        : '<span class="badge badge-error">Disabled</span>';
+      const roleOpts = ['viewer', 'editor', 'admin'].map(r =>
+        `<option value="${r}"${r === u.role ? ' selected' : ''}>${r}</option>`
+      ).join('');
+      return `<tr data-username="${esc(u.username)}">
+        <td>${esc(u.email)}</td>
+        <td><select class="user-role-select role-switcher role-${u.role}" onchange="_changeUserRole('${esc(u.username)}', this.value, this)" style="font-size:0.8rem;padding:2px 6px">${roleOpts}</select></td>
+        <td>${statusBadge}</td>
+        <td>
+          ${u.enabled
+            ? `<button class="btn btn-sm" onclick="_toggleUser('${esc(u.username)}', false)" style="font-size:0.75rem">Disable</button>`
+            : `<button class="btn btn-sm" onclick="_toggleUser('${esc(u.username)}', true)" style="font-size:0.75rem">Enable</button>`}
+          <button class="btn btn-sm" onclick="_showResetPassword('${esc(u.username)}')" style="font-size:0.75rem;margin-left:4px">Reset PW</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="error">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function _showCreateUserForm() {
+  const slot = document.getElementById('create-user-form-slot');
+  if (!slot) return;
+  if (slot.innerHTML.trim()) { slot.innerHTML = ''; return; }  // toggle
+  slot.innerHTML = `
+    <div class="settings-form" style="background:#f9f9f9;padding:12px;border-radius:6px;margin-bottom:12px">
+      <div class="form-row">
+        <label style="width:120px">Email</label>
+        <input id="new-user-email" type="email" placeholder="user@example.com" style="flex:1">
+      </div>
+      <div class="form-row" style="margin-top:6px">
+        <label style="width:120px">Role</label>
+        <select id="new-user-role">
+          <option value="viewer">viewer</option>
+          <option value="editor" selected>editor</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <div class="form-row" style="margin-top:6px">
+        <label style="width:120px">Temp password</label>
+        <input id="new-user-password" type="text" placeholder="Min 12 chars, upper+lower+number" style="flex:1" value="">
+      </div>
+      <div class="form-actions" style="margin-top:8px">
+        <button class="btn btn-primary btn-sm" onclick="_createUser()">Create User</button>
+        <button class="btn btn-sm" onclick="document.getElementById('create-user-form-slot').innerHTML=''">Cancel</button>
+        <span id="create-user-status" class="status-msg" style="margin-left:8px"></span>
+      </div>
+    </div>`;
+  document.getElementById('new-user-email')?.focus();
+}
+
+async function _createUser() {
+  const email = (document.getElementById('new-user-email')?.value ?? '').trim();
+  const role = document.getElementById('new-user-role')?.value ?? 'viewer';
+  const password = (document.getElementById('new-user-password')?.value ?? '').trim();
+  const statusEl = document.getElementById('create-user-status');
+  if (!email) { if (statusEl) statusEl.textContent = 'Email is required'; return; }
+  if (password && password.length < 12) { if (statusEl) statusEl.textContent = 'Password must be at least 12 characters'; return; }
+  if (statusEl) { statusEl.textContent = 'Creating\u2026'; statusEl.className = 'status-msg'; }
+  try {
+    const body = { email, role };
+    if (password) body.temporary_password = password;
+    await api('POST', '/users', body);
+    document.getElementById('create-user-form-slot').innerHTML = '';
+    await _loadUsersTable();
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = e.message; statusEl.className = 'status-msg error'; }
+  }
+}
+
+async function _changeUserRole(username, newRole, selectEl) {
+  const origClass = selectEl.className;
+  try {
+    await api('PUT', `/users/${encodeURIComponent(username)}`, { role: newRole });
+    selectEl.className = `user-role-select role-switcher role-${newRole}`;
+  } catch (e) {
+    alert('Failed to change role: ' + e.message);
+    await _loadUsersTable();  // revert
+  }
+}
+
+async function _toggleUser(username, enable) {
+  try {
+    await api('POST', `/users/${encodeURIComponent(username)}/${enable ? 'enable' : 'disable'}`);
+    await _loadUsersTable();
+  } catch (e) {
+    alert('Failed: ' + e.message);
+  }
+}
+
+function _showResetPassword(username) {
+  const newPw = prompt(`Enter a new temporary password for this user (min 12 chars):`);
+  if (!newPw) return;
+  if (newPw.length < 12) { alert('Password must be at least 12 characters.'); return; }
+  _doResetPassword(username, newPw);
+}
+
+async function _doResetPassword(username, tempPassword) {
+  try {
+    await api('POST', `/users/${encodeURIComponent(username)}/reset-password`, { temporary_password: tempPassword });
+    alert('Password reset. The user will be asked to set a new password on next login.');
+  } catch (e) {
+    alert('Failed: ' + e.message);
   }
 }
 
