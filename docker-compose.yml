@@ -27,6 +27,8 @@ services:
       API_KEY: ${API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       UPLOAD_DIR: /app/uploads
+      # Comma-separated allowed CORS origins. Leave unset for same-origin only.
+      # CORS_ORIGINS: https://catalogue.example.com
     ports:
       - "8000:8000"
     volumes:
