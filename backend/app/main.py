@@ -297,7 +297,10 @@ from backend.app.api.auth import get_current_user as _resolve_user
 
 @app.middleware("http")
 async def _set_user_context(request: Request, call_next):
-    email = _resolve_user(request)
+    try:
+        email = _resolve_user(request)
+    except Exception:
+        email = "anonymous"
     tok = current_user_email.set(email)
     try:
         return await call_next(request)
