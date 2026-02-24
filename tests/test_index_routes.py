@@ -612,7 +612,7 @@ class TestMergeUnmerge:
         assert source_rows == [2, 3]
 
     def test_import_merge_creates_warning(self, client, db_session):
-        """Merging duplicate names should produce a validation warning."""
+        """Merging duplicate names should produce a linkable validation warning."""
         rows = [
             (None, "John", "Smith", None, None, None, "101"),
             (None, "John", "Smith", None, None, None, "205"),
@@ -627,6 +627,12 @@ class TestMergeUnmerge:
         assert len(merge_warnings) == 1
         assert "Rows 2, 3" in merge_warnings[0]["message"]
         assert "John Smith" in merge_warnings[0]["message"]
+
+        # The "Rows N, M:" format should still parse a row_number and link
+        # to the merged artist
+        assert merge_warnings[0]["row_number"] == 2
+        artists = client.get(f"/index/imports/{import_id}/artists").json()
+        assert merge_warnings[0]["artist_id"] == artists[0]["id"]
 
     def test_merged_from_rows_in_artist_response(self, client, db_session):
         """Artists merged from multiple rows should have merged_from_rows."""

@@ -713,7 +713,7 @@ def list_index_warnings(import_id: UUID, db: Session = Depends(get_db)):
     )
     row_to_artist = {a.row_number: str(a.id) for a in artists}
 
-    _ROW_RE = _re.compile(r"^Row (\d+):")
+    _ROW_RE = _re.compile(r"^Rows? (\d+)")
 
     result = []
     for w in warnings:
