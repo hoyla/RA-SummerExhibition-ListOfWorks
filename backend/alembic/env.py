@@ -22,6 +22,10 @@ import backend.app.models.override_model  # noqa: F401, E402
 import backend.app.models.ruleset_model  # noqa: F401, E402
 import backend.app.models.validation_warning_model  # noqa: F401, E402
 import backend.app.models.audit_log_model  # noqa: F401, E402
+import backend.app.models.export_snapshot_model  # noqa: F401, E402
+import backend.app.models.index_artist_model  # noqa: F401, E402
+import backend.app.models.index_cat_number_model  # noqa: F401, E402
+import backend.app.models.index_override_model  # noqa: F401, E402
 import backend.app.models.known_artist_model  # noqa: F401, E402
 
 # this is the Alembic Config object, which provides
