@@ -279,6 +279,12 @@ def _resolve_index_template(
         section_separator_style=cfg.get(
             "section_separator_style", DEFAULT_INDEX_CONFIG.section_separator_style
         ),
+        letter_heading_enabled=cfg.get(
+            "letter_heading_enabled", DEFAULT_INDEX_CONFIG.letter_heading_enabled
+        ),
+        letter_heading_style=cfg.get(
+            "letter_heading_style", DEFAULT_INDEX_CONFIG.letter_heading_style
+        ),
     )
 
 

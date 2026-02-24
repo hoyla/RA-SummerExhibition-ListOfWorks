@@ -580,3 +580,73 @@ class TestLetterGroupRendering:
         result = render_index_tagged_text(entries, cfg)
         parts = result.split("\r")
         assert "<pstyle:Spacer><cnxc:Column>" in parts[2]
+
+
+class TestLetterHeading:
+    def test_heading_disabled_by_default(self):
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Baker", sort_key="baker", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        # No standalone "A" or "B" heading lines
+        parts = result.split("\r")
+        assert not any(
+            p.strip() in ("<pstyle:Index Text>A", "<pstyle:Index Text>B") for p in parts
+        )
+
+    def test_heading_enabled_uses_entry_style(self):
+        cfg = IndexExportConfig(letter_heading_enabled=True)
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Baker", sort_key="baker", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, cfg)
+        parts = result.split("\r")
+        # "A" heading before Adams
+        assert "<pstyle:Index Text>A" in parts
+        # "B" heading before Baker (after separator)
+        assert "<pstyle:Index Text>B" in parts
+
+    def test_heading_with_custom_style(self):
+        cfg = IndexExportConfig(
+            letter_heading_enabled=True,
+            letter_heading_style="Index Letter",
+        )
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Baker", sort_key="baker", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, cfg)
+        parts = result.split("\r")
+        assert "<pstyle:Index Letter>A" in parts
+        assert "<pstyle:Index Letter>B" in parts
+
+    def test_heading_single_letter_group(self):
+        cfg = IndexExportConfig(letter_heading_enabled=True)
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Allen", sort_key="allen", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, cfg)
+        parts = result.split("\r")
+        # Only one heading "A", no "B"
+        assert parts.count("<pstyle:Index Text>A") == 1
+        assert not any(p.endswith(">B") for p in parts)
+
+    def test_heading_with_no_separator(self):
+        cfg = IndexExportConfig(
+            letter_heading_enabled=True,
+            section_separator="none",
+        )
+        entries = [
+            _entry(last_name="Adams", sort_key="adams", cat_nos=[1]),
+            _entry(last_name="Baker", sort_key="baker", cat_nos=[2]),
+        ]
+        result = render_index_tagged_text(entries, cfg)
+        parts = result.split("\r")
+        # Headings present even with no separator
+        assert "<pstyle:Index Text>A" in parts
+        assert "<pstyle:Index Text>B" in parts
+        # No blank separator lines between groups
+        assert "" not in parts[1:]  # no empty parts after header

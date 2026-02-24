@@ -1025,9 +1025,9 @@ async function renderIndexTemplateEdit(id) {
       </div>
     </section>
 
-    <h3 class="settings-group-heading">Section Separator</h3>
+    <h3 class="settings-group-heading">Letter Groups</h3>
     <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">What to insert between alphabetical letter groups in the export.</p>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Controls for alphabetical letter groups (A, B, C…) in the export.</p>
       <div class="settings-form">
         <div class="form-row">
           <label>Between letters</label>
@@ -1036,6 +1036,15 @@ async function renderIndexTemplateEdit(id) {
         <div class="form-row">
           <label>Separator style</label>
           <input id="idx-tmpl-section-sep-style" value="${esc(cfg.section_separator_style ?? '')}"${isBuiltin ? ' disabled' : ''} placeholder="(none)">
+        </div>
+        <div class="form-row">
+          <label>Letter headings</label>
+          <input type="checkbox" id="idx-tmpl-letter-heading" ${cfg.letter_heading_enabled ? 'checked' : ''}${isBuiltin ? ' disabled' : ''}>
+          <span class="form-hint">Insert a heading line (A, B, C…) at the start of each letter group</span>
+        </div>
+        <div class="form-row">
+          <label>Heading style</label>
+          <input id="idx-tmpl-letter-heading-style" value="${esc(cfg.letter_heading_style ?? '')}"${isBuiltin ? ' disabled' : ''} placeholder="(uses entry style)">
         </div>
       </div>
     </section>
@@ -1065,6 +1074,8 @@ async function saveIndexTemplate(id) {
     cat_no_separator_style: (document.getElementById('idx-tmpl-cat-sep-style')?.value ?? '').trim(),
     section_separator:      document.getElementById('idx-tmpl-section-sep')?.value ?? 'paragraph',
     section_separator_style:(document.getElementById('idx-tmpl-section-sep-style')?.value ?? '').trim(),
+    letter_heading_enabled:  document.getElementById('idx-tmpl-letter-heading')?.checked ?? false,
+    letter_heading_style:   (document.getElementById('idx-tmpl-letter-heading-style')?.value ?? '').trim(),
   };
 
   const statusEl = document.getElementById('idx-tmpl-status');

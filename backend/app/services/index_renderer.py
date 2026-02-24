@@ -52,6 +52,12 @@ class IndexExportConfig:
     )
     section_separator_style: str = ""  # paragraph style for the separator line
 
+    # Letter headings (e.g. "A", "B", "C" at the start of each group)
+    letter_heading_enabled: bool = False
+    letter_heading_style: str = (
+        ""  # paragraph style for the heading (empty = entry_style)
+    )
+
 
 DEFAULT_INDEX_CONFIG = IndexExportConfig()
 
@@ -343,6 +349,10 @@ def render_index_tagged_text(
                     # Strip trailing \r because "\r".join() already adds one
                     lines.append(sep.rstrip("\r"))
             current_letter = letter
+            # Optional letter heading (e.g. "A", "B", ...)
+            if cfg.letter_heading_enabled:
+                h_style = cfg.letter_heading_style or cfg.entry_style
+                lines.append(f"<pstyle:{h_style}>{letter}")
         line_parts: List[str] = [f"<pstyle:{cfg.entry_style}>"]
 
         # Name (pass has_quals so separator is space not comma before quals)
