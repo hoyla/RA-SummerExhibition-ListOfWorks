@@ -251,7 +251,19 @@ function router() {
 }
 
 window.addEventListener('hashchange', router);
-window.addEventListener('DOMContentLoaded', async () => { _syncHeader(); await _fetchRole(); router(); });
+window.addEventListener('DOMContentLoaded', async () => {
+  _syncHeader();
+  // Show environment banner for non-production hosts
+  if (/^staging[.-]/i.test(location.hostname)) {
+    const banner = document.createElement('div');
+    banner.className = 'env-banner env-staging';
+    banner.textContent = 'STAGING';
+    document.body.insertBefore(banner, document.body.firstChild);
+    document.title = '[STAGING] ' + document.title;
+  }
+  await _fetchRole();
+  router();
+});
 
 // ---------------------------------------------------------------------------
 // Audit log viewer (shared helper + per-import panel + global page)
