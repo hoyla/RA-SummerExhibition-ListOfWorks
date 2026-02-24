@@ -1,4 +1,4 @@
-name: CI
+name: CI / CD
 
 on:
   push:
@@ -8,8 +8,18 @@ on:
 
 permissions:
   contents: read
+  id-token: write # needed for OIDC → AWS credentials
+
+env:
+  AWS_REGION: eu-west-2
+  ECR_REPOSITORY: catalogue-app
+  ECS_CLUSTER: catalogue
+  ECS_SERVICE_STAGING: catalogue-staging
+  ECS_SERVICE_PROD: catalogue-prod
+  TASK_DEF_FILE: .aws/task-definition.json
 
 jobs:
+  # ── 1. Unit tests ───────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -32,6 +42,7 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -x -q --tb=short
 
+  # ── 2. Build Docker image + smoke test ──────────────────────────────
   docker:
     runs-on: ubuntu-latest
     needs: test
@@ -49,3 +60,103 @@ jobs:
           docker compose up -d --wait --timeout 30
           curl -sf http://localhost:8000/health | python3 -m json.tool
           docker compose down
+
+  # ── 3. Push to ECR (main branch only) ──────────────────────────────
+  push-ecr:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: docker
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image
+        id: build
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY"
+          docker build -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$IMAGE_TAG"
+          docker push "$IMAGE:latest"
+          echo "image=$IMAGE:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+  # ── 4. Deploy to STAGING (automatic) ───────────────────────────────
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: push-ecr
+    timeout-minutes: 10
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.TASK_DEF_FILE }}
+          container-name: app
+          image: ${{ needs.push-ecr.outputs.image }}
+
+      - name: Deploy to staging
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_STAGING }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  # ── 5. Deploy to PRODUCTION (manual approval) ──────────────────────
+  deploy-prod:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [push-ecr, deploy-staging]
+    timeout-minutes: 10
+    environment: production # ← requires manual approval in GitHub
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.TASK_DEF_FILE }}
+          container-name: app
+          image: ${{ needs.push-ecr.outputs.image }}
+
+      - name: Deploy to production
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_PROD }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
