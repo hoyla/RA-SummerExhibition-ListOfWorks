@@ -273,6 +273,40 @@ class TestExportIndex:
         assert "Adams" not in content
         assert "Parker" not in content
 
+    def test_export_escapes_non_mac_roman_chars(self, client, db_session):
+        """Non-Mac-Roman characters should be escaped as <0x####>, not replaced with '?'."""
+        imp = Import(filename="test.xlsx", product_type="artists_index")
+        db_session.add(imp)
+        db_session.flush()
+
+        artist = IndexArtist(
+            import_id=imp.id,
+            row_number=2,
+            raw_last_name="Garcí\u0101",  # ā (U+0101) is NOT in Mac Roman
+            raw_first_name="René",
+            last_name="Garcí\u0101",
+            first_name="René",
+            is_ra_member=False,
+            is_company=False,
+            sort_key="garcīa rené",
+            include_in_export=True,
+        )
+        db_session.add(artist)
+        db_session.flush()
+
+        cn = IndexCatNumber(artist_id=artist.id, cat_no=42)
+        db_session.add(cn)
+        db_session.commit()
+
+        r = client.get(f"/index/imports/{imp.id}/export-tags")
+        assert r.status_code == 200
+        decoded = r.content.decode("mac_roman")
+        # ā (U+0101) must appear as <0x0101>, NOT as '?'
+        assert "<0x0101>" in decoded
+        assert "?" not in decoded.split("<ASCII-MAC>")[-1]  # no ? in body
+        # é (U+00E9) IS in Mac Roman, so should appear normally
+        assert "Ren\u00e9" in decoded
+
 
 # ---------------------------------------------------------------------------
 # Delete

@@ -15,6 +15,7 @@ from uuid import UUID
 
 from backend.app.api.deps import get_db
 from backend.app.config import UPLOAD_DIR
+from backend.app.services.export_renderer import escape_for_mac_roman
 from backend.app.api.schemas import (
     IndexImportOut,
     IndexArtistOut,
@@ -301,7 +302,7 @@ def export_index_tags(
     output = render_index_tagged_text(entries, cfg)
 
     return Response(
-        content=output.encode("mac_roman", errors="replace"),
+        content=escape_for_mac_roman(output).encode("mac_roman"),
         media_type="text/plain",
     )
 
