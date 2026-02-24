@@ -11,10 +11,10 @@ from fastapi import APIRouter, Depends
 from backend.app.api.auth import require_api_key
 from backend.app.api.deps import get_db  # noqa: F401  re-exported for tests
 from backend.app.api import (
-    imports,
-    overrides,
-    exports,
-    templates,
+    low_imports,
+    low_overrides,
+    low_exports,
+    low_templates,
     normalisation_config,
     audit,
     index,
@@ -24,10 +24,10 @@ from backend.app.api import (
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
-router.include_router(imports.router)
-router.include_router(overrides.router)
-router.include_router(exports.router)
-router.include_router(templates.router)
+router.include_router(low_imports.router)
+router.include_router(low_overrides.router)
+router.include_router(low_exports.router)
+router.include_router(low_templates.router)
 router.include_router(normalisation_config.router)
 router.include_router(audit.router)
 router.include_router(index.router)
