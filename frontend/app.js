@@ -866,7 +866,7 @@ async function renderTemplates() {
     const builtinBadge = t.is_builtin
       ? '<span class="badge badge-builtin">built-in</span>'
       : '';
-    const editBtn = `<a class="btn btn-sm" href="#/templates/${esc(t.id)}/edit">${t.is_builtin ? 'View' : 'Edit'}</a>`;
+    const editBtn = `<a class="btn btn-sm" href="#/templates/${esc(t.id)}/edit">${(t.is_builtin || !canEdit()) ? 'View' : 'Edit'}</a>`;
     const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}',this)">Duplicate</button>`);
     const delBtn  = t.is_builtin
       ? ''
@@ -884,7 +884,7 @@ async function renderTemplates() {
     const builtinBadge = t.is_builtin
       ? '<span class="badge badge-builtin">built-in</span>'
       : '';
-    const editBtn = `<a class="btn btn-sm" href="#/index-templates/${esc(t.id)}/edit">${t.is_builtin ? 'View' : 'Edit'}</a>`;
+    const editBtn = `<a class="btn btn-sm" href="#/index-templates/${esc(t.id)}/edit">${(t.is_builtin || !canEdit()) ? 'View' : 'Edit'}</a>`;
     const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateIndexTemplate('${esc(t.id)}',this)">Duplicate</button>`);
     const delBtn  = t.is_builtin
       ? ''
