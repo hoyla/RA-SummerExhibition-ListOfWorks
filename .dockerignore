@@ -1,0 +1,31 @@
+# Version control
+.git/
+.gitignore
+
+# Environment & secrets
+.env
+.env.*
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Test artifacts
+test*.txt
+
+# Runtime data (uploads live on a Docker volume, not baked in)
+uploads/
+
+# Docs (not needed at runtime)
+docs/
+
+# OS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
