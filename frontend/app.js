@@ -274,6 +274,9 @@ function _auditActionLabel(action) {
     index_template_duplicated: 'Index template duplicated',
     index_artist_excluded: 'Artist excluded',
     index_artist_included: 'Artist included',
+    index_artist_company_set: 'Company set',
+    index_artist_company_unset: 'Company unset',
+    index_artist_unmerged: 'Artist unmerged',
   };
   return labels[action] || action;
 }
@@ -286,6 +289,8 @@ function _auditLogTable(logs) {
     let workCell;
     if (log.work_id) {
       workCell = `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${esc(who || log.work_id.slice(0, 8) + '\u2026')}</button>`;
+    } else if (log.artist_id && log.index_artist_name) {
+      workCell = `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(log.artist_id)}')">${esc(log.index_artist_name)}</button>`;
     } else if (log.template_name) {
       workCell = `<span class="muted">${esc(log.template_name)}</span>`;
     } else {
@@ -2500,7 +2505,8 @@ async function renderIndexDetail(importId) {
         <span id="index-filter-count" class="works-filter-count"></span>
       </div>
       <div id="index-artists-container"><p class="loading">Loading\u2026</p></div>
-    </section>`;
+    </section>
+    <section class="panel" id="index-audit-panel"><p class="loading">Loading audit log\u2026</p></section>`;
 
   // Fetch import metadata
   let importFilename = null;
@@ -2515,10 +2521,11 @@ async function renderIndexDetail(importId) {
       ? `Artists Index \u2013 ${importFilename}`
       : `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
 
-  const [artists, warnings, idxTemplates] = await Promise.all([
+  const [artists, warnings, idxTemplates, auditLogs] = await Promise.all([
     api('GET', `/index/imports/${importId}/artists`).catch(e => ({ _error: e.message })),
     api('GET', `/index/imports/${importId}/warnings`).catch(() => []),
     api('GET', '/index/templates').catch(() => []),
+    api('GET', `/imports/${importId}/audit-log`).catch(() => []),
   ]);
 
   // Populate index template picker
@@ -2548,6 +2555,23 @@ async function renderIndexDetail(importId) {
   }
 
   renderIndexArtists(importId, artists);
+  renderIndexAuditPanel(auditLogs);
+}
+
+function renderIndexAuditPanel(logs) {
+  const panel = document.getElementById('index-audit-panel');
+  if (!panel) return;
+  if (!logs.length) {
+    panel.innerHTML = '<p class="muted" style="padding:4px 0">No audit log entries yet.</p>';
+    return;
+  }
+  panel.innerHTML = `
+    <details>
+      <summary class="section-summary"><span class="section-name">Audit Log</span>
+        <span class="section-meta">${logs.length} entr${logs.length !== 1 ? 'ies' : 'y'}</span>
+      </summary>
+      ${_auditLogTable(logs)}
+    </details>`;
 }
 
 // ---------------------------------------------------------------------------

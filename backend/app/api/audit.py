@@ -13,18 +13,25 @@ from backend.app.api.schemas import AuditLogOut
 from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.import_model import Import
 from backend.app.models.work_model import Work
+from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.ruleset_model import Ruleset
 
 router = APIRouter(tags=["audit"])
 
 
 def _build_audit_response(logs: list[AuditLog], db: Session) -> List[AuditLogOut]:
-    """Enrich audit log rows with denormalised work and template context."""
+    """Enrich audit log rows with denormalised work, artist, and template context."""
     work_ids = list({log.work_id for log in logs if log.work_id})
     work_map: dict = {}
     if work_ids:
         works = db.query(Work).filter(Work.id.in_(work_ids)).all()
         work_map = {str(w.id): w for w in works}
+
+    artist_ids = list({log.artist_id for log in logs if log.artist_id})
+    artist_map: dict = {}
+    if artist_ids:
+        artists = db.query(IndexArtist).filter(IndexArtist.id.in_(artist_ids)).all()
+        artist_map = {str(a.id): a for a in artists}
 
     template_ids = list({log.template_id for log in logs if log.template_id})
     template_map: dict = {}
@@ -35,12 +42,14 @@ def _build_audit_response(logs: list[AuditLog], db: Session) -> List[AuditLogOut
     result = []
     for log in logs:
         w = work_map.get(str(log.work_id)) if log.work_id else None
+        a = artist_map.get(str(log.artist_id)) if log.artist_id else None
         t = template_map.get(str(log.template_id)) if log.template_id else None
         result.append(
             AuditLogOut(
                 id=str(log.id),
                 import_id=str(log.import_id) if log.import_id else None,
                 work_id=str(log.work_id) if log.work_id else None,
+                artist_id=str(log.artist_id) if log.artist_id else None,
                 template_id=str(log.template_id) if log.template_id else None,
                 action=log.action,
                 field=log.field,
@@ -50,10 +59,24 @@ def _build_audit_response(logs: list[AuditLog], db: Session) -> List[AuditLogOut
                 cat_no=str(w.raw_cat_no) if w and w.raw_cat_no is not None else None,
                 artist_name=w.artist_name if w else None,
                 title=w.title if w else None,
+                index_artist_name=_index_artist_display(a) if a else None,
                 template_name=t.name if t else None,
             )
         )
     return result
+
+
+def _index_artist_display(artist: IndexArtist) -> str:
+    """Build a display name for an index artist (e.g. 'SURNAME, First Quals')."""
+    parts = []
+    if artist.last_name:
+        parts.append(artist.last_name.upper())
+    if artist.first_name:
+        parts.append(artist.first_name)
+    name = ", ".join(parts) if parts else "(unnamed)"
+    if artist.quals:
+        name += f" {artist.quals}"
+    return name
 
 
 @router.get(

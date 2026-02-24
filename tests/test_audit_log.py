@@ -21,6 +21,7 @@ from backend.app.models.work_model import Work
 from backend.app.models.override_model import WorkOverride
 from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.ruleset_model import Ruleset
+from backend.app.models.index_artist_model import IndexArtist
 
 
 # ---------------------------------------------------------------------------
@@ -448,3 +449,122 @@ class TestTemplateAuditLog:
         tmpl = [d for d in data if d["template_id"] == tid]
         assert len(tmpl) == 1
         assert tmpl[0]["template_name"] == "Test Template"
+
+
+# =========================================================================== #
+# Index artist audit log enrichment
+# =========================================================================== #
+
+
+def _seed_index_artist(db, imp, first_name="Jane", last_name="Smith", quals="RA"):
+    artist = IndexArtist(
+        import_id=imp.id,
+        row_number=1,
+        raw_first_name=first_name,
+        raw_last_name=last_name,
+        first_name=first_name,
+        last_name=last_name,
+        quals=quals,
+        sort_key=f"{last_name}, {first_name}",
+    )
+    db.add(artist)
+    db.commit()
+    db.refresh(artist)
+    return artist
+
+
+def _seed_index_audit(
+    db,
+    imp,
+    artist,
+    action="override_set",
+    field="display_name_override",
+    old_value=None,
+    new_value="SMITH, Jane",
+):
+    log = AuditLog(
+        import_id=imp.id,
+        artist_id=artist.id,
+        action=action,
+        field=field,
+        old_value=old_value,
+        new_value=new_value,
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+class TestIndexAuditLog:
+    def test_index_audit_includes_artist_id(self, client, db_session):
+        """Index audit entries include artist_id in the response."""
+        imp = _seed_import(db_session, filename="index.xlsx")
+        imp.product_type = "artists_index"
+        db_session.commit()
+        artist = _seed_index_artist(db_session, imp)
+        _seed_index_audit(db_session, imp, artist)
+
+        r = client.get(f"/imports/{imp.id}/audit-log")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["artist_id"] == str(artist.id)
+
+    def test_index_audit_enriches_artist_name(self, client, db_session):
+        """Index audit entries include index_artist_name from IndexArtist."""
+        imp = _seed_import(db_session)
+        artist = _seed_index_artist(db_session, imp, "Alice", "Johnson", "HON RA")
+        _seed_index_audit(db_session, imp, artist)
+
+        r = client.get(f"/imports/{imp.id}/audit-log")
+        data = r.json()
+        assert data[0]["index_artist_name"] == "JOHNSON, Alice HON RA"
+
+    def test_index_audit_no_work_fields(self, client, db_session):
+        """Index audit entries have null work fields (cat_no, artist_name, title)."""
+        imp = _seed_import(db_session)
+        artist = _seed_index_artist(db_session, imp)
+        _seed_index_audit(db_session, imp, artist)
+
+        r = client.get(f"/imports/{imp.id}/audit-log")
+        data = r.json()
+        assert data[0]["cat_no"] is None
+        assert data[0]["artist_name"] is None
+        assert data[0]["title"] is None
+
+    def test_index_audit_in_global_log(self, client, db_session):
+        """Index audit entries appear in the global audit-log endpoint."""
+        imp = _seed_import(db_session)
+        artist = _seed_index_artist(db_session, imp, "Bob", "Brown", "RA")
+        _seed_index_audit(
+            db_session,
+            imp,
+            artist,
+            action="index_artist_excluded",
+            field="include_in_export",
+            old_value="True",
+            new_value="False",
+        )
+
+        r = client.get("/audit-log")
+        data = r.json()
+        idx_entries = [d for d in data if d["action"] == "index_artist_excluded"]
+        assert len(idx_entries) == 1
+        assert idx_entries[0]["index_artist_name"] == "BROWN, Bob RA"
+        assert idx_entries[0]["artist_id"] == str(artist.id)
+
+    def test_index_audit_deleted_artist(self, client, db_session):
+        """When the artist is deleted, index_artist_name is null."""
+        imp = _seed_import(db_session)
+        artist = _seed_index_artist(db_session, imp)
+        _seed_index_audit(db_session, imp, artist)
+        # Delete the artist
+        db_session.delete(artist)
+        db_session.commit()
+
+        r = client.get(f"/imports/{imp.id}/audit-log")
+        data = r.json()
+        # artist_id still present but enrichment returns null
+        assert len(data) == 1
+        assert data[0]["index_artist_name"] is None

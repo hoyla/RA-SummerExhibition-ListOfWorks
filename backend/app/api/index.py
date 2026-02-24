@@ -419,6 +419,7 @@ def set_index_override(
                 audit_entries.append(
                     AuditLog(
                         import_id=import_id,
+                        artist_id=artist.id,
                         action="override_set",
                         field=field,
                         old_value=None,
@@ -432,6 +433,7 @@ def set_index_override(
                 audit_entries.append(
                     AuditLog(
                         import_id=import_id,
+                        artist_id=artist.id,
                         action="override_set",
                         field=field,
                         old_value=str(old_val) if old_val is not None else None,
@@ -471,6 +473,7 @@ def delete_index_override(
     db.add(
         AuditLog(
             import_id=import_id,
+            artist_id=artist_id,
             action="override_deleted",
             field=None,
             old_value=None,
@@ -508,6 +511,7 @@ def set_artist_excluded(
         db.add(
             AuditLog(
                 import_id=import_id,
+                artist_id=artist_id,
                 action=(
                     "index_artist_excluded" if new_excluded else "index_artist_included"
                 ),
@@ -567,6 +571,7 @@ def set_artist_company(
         db.add(
             AuditLog(
                 import_id=import_id,
+                artist_id=artist_id,
                 action=(
                     "index_artist_company_set"
                     if is_company
@@ -679,6 +684,7 @@ def unmerge_artist(
     db.add(
         AuditLog(
             import_id=import_id,
+            artist_id=artist_id,
             action="index_artist_unmerged",
             field="unmerge",
             old_value=str(artist_id),

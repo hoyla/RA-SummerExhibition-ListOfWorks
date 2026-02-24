@@ -25,6 +25,13 @@ class AuditLog(Base):
         nullable=True,
     )
 
+    # Null for non-index actions
+    artist_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("index_artists.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
     # Null for non-template actions
     template_id = Column(
         UUID(as_uuid=True),
@@ -51,5 +58,6 @@ class AuditLog(Base):
     __table_args__ = (
         Index("idx_audit_logs_import", "import_id"),
         Index("idx_audit_logs_work", "work_id"),
+        Index("idx_audit_logs_artist", "artist_id"),
         Index("idx_audit_logs_template", "template_id"),
     )

@@ -130,6 +130,7 @@ class AuditLogOut(BaseModel):
     id: str
     import_id: str | None
     work_id: str | None
+    artist_id: str | None = None
     template_id: str | None = None
     action: str
     field: str | None
@@ -140,6 +141,8 @@ class AuditLogOut(BaseModel):
     cat_no: str | None = None
     artist_name: str | None = None
     title: str | None = None
+    # Denormalised index artist context (if the artist still exists)
+    index_artist_name: str | None = None
     # Denormalised template context
     template_name: str | None = None
 
