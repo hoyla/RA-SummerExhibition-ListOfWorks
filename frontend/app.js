@@ -407,7 +407,7 @@ async function renderSettings() {
       </table>
       <div style="margin-top:8px">
         <button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>
-        <button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:8px" title="Load entries from the built-in seed file (won&rsquo;t overwrite existing)">Seed defaults</button>
+        <button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:8px" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>
         <span id="known-artists-status" class="status-msg" style="margin-left:8px"></span>
       </div>
     </section>
