@@ -270,6 +270,8 @@ class IndexTemplateBodyIn(BaseModel):
     cat_no_separator_style: str = ""
     section_separator: str = "paragraph"
     section_separator_style: str = ""
+    letter_heading_enabled: bool = False
+    letter_heading_style: str = ""
 
 
 # ---------------------------------------------------------------------------
