@@ -13,6 +13,7 @@ import uuid
 from typing import List
 from uuid import UUID
 
+from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.config import UPLOAD_DIR
 from backend.app.services.export_renderer import escape_for_mac_roman
@@ -60,7 +61,7 @@ def _merged_from_rows(cat_numbers: list) -> list[int] | None:
 # ---------------------------------------------------------------------------
 
 
-@router.post("/import")
+@router.post("/import", dependencies=[Depends(require_role("editor"))])
 def upload_index_excel(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -327,7 +328,11 @@ def export_index_tags(
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/imports/{import_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/imports/{import_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("admin"))],
+)
 def delete_index_import(import_id: UUID, db: Session = Depends(get_db)):
     """Delete an Artists' Index import and all associated data."""
     import_record = _get_index_import_or_404(import_id, db)
@@ -388,6 +393,7 @@ def get_index_override(import_id: UUID, artist_id: UUID, db: Session = Depends(g
 @router.put(
     "/imports/{import_id}/artists/{artist_id}/override",
     response_model=IndexArtistOverrideOut,
+    dependencies=[Depends(require_role("editor"))],
 )
 def set_index_override(
     import_id: UUID,
@@ -445,6 +451,7 @@ def set_index_override(
 @router.delete(
     "/imports/{import_id}/artists/{artist_id}/override",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("editor"))],
 )
 def delete_index_override(
     import_id: UUID, artist_id: UUID, db: Session = Depends(get_db)
@@ -482,6 +489,7 @@ def delete_index_override(
 @router.patch(
     "/imports/{import_id}/artists/{artist_id}/exclude",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_role("editor"))],
 )
 def set_artist_excluded(
     import_id: UUID,
@@ -524,6 +532,7 @@ def set_artist_excluded(
 @router.patch(
     "/imports/{import_id}/artists/{artist_id}/company",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_role("editor"))],
 )
 def set_artist_company(
     import_id: UUID,
@@ -585,6 +594,7 @@ def set_artist_company(
 @router.post(
     "/imports/{import_id}/artists/{artist_id}/unmerge",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_role("editor"))],
 )
 def unmerge_artist(
     import_id: UUID,

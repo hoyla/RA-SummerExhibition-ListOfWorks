@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 
+from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.api.schemas import OverrideIn, OverrideOut
 from backend.app.models.work_model import Work
@@ -58,7 +59,11 @@ def get_override(import_id: UUID, work_id: UUID, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/imports/{import_id}/works/{work_id}/override", response_model=OverrideOut)
+@router.put(
+    "/imports/{import_id}/works/{work_id}/override",
+    response_model=OverrideOut,
+    dependencies=[Depends(require_role("editor"))],
+)
 def set_override(
     import_id: UUID,
     work_id: UUID,
@@ -135,6 +140,7 @@ def set_override(
 @router.delete(
     "/imports/{import_id}/works/{work_id}/override",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("editor"))],
 )
 def delete_override(import_id: UUID, work_id: UUID, db: Session = Depends(get_db)):
     _get_work_or_404(import_id, work_id, db)
@@ -167,6 +173,7 @@ def delete_override(import_id: UUID, work_id: UUID, db: Session = Depends(get_db
 @router.patch(
     "/imports/{import_id}/works/{work_id}/exclude",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_role("editor"))],
 )
 def set_work_excluded(
     import_id: UUID,

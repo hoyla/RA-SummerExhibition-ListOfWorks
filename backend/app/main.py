@@ -8,13 +8,14 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from backend.app.config import LOG_LEVEL, CORS_ORIGINS, UPLOAD_DIR
 from backend.app.db import engine, Base
+from backend.app.api.auth import get_current_role, Role
 
 from backend.app.models import import_model
 from backend.app.models import section_model
@@ -419,6 +420,17 @@ def health():
 @app.get("/", tags=["ops"])
 def root():
     return {"status": "Catalogue tool running"}
+
+
+@app.get("/me", tags=["ops"])
+def get_current_user(
+    role: "Role" = Depends(get_current_role),
+):
+    """Return the current user's role.
+
+    Used by the frontend to show/hide controls based on permissions.
+    """
+    return {"role": role.name}
 
 
 # ---------------------------------------------------------------------------

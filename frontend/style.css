@@ -62,6 +62,20 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.05em;
 }
 
+/* Role badge in header */
+.role-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  margin-left: 8px;
+}
+.role-viewer { background: #6c757d; color: #fff; }
+.role-editor { background: #2980b9; color: #fff; }
+.role-admin  { background: #c0392b; color: #fff; }
+
 /* ------------------------------------------------------------------ */
 /* Site nav                                                            */
 /* ------------------------------------------------------------------ */

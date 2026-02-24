@@ -5,6 +5,8 @@ Import management routes: upload, list, sections, preview, warnings, delete.
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+
+from backend.app.api.auth import require_role
 from sqlalchemy import func
 import os
 from pathlib import Path
@@ -40,7 +42,7 @@ from backend.app.services.export_renderer import resolve_export_config
 router = APIRouter(tags=["imports"])
 
 
-@router.post("/import")
+@router.post("/import", dependencies=[Depends(require_role("editor"))])
 def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -76,7 +78,11 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     return {"import_id": str(import_record.id)}
 
 
-@router.put("/imports/{import_id}/reimport", response_model=ReimportOut)
+@router.put(
+    "/imports/{import_id}/reimport",
+    response_model=ReimportOut,
+    dependencies=[Depends(require_role("editor"))],
+)
 def reimport_upload(
     import_id: UUID,
     file: UploadFile = File(...),
@@ -377,7 +383,11 @@ def _remove_disk_file(disk_filename: str | None) -> bool:
     return False
 
 
-@router.delete("/imports/{import_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/imports/{import_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("admin"))],
+)
 def delete_import(import_id: UUID, db: Session = Depends(get_db)):
     import_record = db.query(Import).filter(Import.id == import_id).first()
 
@@ -396,7 +406,7 @@ def delete_import(import_id: UUID, db: Session = Depends(get_db)):
     return None
 
 
-@router.post("/admin/cleanup-uploads")
+@router.post("/admin/cleanup-uploads", dependencies=[Depends(require_role("admin"))])
 def cleanup_uploads(db: Session = Depends(get_db)):
     """Remove orphaned files from the uploads directory.
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import hashlib
 import json
 
+from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.api.schemas import NormalisationIn
 from backend.app.models.ruleset_model import Ruleset
@@ -38,7 +39,7 @@ def get_config(db: Session = Depends(get_db)):
     }
 
 
-@router.put("/config")
+@router.put("/config", dependencies=[Depends(require_role("admin"))])
 def put_config(body: NormalisationIn, db: Session = Depends(get_db)):
     """Save global normalisation config."""
     config_dict = {"honorific_tokens": body.honorific_tokens}

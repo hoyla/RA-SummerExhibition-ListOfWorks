@@ -61,6 +61,30 @@ function btnLoading(btn, loadingText) {
 // ---------------------------------------------------------------------------
 
 let _apiKey = localStorage.getItem('ra_api_key') || '';
+let _userRole = 'admin';  // default; will be fetched from /me
+
+/** Fetch the current user's role from the server. */
+async function _fetchRole() {
+  try {
+    const res = await fetch('/me', { headers: { 'X-API-Key': _apiKey } });
+    if (res.ok) {
+      const data = await res.json();
+      _userRole = data.role || 'admin';
+    }
+  } catch (_) { /* keep default */ }
+}
+
+/** Return html if the current user has at least editor role, else ''. */
+function ifEditor(html) { return (_userRole === 'editor' || _userRole === 'admin') ? html : ''; }
+
+/** Return html if the current user has admin role, else ''. */
+function ifAdmin(html) { return _userRole === 'admin' ? html : ''; }
+
+/** True when the current user can edit (editor or admin). */
+function canEdit() { return _userRole === 'editor' || _userRole === 'admin'; }
+
+/** True when the current user is an admin. */
+function canAdmin() { return _userRole === 'admin'; }
 
 function _syncHeader() {
   const existing = document.getElementById('logout-btn');
@@ -82,6 +106,17 @@ function _syncHeader() {
   } else {
     if (existing) existing.remove();
   }
+
+  // Show current role badge
+  let roleBadge = document.getElementById('role-badge');
+  if (!roleBadge) {
+    roleBadge = document.createElement('span');
+    roleBadge.id = 'role-badge';
+    roleBadge.className = 'role-badge';
+    document.querySelector('.site-header').appendChild(roleBadge);
+  }
+  roleBadge.textContent = _userRole;
+  roleBadge.className = `role-badge role-${_userRole}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,12 +171,13 @@ function renderLogin(errorMsg) {
   });
 }
 
-function handleLogin() {
+async function handleLogin() {
   const key = (document.getElementById('login-key-input')?.value ?? '').trim();
   _apiKey = key;
   if (key) localStorage.setItem('ra_api_key', key);
   else localStorage.removeItem('ra_api_key');
   _syncHeader();
+  await _fetchRole();
   router();
 }
 
@@ -191,7 +227,7 @@ function router() {
 }
 
 window.addEventListener('hashchange', router);
-window.addEventListener('DOMContentLoaded', () => { _syncHeader(); router(); });
+window.addEventListener('DOMContentLoaded', async () => { _syncHeader(); await _fetchRole(); router(); });
 
 // ---------------------------------------------------------------------------
 // Audit log viewer (shared helper + per-import panel + global page)
@@ -377,7 +413,7 @@ async function renderSettings() {
       <div class="settings-form">
         <div class="form-row">
           <label>Recognised tokens</label>
-          <input id="cfg-honorific-tokens" type="text" value="${esc(honorificTokensValue)}">
+          <input id="cfg-honorific-tokens" type="text" value="${esc(honorificTokensValue)}"${canAdmin() ? '' : ' readonly'}>
           <span class="form-hint">Comma-separated list of abbreviations stripped from the end of artist names, e.g. &ldquo;RA, HON, PRA&rdquo;</span>
         </div>
       </div>
@@ -406,8 +442,8 @@ async function renderSettings() {
         </tbody>
       </table>
       <div style="margin-top:8px">
-        <button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>
-        <button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:8px" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>
+        ${ifEditor('<button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>')}
+        ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:8px" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
         <span id="known-artists-status" class="status-msg" style="margin-left:8px"></span>
       </div>
     </section>
@@ -658,19 +694,21 @@ function _toggleKaClear(btn) {
 
 function _knownArtistRow(ka) {
   const id = ka.id || '';
+  const ro = canEdit() ? '' : ' readonly';
+  const dis = canEdit() ? '' : ' disabled';
   return `<tr data-ka-id="${esc(id)}">
-    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
-    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"></td>
+    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
+    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
     ${_kaResolvedCell('ka-res-first', ka.resolved_first_name, true)}
     ${_kaResolvedCell('ka-res-last', ka.resolved_last_name, true)}
     ${_kaResolvedCell('ka-res-quals', ka.resolved_quals, true)}
     ${_kaResolvedCell('ka-res-second', ka.resolved_second_artist, true)}
-    <td style="text-align:center"><input type="checkbox" class="ka-company" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_is_company ? ' checked' : ''}></td>
+    <td style="text-align:center"><input type="checkbox" class="ka-company" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_is_company ? ' checked' : ''}${dis}></td>
     <td class="ka-preview col-index-name"></td>
-    <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"></td>
+    <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"${ro}></td>
     <td>
-      <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times;</button>
-      <button class="btn btn-sm" onclick="saveKnownArtistRow(this)" title="Save">&check;</button>
+      ${ifEditor(`<button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times;</button>
+      <button class="btn btn-sm" onclick="saveKnownArtistRow(this)" title="Save">&check;</button>`)}
     </td>
   </tr>`;
 }
@@ -805,10 +843,10 @@ async function renderTemplates() {
       ? '<span class="badge badge-builtin">built-in</span>'
       : '';
     const editBtn = `<a class="btn btn-sm" href="#/templates/${esc(t.id)}/edit">${t.is_builtin ? 'View' : 'Edit'}</a>`;
-    const dupBtn  = `<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}',this)">Duplicate</button>`;
+    const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}',this)">Duplicate</button>`);
     const delBtn  = t.is_builtin
       ? ''
-      : `<button class="btn btn-sm btn-danger" onclick="deleteTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`;
+      : ifAdmin(`<button class="btn btn-sm btn-danger" onclick="deleteTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`);
     return `<tr class="template-row">
       <td>${esc(t.name)} ${builtinBadge}</td>
       <td>${esc(created)}</td>
@@ -823,10 +861,10 @@ async function renderTemplates() {
       ? '<span class="badge badge-builtin">built-in</span>'
       : '';
     const editBtn = `<a class="btn btn-sm" href="#/index-templates/${esc(t.id)}/edit">${t.is_builtin ? 'View' : 'Edit'}</a>`;
-    const dupBtn  = `<button class="btn btn-sm" onclick="duplicateIndexTemplate('${esc(t.id)}',this)">Duplicate</button>`;
+    const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateIndexTemplate('${esc(t.id)}',this)">Duplicate</button>`);
     const delBtn  = t.is_builtin
       ? ''
-      : `<button class="btn btn-sm btn-danger" onclick="deleteIndexTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`;
+      : ifAdmin(`<button class="btn btn-sm btn-danger" onclick="deleteIndexTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`);
     return `<tr class="template-row">
       <td>${esc(t.name)} ${builtinBadge}</td>
       <td>${esc(created)}</td>
@@ -842,7 +880,7 @@ async function renderTemplates() {
 
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
       <h3 style="margin:0">List of Works</h3>
-      <a class="btn btn-sm btn-primary" href="#/templates/new/edit">+ New</a>
+      ${ifEditor('<a class="btn btn-sm btn-primary" href="#/templates/new/edit">+ New</a>')}
     </div>
     <section class="panel" style="padding:0;overflow:hidden;margin-bottom:28px">
       <table class="data-table" style="width:100%">
@@ -853,7 +891,7 @@ async function renderTemplates() {
 
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
       <h3 style="margin:0">Artists Index</h3>
-      <a class="btn btn-sm btn-primary" href="#/index-templates/new/edit">+ New</a>
+      ${ifEditor('<a class="btn btn-sm btn-primary" href="#/index-templates/new/edit">+ New</a>')}
     </div>
     <section class="panel" style="padding:0;overflow:hidden">
       <table class="data-table" style="width:100%">
@@ -1405,20 +1443,20 @@ async function saveTemplate(id) {
 
 async function renderList() {
   document.getElementById('app').innerHTML = `
-    <section class="panel">
+    ${ifEditor(`<section class="panel">
       <h3>Import List of Works Excel File</h3>
       <form id="upload-form" class="upload-form">
         <input type="file" id="file-input" accept=".xlsx,.xls" required>
         <button type="submit" class="btn btn-primary">Upload</button>
       </form>
       <p id="upload-status" class="status-msg" style="margin-top:8px"></p>
-    </section>
+    </section>`)}
     <section class="panel">
       <h3>List of Works Imports</h3>
       <div id="imports-list">Loading&hellip;</div>
     </section>`;
 
-  document.getElementById('upload-form').addEventListener('submit', async (e) => {
+  document.getElementById('upload-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const file = document.getElementById('file-input').files[0];
     if (file) await handleUpload(file);
@@ -1449,7 +1487,7 @@ async function loadImportList() {
         <td class="num">${ovrCell}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="navigate('#/import/${esc(i.id)}')">View</button>
-          <button class="btn btn-sm btn-danger" onclick="handleDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}', this)">Delete</button>
+          ${ifAdmin(`<button class="btn btn-sm btn-danger" onclick="handleDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}', this)">Delete</button>`)}
         </td>
       </tr>`;
     }).join('');
@@ -1605,7 +1643,7 @@ async function renderDetail(importId) {
   document.getElementById('app').innerHTML = `
     <div class="breadcrumb"><a href="#/">\u2190 All Imports</a></div>
     <h2 class="page-heading" id="detail-heading">Loading\u2026</h2>
-    <section class="panel reimport-panel">
+    ${ifEditor(`<section class="panel reimport-panel">
       <h3>Update Import</h3>
       <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
       <form id="reimport-form" class="upload-form">
@@ -1614,7 +1652,7 @@ async function renderDetail(importId) {
       </form>
       <p id="reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
       <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
-    </section>
+    </section>`)}
     <section class="panel">
       <h3>Export</h3>
       <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
@@ -1631,7 +1669,7 @@ async function renderDetail(importId) {
     <section class="panel" id="audit-panel"><p class="loading">Loading audit log\u2026</p></section>`;
 
   // Wire up re-import form
-  document.getElementById('reimport-form').addEventListener('submit', async (e) => {
+  document.getElementById('reimport-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const file = document.getElementById('reimport-file').files[0];
     if (file) await handleReimport(importId, file);
@@ -1935,13 +1973,13 @@ function workRowHTML(importId, w, cfg) {
       <td class="${hasOverride && o?.artwork_override ? 'cell-overridden' : ''}">${w.artwork != null ? esc(String(w.artwork)) : ''}</td>
       <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
       <td class="col-include">
-        <input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="incl-${esc(w.id)}"
+        ${canEdit() ? `<input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="incl-${esc(w.id)}"
           ${included ? 'checked' : ''}
-          onchange="toggleInclude('${esc(importId)}','${esc(w.id)}',this)">
+          onchange="toggleInclude('${esc(importId)}','${esc(w.id)}',this)">` : (included ? '\u2713' : '\u2717')}
       </td>
       <td class="col-actions">
-        <button id="ov-btn-${esc(w.id)}" class="btn btn-xs ${ovBtnClass}" data-has-override="${hasOverride ? '1' : ''}"
-          onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">${ovBtnLabel}</button>
+        ${ifEditor(`<button id="ov-btn-${esc(w.id)}" class="btn btn-xs ${ovBtnClass}" data-has-override="${hasOverride ? '1' : ''}"
+          onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">${ovBtnLabel}</button>`)}
       </td>
     </tr>
     <tr id="ovr-${esc(w.id)}" class="override-form-row" style="display:none">
@@ -2319,20 +2357,20 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
 
 async function renderIndexList() {
   document.getElementById('app').innerHTML = `
-    <section class="panel">
+    ${ifEditor(`<section class="panel">
       <h3>Import Artists Index Excel File</h3>
       <form id="index-upload-form" class="upload-form">
         <input type="file" id="index-file-input" accept=".xlsx,.xls" required>
         <button type="submit" class="btn btn-primary">Upload</button>
       </form>
       <p id="index-upload-status" class="status-msg" style="margin-top:8px"></p>
-    </section>
+    </section>`)}
     <section class="panel">
       <h3>Artists Index Imports</h3>
       <div id="index-imports-list">Loading\u2026</div>
     </section>`;
 
-  document.getElementById('index-upload-form').addEventListener('submit', async (e) => {
+  document.getElementById('index-upload-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const file = document.getElementById('index-file-input').files[0];
     if (file) await handleIndexUpload(file);
@@ -2357,7 +2395,7 @@ async function loadIndexImportList() {
         <td class="num">${i.artist_count}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="navigate('#/index/${esc(i.id)}')">View</button>
-          <button class="btn btn-sm btn-danger" onclick="handleIndexDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}', this)">Delete</button>
+          ${ifAdmin(`<button class="btn btn-sm btn-danger" onclick="handleIndexDelete('${esc(i.id)}', '${esc(i.filename.replace(/'/g, ''))}', this)">Delete</button>`)}
         </td>
       </tr>`).join('');
     container.innerHTML = `
@@ -2726,9 +2764,13 @@ function indexArtistRowHTML(importId, a, groupColor) {
   const isOverridden = a.is_company !== a.is_company_auto;
   const overrideClass = isOverridden ? ' badge-overridden' : '';
   if (a.is_company) {
-    badges.push(`<button class="badge badge-company badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as individual'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',false)">Company</button>`);
+    badges.push(canEdit()
+      ? `<button class="badge badge-company badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as individual'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',false)">Company</button>`
+      : '<span class="badge badge-company">Company</span>');
   } else {
-    badges.push(`<button class="badge badge-company-off badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as company'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',true)">Company?</button>`);
+    badges.push(canEdit()
+      ? `<button class="badge badge-company-off badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as company'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',true)">Company?</button>`
+      : '');
   }
 
   // Detect normalisation changes
@@ -2778,10 +2820,10 @@ function indexArtistRowHTML(importId, a, groupColor) {
       <td class="col-catnos">${esc(catDisplay)}</td>
       <td class="col-flags">${badges.join(' ')}</td>
       <td class="col-include">
-        <input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="idx-incl-${esc(a.id)}"
+        ${canEdit() ? `<input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="idx-incl-${esc(a.id)}"
           ${included ? 'checked' : ''}
           onclick="event.stopPropagation()"
-          onchange="toggleIndexInclude('${esc(importId)}','${esc(a.id)}',this)">
+          onchange="toggleIndexInclude('${esc(importId)}','${esc(a.id)}',this)">` : (included ? '\u2713' : '\u2717')}
       </td>
     </tr>
     <tr id="idx-detail-${esc(a.id)}" class="index-detail-row" style="display:none">
@@ -2799,9 +2841,9 @@ function indexArtistRowHTML(importId, a, groupColor) {
             </tbody>
           </table>
           <div style="margin-top:8px">
-            <button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
-              onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>
-            ${a.merged_from_rows && a.merged_from_rows.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); unmergeArtist('${esc(importId)}','${esc(a.id)}')" title="Split back into ${a.merged_from_rows.length} separate entries (rows ${a.merged_from_rows.join(', ')})">Unmerge (rows ${a.merged_from_rows.join(', ')})</button>` : ''}
+            ${ifEditor(`<button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
+              onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>`)}
+            ${canEdit() && a.merged_from_rows && a.merged_from_rows.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); unmergeArtist('${esc(importId)}','${esc(a.id)}')" title="Split back into ${a.merged_from_rows.length} separate entries (rows ${a.merged_from_rows.join(', ')})">Unmerge (rows ${a.merged_from_rows.join(', ')})</button>` : ''}
           </div>
           <div id="idx-ovc-${esc(a.id)}"></div>
         </div>

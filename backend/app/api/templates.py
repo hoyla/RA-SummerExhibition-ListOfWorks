@@ -9,6 +9,7 @@ import json
 from typing import List
 from uuid import UUID
 
+from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.api.schemas import TemplateBodyIn, TemplateOut
 from backend.app.models.ruleset_model import Ruleset
@@ -58,7 +59,11 @@ def get_template(template_id: UUID, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/templates", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/templates",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role("editor"))],
+)
 def create_template(body: TemplateBodyIn, db: Session = Depends(get_db)):
     """Create a new export template."""
     config_dict = body.model_dump(exclude={"name"})
@@ -88,7 +93,7 @@ def create_template(body: TemplateBodyIn, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/templates/{template_id}")
+@router.put("/templates/{template_id}", dependencies=[Depends(require_role("editor"))])
 def update_template(
     template_id: UUID, body: TemplateBodyIn, db: Session = Depends(get_db)
 ):
@@ -132,7 +137,11 @@ def update_template(
     )
 
 
-@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/templates/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("admin"))],
+)
 def delete_template(template_id: UUID, db: Session = Depends(get_db)):
     """Soft-delete an export template."""
     r = (
@@ -158,7 +167,11 @@ def delete_template(template_id: UUID, db: Session = Depends(get_db)):
     return None
 
 
-@router.post("/templates/{template_id}/duplicate", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/templates/{template_id}/duplicate",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role("editor"))],
+)
 def duplicate_template(template_id: UUID, db: Session = Depends(get_db)):
     """Clone a template under a new name."""
     r = db.query(Ruleset).filter(Ruleset.id == template_id).first()

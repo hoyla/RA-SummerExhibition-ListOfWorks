@@ -11,6 +11,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.api.schemas import KnownArtistOut, KnownArtistCreate, KnownArtistUpdate
 from backend.app.models.known_artist_model import KnownArtist
@@ -50,7 +51,12 @@ def list_known_artists(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 
-@router.post("", response_model=KnownArtistOut, status_code=201)
+@router.post(
+    "",
+    response_model=KnownArtistOut,
+    status_code=201,
+    dependencies=[Depends(require_role("editor"))],
+)
 def create_known_artist(
     body: KnownArtistCreate,
     db: Session = Depends(get_db),
@@ -94,7 +100,11 @@ def create_known_artist(
 # ---------------------------------------------------------------------------
 
 
-@router.patch("/{known_artist_id}", response_model=KnownArtistOut)
+@router.patch(
+    "/{known_artist_id}",
+    response_model=KnownArtistOut,
+    dependencies=[Depends(require_role("editor"))],
+)
 def update_known_artist(
     known_artist_id: str,
     body: KnownArtistUpdate,
@@ -140,7 +150,11 @@ def update_known_artist(
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/{known_artist_id}", status_code=204)
+@router.delete(
+    "/{known_artist_id}",
+    status_code=204,
+    dependencies=[Depends(require_role("editor"))],
+)
 def delete_known_artist(
     known_artist_id: str,
     db: Session = Depends(get_db),
@@ -162,7 +176,9 @@ def delete_known_artist(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/seed", response_model=dict)
+@router.post(
+    "/seed", response_model=dict, dependencies=[Depends(require_role("admin"))]
+)
 def seed_known_artists(db: Session = Depends(get_db)):
     """Load known artists from the seed file (known-artists.json).
 
