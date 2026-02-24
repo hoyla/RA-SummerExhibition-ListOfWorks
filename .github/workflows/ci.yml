@@ -2,7 +2,7 @@ name: CI / CD
 
 on:
   push:
-    branches: [main]
+    branches: ["**"] # all branches
   pull_request:
     branches: [main]
 
@@ -19,7 +19,7 @@ env:
   TASK_DEF_FILE: .aws/task-definition.json
 
 jobs:
-  # ── 1. Unit tests ───────────────────────────────────────────────────
+  # ── 1. Unit tests (all branches + PRs) ─────────────────────────────
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -42,7 +42,7 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -x -q --tb=short
 
-  # ── 2. Build Docker image + smoke test ──────────────────────────────
+  # ── 2. Build Docker image + smoke test (all branches) ──────────────
   docker:
     runs-on: ubuntu-latest
     needs: test
@@ -72,9 +72,9 @@ jobs:
           curl -sf --retry 3 --retry-delay 2 http://localhost:8000/health
           docker compose down
 
-  # ── 3. Push to ECR (main branch only) ──────────────────────────────
+  # ── 3. Push to ECR (pushes only, not PRs) ──────────────────────────
   push-ecr:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: docker
     timeout-minutes: 10
@@ -106,9 +106,9 @@ jobs:
           docker push "$IMAGE:latest"
           echo "image=$IMAGE:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-  # ── 4. Deploy to STAGING (automatic) ───────────────────────────────
+  # ── 4. Deploy to STAGING (non-main branches) ──────────────────────
   deploy-staging:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: push-ecr
     timeout-minutes: 10
@@ -139,13 +139,13 @@ jobs:
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
 
-  # ── 5. Deploy to PRODUCTION (manual approval) ──────────────────────
+  # ── 5. Deploy to PRODUCTION (main branch only, automatic) ─────────
   deploy-prod:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    needs: [push-ecr, deploy-staging]
+    needs: push-ecr
     timeout-minutes: 10
-    environment: production # ← requires manual approval in GitHub
+    environment: production
 
     steps:
       - uses: actions/checkout@v4
