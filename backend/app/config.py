@@ -20,6 +20,13 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 # Directory where uploaded Excel files are stored.
 UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "uploads")
 
+# Storage backend: "local" (default) or "s3".
+STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "local").lower()
+
+# S3 settings (only used when STORAGE_BACKEND=s3)
+S3_BUCKET: str = os.getenv("S3_BUCKET", "")
+AWS_REGION: str | None = os.getenv("AWS_REGION")
+
 # Comma-separated list of allowed CORS origins.
 # Leave empty to disallow cross-origin requests (same-origin only).
 CORS_ORIGINS: list[str] = [

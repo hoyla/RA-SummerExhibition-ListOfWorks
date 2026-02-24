@@ -7,15 +7,13 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import os
-from pathlib import Path
-import shutil
 import uuid
 from typing import List
 from uuid import UUID
 
 from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
-from backend.app.config import UPLOAD_DIR
+from backend.app.services.storage import storage
 from backend.app.services.export_renderer import escape_for_mac_roman
 from backend.app.api.schemas import (
     IndexImportOut,
@@ -73,16 +71,11 @@ def upload_index_excel(
     db: Session = Depends(get_db),
 ):
     """Upload an Artists' Index spreadsheet."""
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
     original_name = file.filename or "upload.xlsx"
-    safe_name = Path(original_name).name
-    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
-    file_path = os.path.join(UPLOAD_DIR, disk_name)
+    disk_name = _make_key(original_name)
+    storage.save(disk_name, file.file)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
+    file_path = storage.full_path(disk_name)
     try:
         import_record = import_index_excel(
             file_path,
@@ -90,8 +83,7 @@ def upload_index_excel(
             display_name=original_name,
         )
     except IndexImportError as exc:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        storage.delete(disk_name)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
@@ -367,15 +359,11 @@ def reimport_index_upload(
     """Re-import an Artists' Index spreadsheet, preserving overrides."""
     import_record = _get_index_import_or_404(import_id, db)
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     original_name = file.filename or "upload.xlsx"
-    safe_name = Path(original_name).name
-    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
-    file_path = os.path.join(UPLOAD_DIR, disk_name)
+    disk_name = _make_key(original_name)
+    storage.save(disk_name, file.file)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
+    file_path = storage.full_path(disk_name)
     try:
         _record, stats = reimport_index_excel(
             import_id,
@@ -384,13 +372,12 @@ def reimport_index_upload(
             display_name=original_name,
         )
     except IndexImportError as exc:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        storage.delete(disk_name)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     # Remove the previous upload file if it exists
-    _remove_disk_file(import_record.disk_filename)
-    # Track the new on-disk filename
+    storage.delete(import_record.disk_filename or "")
+    # Track the new storage key
     import_record.disk_filename = disk_name
     db.commit()
 
@@ -417,8 +404,8 @@ def delete_index_import(import_id: UUID, db: Session = Depends(get_db)):
     """Delete an Artists' Index import and all associated data."""
     import_record = _get_index_import_or_404(import_id, db)
 
-    # Remove uploaded file from disk
-    _remove_disk_file(import_record.disk_filename)
+    # Remove uploaded file
+    storage.delete(import_record.disk_filename or "")
 
     db.delete(import_record)
     db.commit()
@@ -872,12 +859,7 @@ def _get_artist_or_404(
     return artist
 
 
-def _remove_disk_file(disk_filename: str | None) -> bool:
-    """Delete an uploaded file from disk."""
-    if not disk_filename:
-        return False
-    path = os.path.join(UPLOAD_DIR, disk_filename)
-    if os.path.isfile(path):
-        os.remove(path)
-        return True
-    return False
+def _make_key(original_name: str) -> str:
+    """Build a collision-proof storage key from a user-supplied filename."""
+    safe = os.path.basename(original_name)
+    return f"{uuid.uuid4().hex}_{safe}"

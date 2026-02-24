@@ -9,14 +9,12 @@ from sqlalchemy.orm import Session
 from backend.app.api.auth import require_role
 from sqlalchemy import func
 import os
-from pathlib import Path
-import shutil
 import uuid
 from typing import List
 from uuid import UUID
 
 from backend.app.api.deps import get_db
-from backend.app.config import UPLOAD_DIR
+from backend.app.services.storage import storage
 from backend.app.api.schemas import (
     ImportOut,
     ReimportOut,
@@ -44,18 +42,11 @@ router = APIRouter(tags=["imports"])
 
 @router.post("/import", dependencies=[Depends(require_role("editor"))])
 def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    # Sanitise filename: strip path components to prevent traversal,
-    # and prefix with a UUID to prevent collisions.
     original_name = file.filename or "upload.xlsx"
-    safe_name = Path(original_name).name  # strip any directory components
-    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
-    file_path = os.path.join(UPLOAD_DIR, disk_name)
+    disk_name = _make_key(original_name)
+    storage.save(disk_name, file.file)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
+    file_path = storage.full_path(disk_name)
     ruleset = resolve_export_config(db)
     honorific_tokens = None
     if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
@@ -67,11 +58,10 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
         )
     except ExcelImportError as exc:
         # Clean up the saved file on validation failure
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        storage.delete(disk_name)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    # Persist the on-disk filename so we can clean up later
+    # Persist the storage key so we can clean up later
     import_record.disk_filename = disk_name
     db.commit()
 
@@ -97,15 +87,11 @@ def reimport_upload(
             detail="Import not found",
         )
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     original_name = file.filename or "upload.xlsx"
-    safe_name = Path(original_name).name
-    disk_name = f"{uuid.uuid4().hex}_{safe_name}"
-    file_path = os.path.join(UPLOAD_DIR, disk_name)
+    disk_name = _make_key(original_name)
+    storage.save(disk_name, file.file)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
+    file_path = storage.full_path(disk_name)
     ruleset = resolve_export_config(db)
     honorific_tokens = None
     if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
@@ -120,13 +106,12 @@ def reimport_upload(
             display_name=original_name,
         )
     except ExcelImportError as exc:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        storage.delete(disk_name)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     # Remove the previous upload file if it exists
-    _remove_disk_file(import_record.disk_filename)
-    # Track the new on-disk filename
+    storage.delete(import_record.disk_filename or "")
+    # Track the new storage key
     import_record.disk_filename = disk_name
     db.commit()
 
@@ -372,15 +357,10 @@ def list_warnings(import_id: UUID, db: Session = Depends(get_db)):
     ]
 
 
-def _remove_disk_file(disk_filename: str | None) -> bool:
-    """Delete an uploaded file from disk. Returns True if a file was removed."""
-    if not disk_filename:
-        return False
-    path = os.path.join(UPLOAD_DIR, disk_filename)
-    if os.path.isfile(path):
-        os.remove(path)
-        return True
-    return False
+def _make_key(original_name: str) -> str:
+    """Build a collision-proof storage key from a user-supplied filename."""
+    safe = os.path.basename(original_name)
+    return f"{uuid.uuid4().hex}_{safe}"
 
 
 @router.delete(
@@ -397,8 +377,8 @@ def delete_import(import_id: UUID, db: Session = Depends(get_db)):
             detail="Import not found",
         )
 
-    # Remove the uploaded file from disk
-    _remove_disk_file(import_record.disk_filename)
+    # Remove the uploaded file
+    storage.delete(import_record.disk_filename or "")
 
     db.delete(import_record)
     db.commit()
@@ -413,9 +393,6 @@ def cleanup_uploads(db: Session = Depends(get_db)):
     Any file in UPLOAD_DIR that is not referenced by an Import record's
     disk_filename will be deleted.
     """
-    if not os.path.isdir(UPLOAD_DIR):
-        return {"removed": 0, "kept": 0, "files_removed": []}
-
     # Collect all disk_filenames that are still referenced
     referenced = {
         row.disk_filename
@@ -426,17 +403,12 @@ def cleanup_uploads(db: Session = Depends(get_db)):
 
     removed_files: list[str] = []
     kept = 0
-    for entry in os.scandir(UPLOAD_DIR):
-        if not entry.is_file():
-            continue
-        # Never remove .gitkeep
-        if entry.name == ".gitkeep":
-            continue
-        if entry.name in referenced:
+    for key in storage.list_keys():
+        if key in referenced:
             kept += 1
         else:
-            os.remove(entry.path)
-            removed_files.append(entry.name)
+            storage.delete(key)
+            removed_files.append(key)
 
     return {
         "removed": len(removed_files),

@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from backend.app.config import LOG_LEVEL, CORS_ORIGINS, UPLOAD_DIR
+from backend.app.config import LOG_LEVEL, CORS_ORIGINS
 from backend.app.db import engine, Base
 from backend.app.api.auth import get_current_role, Role
 
@@ -368,12 +368,9 @@ def health():
         pass
 
     # Upload directory stats
-    upload_path = Path(UPLOAD_DIR)
-    if upload_path.is_dir():
-        files = list(upload_path.iterdir())
-        total_bytes = sum(f.stat().st_size for f in files if f.is_file())
-        disk["uploads_count"] = len([f for f in files if f.is_file()])
-        disk["uploads_size_mb"] = round(total_bytes / (1024**2), 2)
+    from backend.app.services.storage import storage
+
+    disk.update(storage.stats())
 
     result["disk"] = disk
 
