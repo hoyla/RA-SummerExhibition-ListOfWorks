@@ -57,8 +57,19 @@ jobs:
       - name: Smoke-test container starts
         run: |
           # Start Postgres + app via docker compose and hit health check
-          docker compose up -d --wait --timeout 30
-          curl -sf http://localhost:8000/health | python3 -m json.tool
+          docker compose up -d --wait --timeout 60
+          # Retry up to 10 times (the app may still be initialising)
+          for i in $(seq 1 10); do
+            if curl -sf http://localhost:8000/health; then
+              echo ""
+              echo "Health check passed on attempt $i"
+              break
+            fi
+            echo "Attempt $i failed, retrying in 2s..."
+            sleep 2
+          done
+          # Final check (fail the step if unhealthy)
+          curl -sf --retry 3 --retry-delay 2 http://localhost:8000/health
           docker compose down
 
   # ── 3. Push to ECR (main branch only) ──────────────────────────────
