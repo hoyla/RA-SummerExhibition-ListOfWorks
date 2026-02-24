@@ -1039,8 +1039,10 @@ async function renderIndexTemplateEdit(id) {
         </div>
         <div class="form-row">
           <label>Letter headings</label>
-          <input type="checkbox" id="idx-tmpl-letter-heading" ${cfg.letter_heading_enabled ? 'checked' : ''}${isBuiltin ? ' disabled' : ''}>
-          <span class="form-hint">Insert a heading line (A, B, C…) at the start of each letter group</span>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" id="idx-tmpl-letter-heading" ${cfg.letter_heading_enabled ? 'checked' : ''}${isBuiltin ? ' disabled' : ''}>
+            Insert a heading line (A, B, C\u2026) at the start of each letter group
+          </label>
         </div>
         <div class="form-row">
           <label>Heading style</label>
