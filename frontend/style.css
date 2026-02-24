@@ -62,19 +62,37 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.05em;
 }
 
-/* Role badge in header */
-.role-badge {
+/* Role switcher dropdown in header */
+.role-switcher-wrap {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  gap: 6px;
+}
+.role-switcher-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #aaa;
+  font-weight: 600;
+}
+.role-switcher {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   padding: 2px 8px;
   border-radius: 9999px;
-  margin-left: 8px;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: center;
 }
-.role-viewer { background: #6c757d; color: #fff; }
-.role-editor { background: #2980b9; color: #fff; }
-.role-admin  { background: #c0392b; color: #fff; }
+.role-switcher.role-viewer { background: #6c757d; color: #fff; }
+.role-switcher.role-editor { background: #2980b9; color: #fff; }
+.role-switcher.role-admin  { background: #c0392b; color: #fff; }
 
 /* ------------------------------------------------------------------ */
 /* Site nav                                                            */

@@ -62,11 +62,19 @@ function btnLoading(btn, loadingText) {
 
 let _apiKey = localStorage.getItem('ra_api_key') || '';
 let _userRole = 'admin';  // default; will be fetched from /me
+let _roleOverride = localStorage.getItem('ra_role_override') || '';  // dev role switcher
+
+/** Build common headers for API calls (API key + optional role override). */
+function _apiHeaders() {
+  const h = { 'X-API-Key': _apiKey };
+  if (_roleOverride) h['X-User-Role'] = _roleOverride;
+  return h;
+}
 
 /** Fetch the current user's role from the server. */
 async function _fetchRole() {
   try {
-    const res = await fetch('/me', { headers: { 'X-API-Key': _apiKey } });
+    const res = await fetch('/me', { headers: _apiHeaders() });
     if (res.ok) {
       const data = await res.json();
       _userRole = data.role || 'admin';
@@ -93,7 +101,7 @@ function _syncHeader() {
       const btn = document.createElement('button');
       btn.id = 'logout-btn';
       btn.className = 'btn btn-sm btn-secondary';
-      btn.style.cssText = 'margin-left:auto;font-size:0.75rem';
+      btn.style.cssText = 'font-size:0.75rem';
       btn.textContent = 'Change API Key';
       btn.addEventListener('click', () => {
         localStorage.removeItem('ra_api_key');
@@ -107,16 +115,32 @@ function _syncHeader() {
     if (existing) existing.remove();
   }
 
-  // Show current role badge
-  let roleBadge = document.getElementById('role-badge');
-  if (!roleBadge) {
-    roleBadge = document.createElement('span');
-    roleBadge.id = 'role-badge';
-    roleBadge.className = 'role-badge';
-    document.querySelector('.site-header').appendChild(roleBadge);
+  // Role switcher dropdown (dev testing aid)
+  let roleSwitcher = document.getElementById('role-switcher');
+  if (!roleSwitcher) {
+    const wrap = document.createElement('div');
+    wrap.className = 'role-switcher-wrap';
+    wrap.innerHTML = `<label class="role-switcher-label">Role:</label>
+      <select id="role-switcher" class="role-switcher">
+        <option value="">auto</option>
+        <option value="viewer">viewer</option>
+        <option value="editor">editor</option>
+        <option value="admin">admin</option>
+      </select>`;
+    document.querySelector('.site-header').appendChild(wrap);
+    roleSwitcher = document.getElementById('role-switcher');
+    roleSwitcher.addEventListener('change', async () => {
+      _roleOverride = roleSwitcher.value;
+      if (_roleOverride) localStorage.setItem('ra_role_override', _roleOverride);
+      else localStorage.removeItem('ra_role_override');
+      await _fetchRole();
+      _syncHeader();
+      router();
+    });
   }
-  roleBadge.textContent = _userRole;
-  roleBadge.className = `role-badge role-${_userRole}`;
+  roleSwitcher.value = _roleOverride;
+  // Update visual indicator
+  roleSwitcher.className = `role-switcher role-${_userRole}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +148,7 @@ function _syncHeader() {
 // ---------------------------------------------------------------------------
 
 async function api(method, path, body) {
-  const opts = { method, headers: { 'X-API-Key': _apiKey } };
+  const opts = { method, headers: _apiHeaders() };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -1515,7 +1539,7 @@ async function handleUpload(file) {
   try {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch('/import', { method: 'POST', body: form, headers: { 'X-API-Key': _apiKey } });
+    const res = await fetch('/import', { method: 'POST', body: form, headers: _apiHeaders() });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
     if (!res.ok) { const t = await res.text(); throw new Error(t); }
     const data = await res.json();
@@ -1555,7 +1579,7 @@ async function handleReimport(importId, file) {
     const form = new FormData();
     form.append('file', file);
     const res = await fetch(`/imports/${importId}/reimport`, {
-      method: 'PUT', body: form, headers: { 'X-API-Key': _apiKey },
+      method: 'PUT', body: form, headers: _apiHeaders(),
     });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
     if (!res.ok) { const t = await res.text(); throw new Error(t); }
@@ -2308,7 +2332,7 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
       ? `/imports/${importId}/sections/${sectionId}/export-${format}`
       : `/imports/${importId}/export-${format}`;
     if (templateId) path += `?template_id=${encodeURIComponent(templateId)}`;
-    const res = await fetch(path, { headers: { 'X-API-Key': _apiKey } });
+    const res = await fetch(path, { headers: _apiHeaders() });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
@@ -2421,7 +2445,7 @@ async function handleIndexUpload(file) {
   try {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch('/index/import', { method: 'POST', body: form, headers: { 'X-API-Key': _apiKey } });
+    const res = await fetch('/index/import', { method: 'POST', body: form, headers: _apiHeaders() });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
     if (!res.ok) { const t = await res.text(); throw new Error(t); }
     const data = await res.json();
@@ -3144,7 +3168,7 @@ async function downloadIndexExport(importId, btnEl) {
     if (tid) params.push(`template_id=${encodeURIComponent(tid)}`);
     if (params.length) path += '?' + params.join('&');
     const res = await fetch(path, {
-      headers: { 'X-API-Key': _apiKey },
+      headers: _apiHeaders(),
     });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3185,7 +3209,7 @@ async function downloadIndexLetterExport(importId, letter, btnEl) {
     if (tid) params.push(`template_id=${encodeURIComponent(tid)}`);
     path += '?' + params.join('&');
     const res = await fetch(path, {
-      headers: { 'X-API-Key': _apiKey },
+      headers: _apiHeaders(),
     });
     if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
