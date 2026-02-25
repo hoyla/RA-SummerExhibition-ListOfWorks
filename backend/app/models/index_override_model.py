@@ -31,7 +31,19 @@ class IndexArtistOverride(Base):
     last_name_override = Column(Text, nullable=True)
     title_override = Column(Text, nullable=True)
     quals_override = Column(Text, nullable=True)
-    second_artist_override = Column(Text, nullable=True)
+
+    # Multi-artist override fields
+    artist2_first_name_override = Column(Text, nullable=True)
+    artist2_last_name_override = Column(Text, nullable=True)
+    artist2_quals_override = Column(Text, nullable=True)
+    artist3_first_name_override = Column(Text, nullable=True)
+    artist3_last_name_override = Column(Text, nullable=True)
+    artist3_quals_override = Column(Text, nullable=True)
+
+    # Per-artist RA styling overrides
+    artist1_ra_styled_override = Column(Boolean, nullable=True)
+    artist2_ra_styled_override = Column(Boolean, nullable=True)
+    artist3_ra_styled_override = Column(Boolean, nullable=True)
 
     updated_at = Column(
         TIMESTAMP(timezone=True),

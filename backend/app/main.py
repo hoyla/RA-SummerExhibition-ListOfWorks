@@ -182,6 +182,7 @@ def _seed_known_artists() -> None:
                 .filter(
                     _KnownArtist.match_first_name == match_first,
                     _KnownArtist.match_last_name == match_last,
+                    _KnownArtist.match_quals == entry.get("match_quals"),
                 )
                 .first()
             )
@@ -191,11 +192,24 @@ def _seed_known_artists() -> None:
                 _KnownArtist(
                     match_first_name=match_first,
                     match_last_name=match_last,
+                    match_quals=entry.get("match_quals"),
                     resolved_first_name=entry.get("resolved_first_name"),
                     resolved_last_name=entry.get("resolved_last_name"),
                     resolved_quals=entry.get("resolved_quals"),
-                    resolved_second_artist=entry.get("resolved_second_artist"),
                     resolved_is_company=entry.get("resolved_is_company"),
+                    resolved_artist2_first_name=entry.get(
+                        "resolved_artist2_first_name"
+                    ),
+                    resolved_artist2_last_name=entry.get("resolved_artist2_last_name"),
+                    resolved_artist2_quals=entry.get("resolved_artist2_quals"),
+                    resolved_artist3_first_name=entry.get(
+                        "resolved_artist3_first_name"
+                    ),
+                    resolved_artist3_last_name=entry.get("resolved_artist3_last_name"),
+                    resolved_artist3_quals=entry.get("resolved_artist3_quals"),
+                    resolved_artist1_ra_styled=entry.get("resolved_artist1_ra_styled"),
+                    resolved_artist2_ra_styled=entry.get("resolved_artist2_ra_styled"),
+                    resolved_artist3_ra_styled=entry.get("resolved_artist3_ra_styled"),
                     notes=entry.get("notes"),
                 )
             )

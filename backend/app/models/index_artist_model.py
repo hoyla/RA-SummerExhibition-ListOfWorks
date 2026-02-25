@@ -44,7 +44,21 @@ class IndexArtist(Base):
     last_name = Column(Text, nullable=True)  # Cleaned last name
     quals = Column(Text, nullable=True)  # Cleaned qualifications
     company = Column(Text, nullable=True)  # Detected company name
-    second_artist = Column(Text, nullable=True)  # "and Matthias Sauerbruch" suffix
+
+    # Multi-artist support (up to 3 collaborating artists)
+    # Artist 1 is the primary (first_name / last_name / quals above)
+    artist2_first_name = Column(Text, nullable=True)
+    artist2_last_name = Column(Text, nullable=True)
+    artist2_quals = Column(Text, nullable=True)
+    artist3_first_name = Column(Text, nullable=True)
+    artist3_last_name = Column(Text, nullable=True)
+    artist3_quals = Column(Text, nullable=True)
+
+    # Per-artist RA surname styling flags
+    artist1_ra_styled = Column(Boolean, nullable=False, server_default="false")
+    artist2_ra_styled = Column(Boolean, nullable=False, server_default="false")
+    artist3_ra_styled = Column(Boolean, nullable=False, server_default="false")
+
     is_ra_member = Column(Boolean, nullable=False, server_default="false")
     is_company = Column(Boolean, nullable=False, server_default="false")
 

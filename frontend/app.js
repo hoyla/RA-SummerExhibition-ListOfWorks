@@ -547,7 +547,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     banner.className = 'env-banner env-staging';
     banner.textContent = 'STAGING';
     document.body.insertBefore(banner, document.body.firstChild);
-    document.title = '[STAGING] ' + document.title;
+    document.title = 'RA Catalogue Tool (staging)';
+  } else if (/^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
+    const banner = document.createElement('div');
+    banner.className = 'env-banner env-local';
+    banner.textContent = 'LOCAL DEV';
+    document.body.insertBefore(banner, document.body.firstChild);
+    document.title = 'RA Catalogue Tool (local)';
+  } else {
+    document.title = 'RA Catalogue Tool (prod)';
   }
   // If Cognito mode and not logged in, show login
   if (_authMode === 'cognito' && !_idToken) {
@@ -782,10 +790,15 @@ async function renderSettings() {
           <tr>
             <th>Match First</th>
             <th>Match Last</th>
+            <th>Match Quals</th>
             <th>&rarr; First</th>
             <th>&rarr; Last</th>
             <th>&rarr; Quals</th>
-            <th>&rarr; 2nd Artist</th>
+            <th>&rarr; A2 First</th>
+            <th>&rarr; A2 Last</th>
+            <th>&rarr; A2 Quals</th>
+            <th>A1 RA</th>
+            <th>A2 RA</th>
             <th>Company</th>
             <th>Index Name Preview</th>
             <th>Notes</th>
@@ -1009,48 +1022,6 @@ function _isRaMember(quals) {
 }
 
 /**
- * Split trailing RA tokens from a second_artist string.
- * Returns { name, quals } where quals contains any trailing RA tokens.
- * E.g. "Peter St John ra" → { name: "Peter St John", quals: "ra" }
- *      "Peter St John"    → { name: "Peter St John", quals: "" }
- *      "Peter St John cbe ra" → { name: "Peter St John cbe", quals: "ra" }
- */
-function _splitSecondArtistQuals(text) {
-  if (!text) return { name: '', quals: '' };
-  const raPattern = /\b(?:EX OFFICIO|RA ELECT|HON RA|HONRA|PPRA|PRA|RA)\b/gi;
-  const words = text.trim().split(/\s+/);
-  // Walk backwards collecting RA tokens
-  const qualTokens = [];
-  let i = words.length - 1;
-  while (i >= 0) {
-    // Check for two-word tokens first ("HON RA", "RA ELECT", "EX OFFICIO")
-    if (i >= 1) {
-      const twoWord = words[i - 1] + ' ' + words[i];
-      if (raPattern.test(twoWord)) {
-        raPattern.lastIndex = 0;
-        qualTokens.unshift(twoWord);
-        i -= 2;
-        continue;
-      }
-      raPattern.lastIndex = 0;
-    }
-    // Check single-word token
-    const oneWord = words[i];
-    if (raPattern.test(oneWord)) {
-      raPattern.lastIndex = 0;
-      qualTokens.unshift(oneWord);
-      i -= 1;
-      continue;
-    }
-    raPattern.lastIndex = 0;
-    break;
-  }
-  const namePart = words.slice(0, i + 1).join(' ');
-  const qualsPart = qualTokens.join(' ');
-  return { name: namePart, quals: qualsPart };
-}
-
-/**
  * Build a styled Index Name preview from a Known Artist row's fields.
  * Uses resolved values where set, falling back to match values.
  * Respects the "cleared" state (empty string = clear the field).
@@ -1073,7 +1044,11 @@ function _kaPreviewIndexName(tr) {
   const firstName = resolve('.ka-res-first', matchFirst);
   const lastName = resolve('.ka-res-last', matchLast);
   const quals = resolve('.ka-res-quals', '');
-  const secondArtist = resolve('.ka-res-second', '');
+  const a2First = resolve('.ka-res-a2-first', '');
+  const a2Last = resolve('.ka-res-a2-last', '');
+  const a2Quals = resolve('.ka-res-a2-quals', '');
+  const a1RaStyled = tr.querySelector('.ka-a1-ra')?.checked || false;
+  const a2RaStyled = tr.querySelector('.ka-a2-ra')?.checked || false;
   const surname = lastName || firstName || '';
   if (!surname) return '<span class="muted">&mdash;</span>';
 
@@ -1081,8 +1056,8 @@ function _kaPreviewIndexName(tr) {
   const commaParts = [];
   const nameParts = [];
 
-  // Surname — RA members shown in uppercase
-  if (isRa) {
+  // Surname — RA styling uses per-artist flag
+  if (a1RaStyled) {
     commaParts.push(`<span class="idx-ra-styled" title="RA Member styling">${esc(surname)}</span>`);
   } else {
     commaParts.push(esc(surname));
@@ -1099,18 +1074,21 @@ function _kaPreviewIndexName(tr) {
     nameParts.push(`<span class="${pillClass}">${esc(quals)}</span>`);
   }
 
-  // Second artist (comma-separated) — detect trailing RA tokens and style them
+  // Additional artists from structured fields
   const suffixes = [];
-  if (secondArtist) {
-    const sa = _splitSecondArtistQuals(secondArtist);
-    if (sa.quals) {
-      const parts = [];
-      if (sa.name) parts.push(esc(sa.name));
-      parts.push(`<span class="honorifics-pill idx-ra-quals">${esc(sa.quals)}</span>`);
-      suffixes.push(parts.join(' '));
-    } else {
-      suffixes.push(esc(secondArtist));
+  if (a2First || a2Last) {
+    const parts = ['and'];
+    if (a2First) parts.push(esc(a2First));
+    if (a2Last) {
+      if (a2RaStyled) parts.push(`<span class="idx-ra-styled">${esc(a2Last)}</span>`);
+      else parts.push(esc(a2Last));
     }
+    let suffix = parts.join(' ');
+    if (a2Quals) {
+      const pillClass = a2RaStyled ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
+      suffix += ` <span class="${pillClass}">${esc(a2Quals)}</span>`;
+    }
+    suffixes.push(suffix);
   }
 
   let result = commaParts.join(', ');
@@ -1181,10 +1159,15 @@ function _knownArtistRow(ka) {
   return `<tr data-ka-id="${esc(id)}">
     <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
     <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
+    <td><input type="text" class="ka-match-quals" value="${esc(ka.match_quals ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
     ${_kaResolvedCell('ka-res-first', ka.resolved_first_name, true)}
     ${_kaResolvedCell('ka-res-last', ka.resolved_last_name, true)}
     ${_kaResolvedCell('ka-res-quals', ka.resolved_quals, true)}
-    ${_kaResolvedCell('ka-res-second', ka.resolved_second_artist, true)}
+    ${_kaResolvedCell('ka-res-a2-first', ka.resolved_artist2_first_name, true)}
+    ${_kaResolvedCell('ka-res-a2-last', ka.resolved_artist2_last_name, true)}
+    ${_kaResolvedCell('ka-res-a2-quals', ka.resolved_artist2_quals, true)}
+    <td style="text-align:center"><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}></td>
+    <td style="text-align:center"><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}></td>
     <td style="text-align:center"><input type="checkbox" class="ka-company" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_is_company ? ' checked' : ''}${dis}></td>
     <td class="ka-preview col-index-name"></td>
     <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"${ro}></td>
@@ -1198,9 +1181,12 @@ function _knownArtistRow(ka) {
 function addKnownArtistRow() {
   const tbody = document.querySelector('#known-artists-table tbody');
   tbody.insertAdjacentHTML('beforeend', _knownArtistRow({
-    id: '', match_first_name: '', match_last_name: '',
+    id: '', match_first_name: '', match_last_name: '', match_quals: '',
     resolved_first_name: '', resolved_last_name: '',
-    resolved_quals: '', resolved_second_artist: '',
+    resolved_quals: '',
+    resolved_artist2_first_name: '', resolved_artist2_last_name: '',
+    resolved_artist2_quals: '',
+    resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
     resolved_is_company: false, notes: '',
   }));
 }
@@ -1224,15 +1210,22 @@ function _readKaRow(tr) {
   }
 
   const val = (cls) => tr.querySelector(cls)?.value?.trim() || null;
+  const a1RaEl = tr.querySelector('.ka-a1-ra');
+  const a2RaEl = tr.querySelector('.ka-a2-ra');
   return {
-    match_first_name:      val('.ka-match-first'),
-    match_last_name:       val('.ka-match-last'),
-    resolved_first_name:   resVal('.ka-res-first'),
-    resolved_last_name:    resVal('.ka-res-last'),
-    resolved_quals:        resVal('.ka-res-quals'),
-    resolved_second_artist: resVal('.ka-res-second'),
-    resolved_is_company:   isCompany,
-    notes:                 val('.ka-notes'),
+    match_first_name:              val('.ka-match-first'),
+    match_last_name:               val('.ka-match-last'),
+    match_quals:                   val('.ka-match-quals'),
+    resolved_first_name:           resVal('.ka-res-first'),
+    resolved_last_name:            resVal('.ka-res-last'),
+    resolved_quals:                resVal('.ka-res-quals'),
+    resolved_artist2_first_name:   resVal('.ka-res-a2-first'),
+    resolved_artist2_last_name:    resVal('.ka-res-a2-last'),
+    resolved_artist2_quals:        resVal('.ka-res-a2-quals'),
+    resolved_artist1_ra_styled:    a1RaEl?.checked || null,
+    resolved_artist2_ra_styled:    a2RaEl?.checked || null,
+    resolved_is_company:           isCompany,
+    notes:                         val('.ka-notes'),
   };
 }
 
@@ -3398,8 +3391,8 @@ function styledIndexName(a) {
   const commaParts = [];
   const nameParts = [];
 
-  // Surname — RA members get a special visual indicator
-  if (a.is_ra_member) {
+  // Surname — per-artist RA styling flag
+  if (a.artist1_ra_styled) {
     commaParts.push(`<span class="idx-ra-styled" title="Styled as RA Member in print">${esc(surname)}</span>`);
   } else {
     commaParts.push(esc(surname));
@@ -3416,23 +3409,30 @@ function styledIndexName(a) {
   // Quals — shown as a pill, different styling for RA vs non-RA
   // Quals follow the name with a space (no comma), matching LoW convention
   if (a.quals) {
-    const pillClass = a.is_ra_member ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
+    const pillClass = a.artist1_ra_styled ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
     nameParts.push(`<span class="${pillClass}">${esc(a.quals)}</span>`);
   }
 
-  // Second artist suffix (never for companies — name is already complete)
-  // Detect trailing RA tokens and style them as honorifics pills
+  // Additional artists from structured fields (never for companies)
   const suffixes = [];
-  if (a.second_artist && !a.is_company) {
-    const sa = _splitSecondArtistQuals(a.second_artist);
-    if (sa.quals) {
-      const parts = [];
-      if (sa.name) parts.push(esc(sa.name));
-      parts.push(`<span class="honorifics-pill idx-ra-quals">${esc(sa.quals)}</span>`);
-      suffixes.push(parts.join(' '));
-    } else {
-      suffixes.push(esc(a.second_artist));
+  function _addArtist(first, last, quals, raStyled) {
+    if (!first && !last) return;
+    const parts = ['and'];
+    if (first) parts.push(esc(first));
+    if (last) {
+      if (raStyled) parts.push(`<span class="idx-ra-styled">${esc(last)}</span>`);
+      else parts.push(esc(last));
     }
+    let suffix = parts.join(' ');
+    if (quals) {
+      const pillClass = raStyled ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
+      suffix += ` <span class="${pillClass}">${esc(quals)}</span>`;
+    }
+    suffixes.push(suffix);
+  }
+  if (!a.is_company) {
+    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled);
+    _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled);
   }
 
   let result = commaParts.join(', ');
@@ -3491,13 +3491,23 @@ function indexArtistRowHTML(importId, a, groupColor) {
     return `<span class="norm-changed" title="Raw: ${esc(r)}">${esc(n)}</span>`;
   }
 
-  // Second artist display
-  const secondArtistDisplay = a.second_artist ? ` <span class="second-artist">${esc(a.second_artist)}</span>` : '';
+  // Additional artists display
+  const additionalArtists = [];
+  if (a.artist2_first_name || a.artist2_last_name) {
+    const parts = [a.artist2_first_name, a.artist2_last_name].filter(Boolean);
+    additionalArtists.push(parts.join(' '));
+  }
+  if (a.artist3_first_name || a.artist3_last_name) {
+    const parts = [a.artist3_first_name, a.artist3_last_name].filter(Boolean);
+    additionalArtists.push(parts.join(' '));
+  }
+  const additionalArtistDisplay = additionalArtists.length
+    ? ` <span class="second-artist">${esc('and ' + additionalArtists.join(' and '))}</span>` : '';
 
   return `
     <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" onclick="toggleIndexDetail('${esc(a.id)}')">
       <td class="col-index-name">${styledIndexName(a)}</td>
-      <td class="col-lastname">${diffCell(a.raw_last_name, a.last_name)}${secondArtistDisplay}</td>
+      <td class="col-lastname">${diffCell(a.raw_last_name, a.last_name)}${additionalArtistDisplay}</td>
       <td>${diffCell(a.raw_first_name, a.first_name)}</td>
       <td>${esc(a.title ?? '')}</td>
       <td class="col-quals">${diffCell(a.raw_quals, a.quals)}</td>
@@ -3522,7 +3532,9 @@ function indexArtistRowHTML(importId, a, groupColor) {
               <tr><td>Quals</td><td>${esc(a.raw_quals ?? '')}</td><td class="${(a.raw_quals ?? '') !== (a.quals ?? '') ? 'norm-highlight' : ''}">${esc(a.quals ?? '')}</td></tr>
               <tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td><td>${esc(a.company ?? '')}</td></tr>
               <tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td><td><em class="muted">courtesy field</em></td></tr>
-              ${a.second_artist ? `<tr><td>Second Artist</td><td colspan="2">${esc(a.second_artist)}</td></tr>` : ''}
+              <tr><td>RA Styled</td><td colspan="2">${a.artist1_ra_styled ? 'Yes' : 'No'}${a.artist2_ra_styled ? ' / A2: Yes' : ''}${a.artist3_ra_styled ? ' / A3: Yes' : ''}</td></tr>
+              ${a.artist2_first_name || a.artist2_last_name ? `<tr><td>Artist 2</td><td colspan="2">${esc([a.artist2_first_name, a.artist2_last_name, a.artist2_quals].filter(Boolean).join(' '))}</td></tr>` : ''}
+              ${a.artist3_first_name || a.artist3_last_name ? `<tr><td>Artist 3</td><td colspan="2">${esc([a.artist3_first_name, a.artist3_last_name, a.artist3_quals].filter(Boolean).join(' '))}</td></tr>` : ''}
             </tbody>
           </table>
           <div style="margin-top:8px">
@@ -3630,11 +3642,16 @@ function showIndexOverrideForm(importId, artistId, existing) {
   const a = _indexArtistCache[artistId] ?? {};
   const o = existing ?? {};
   const cur = {
-    first_name_override:    o.first_name_override    ?? a.first_name     ?? '',
-    last_name_override:     o.last_name_override     ?? a.last_name      ?? '',
-    title_override:         o.title_override         ?? a.title          ?? '',
-    quals_override:         o.quals_override         ?? a.quals          ?? '',
-    second_artist_override: o.second_artist_override ?? a.second_artist  ?? '',
+    first_name_override:              o.first_name_override              ?? a.first_name              ?? '',
+    last_name_override:               o.last_name_override               ?? a.last_name               ?? '',
+    title_override:                   o.title_override                   ?? a.title                   ?? '',
+    quals_override:                   o.quals_override                   ?? a.quals                   ?? '',
+    artist2_first_name_override:      o.artist2_first_name_override      ?? a.artist2_first_name      ?? '',
+    artist2_last_name_override:       o.artist2_last_name_override       ?? a.artist2_last_name       ?? '',
+    artist2_quals_override:           o.artist2_quals_override           ?? a.artist2_quals            ?? '',
+    artist3_first_name_override:      o.artist3_first_name_override      ?? a.artist3_first_name      ?? '',
+    artist3_last_name_override:       o.artist3_last_name_override       ?? a.artist3_last_name       ?? '',
+    artist3_quals_override:           o.artist3_quals_override           ?? a.artist3_quals            ?? '',
   };
 
   // Returns a clickable hint that copies the current value into the named input
@@ -3668,9 +3685,41 @@ function showIndexOverrideForm(importId, artistId, existing) {
         <div class="form-row"><label>Quals</label>
           ${hint('quals_override','quals_override')}
           <input type="text" name="quals_override" value="${val('quals_override')}" placeholder="Override quals (e.g. CBE RA)"></div>
-        <div class="form-row"><label>Second Artist</label>
-          ${hint('second_artist_override','second_artist_override')}
-          <input type="text" name="second_artist_override" value="${val('second_artist_override')}" placeholder="Override second artist suffix"></div>
+        <div class="form-row"><label>A2 First Name</label>
+          ${hint('artist2_first_name_override','artist2_first_name_override')}
+          <input type="text" name="artist2_first_name_override" value="${val('artist2_first_name_override')}" placeholder="Artist 2 first name"></div>
+        <div class="form-row"><label>A2 Last Name</label>
+          ${hint('artist2_last_name_override','artist2_last_name_override')}
+          <input type="text" name="artist2_last_name_override" value="${val('artist2_last_name_override')}" placeholder="Artist 2 last name"></div>
+        <div class="form-row"><label>A2 Quals</label>
+          ${hint('artist2_quals_override','artist2_quals_override')}
+          <input type="text" name="artist2_quals_override" value="${val('artist2_quals_override')}" placeholder="Artist 2 quals"></div>
+        <div class="form-row"><label>A3 First Name</label>
+          ${hint('artist3_first_name_override','artist3_first_name_override')}
+          <input type="text" name="artist3_first_name_override" value="${val('artist3_first_name_override')}" placeholder="Artist 3 first name"></div>
+        <div class="form-row"><label>A3 Last Name</label>
+          ${hint('artist3_last_name_override','artist3_last_name_override')}
+          <input type="text" name="artist3_last_name_override" value="${val('artist3_last_name_override')}" placeholder="Artist 3 last name"></div>
+        <div class="form-row"><label>A3 Quals</label>
+          ${hint('artist3_quals_override','artist3_quals_override')}
+          <input type="text" name="artist3_quals_override" value="${val('artist3_quals_override')}" placeholder="Artist 3 quals"></div>
+        <div class="form-row"><label>RA Styling</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" name="artist1_ra_styled_override" ${o.artist1_ra_styled_override === true ? 'checked' : ''}
+              ${o.artist1_ra_styled_override === null || o.artist1_ra_styled_override === undefined ? 'data-indeterminate="1"' : ''}>
+            A1
+          </label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" name="artist2_ra_styled_override" ${o.artist2_ra_styled_override === true ? 'checked' : ''}
+              ${o.artist2_ra_styled_override === null || o.artist2_ra_styled_override === undefined ? 'data-indeterminate="1"' : ''}>
+            A2
+          </label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" name="artist3_ra_styled_override" ${o.artist3_ra_styled_override === true ? 'checked' : ''}
+              ${o.artist3_ra_styled_override === null || o.artist3_ra_styled_override === undefined ? 'data-indeterminate="1"' : ''}>
+            A3
+          </label>
+        </div>
         <div class="form-row"><label>Company</label>
           <label class="inline-check" style="text-transform:none;font-weight:normal">
             <input type="checkbox" name="is_company_override" ${companyChecked}
@@ -3709,7 +3758,9 @@ async function saveIndexOverride(importId, artistId) {
   statusEl.className = 'status-msg';
 
   const textFields = ['first_name_override', 'last_name_override', 'title_override',
-    'quals_override', 'second_artist_override'];
+    'quals_override', 'artist2_first_name_override', 'artist2_last_name_override',
+    'artist2_quals_override', 'artist3_first_name_override', 'artist3_last_name_override',
+    'artist3_quals_override'];
 
   const body = {};
   for (const f of textFields) {
@@ -3729,6 +3780,19 @@ async function saveIndexOverride(importId, artistId) {
     }
     // Once user interacts, it's no longer indeterminate
     delete companyCb.dataset.indeterminate;
+  }
+
+  // RA styled checkboxes: same indeterminate logic
+  for (const raField of ['artist1_ra_styled_override', 'artist2_ra_styled_override', 'artist3_ra_styled_override']) {
+    const cb = formEl.querySelector(`[name="${raField}"]`);
+    if (cb) {
+      if (cb.dataset.indeterminate === '1' && !cb.checked) {
+        body[raField] = null;
+      } else {
+        body[raField] = cb.checked;
+      }
+      delete cb.dataset.indeterminate;
+    }
   }
 
   try {

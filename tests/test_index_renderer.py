@@ -11,7 +11,6 @@ from backend.app.services.index_renderer import (
     _render_courtesy,
     _render_cat_nos,
     _cstyle,
-    _split_second_artist_quals,
     _letter_key,
     _section_sep,
 )
@@ -33,8 +32,19 @@ def _entry(
     courtesy=None,
     cat_nos=None,
     sort_key="",
-    second_artist=None,
+    artist2_first_name=None,
+    artist2_last_name=None,
+    artist2_quals=None,
+    artist3_first_name=None,
+    artist3_last_name=None,
+    artist3_quals=None,
+    artist1_ra_styled=None,
+    artist2_ra_styled=False,
+    artist3_ra_styled=False,
 ):
+    # Default artist1_ra_styled to is_ra for backwards-compat in tests
+    if artist1_ra_styled is None:
+        artist1_ra_styled = is_ra
     return ArtistExportEntry(
         title=title,
         first_name=first_name,
@@ -46,7 +56,15 @@ def _entry(
         sort_key=sort_key,
         courtesy=courtesy,
         cat_nos=cat_nos or [],
-        second_artist=second_artist,
+        artist2_first_name=artist2_first_name,
+        artist2_last_name=artist2_last_name,
+        artist2_quals=artist2_quals,
+        artist3_first_name=artist3_first_name,
+        artist3_last_name=artist3_last_name,
+        artist3_quals=artist3_quals,
+        artist1_ra_styled=artist1_ra_styled,
+        artist2_ra_styled=artist2_ra_styled,
+        artist3_ra_styled=artist3_ra_styled,
     )
 
 
@@ -397,61 +415,21 @@ class TestFullRender:
 
 
 # ---------------------------------------------------------------------------
-# _split_second_artist_quals
+# Full render — additional artists with RA styling
 # ---------------------------------------------------------------------------
 
 
-class TestSplitSecondArtistQuals:
-    def test_no_quals(self):
-        name, quals = _split_second_artist_quals("and Peter St John")
-        assert name == "and Peter St John"
-        assert quals is None
-
-    def test_trailing_ra(self):
-        name, quals = _split_second_artist_quals("and Peter St John ra")
-        assert name == "and Peter St John"
-        assert quals == "ra"
-
-    def test_trailing_pra(self):
-        name, quals = _split_second_artist_quals("and Jane Doe PRA")
-        assert name == "and Jane Doe"
-        assert quals == "PRA"
-
-    def test_trailing_hon_ra(self):
-        name, quals = _split_second_artist_quals("and Foo Bar HON RA")
-        assert name == "and Foo Bar"
-        assert quals == "HON RA"
-
-    def test_trailing_ra_elect(self):
-        name, quals = _split_second_artist_quals("and Someone RA Elect")
-        assert name == "and Someone"
-        assert quals == "RA Elect"
-
-    def test_non_ra_quals_not_stripped(self):
-        """Non-RA tokens like CBE should remain with the name."""
-        name, quals = _split_second_artist_quals("and Peter cbe")
-        assert name == "and Peter cbe"
-        assert quals is None
-
-    def test_empty_string(self):
-        name, quals = _split_second_artist_quals("")
-        assert name == ""
-        assert quals is None
-
-
-# ---------------------------------------------------------------------------
-# Full render — second_artist with RA tokens
-# ---------------------------------------------------------------------------
-
-
-class TestSecondArtistRaStyling:
-    def test_second_artist_ra_styling(self):
-        """Second artist RA tokens should be styled with RA Caps."""
+class TestAdditionalArtistRaStyling:
+    def test_artist2_ra_styling(self):
+        """Artist 2 RA quals should be styled with RA Caps."""
         entries = [
             _entry(
                 last_name="Sauerbruch",
                 first_name="Matthias",
-                second_artist="and Peter St John ra",
+                artist2_first_name="Peter",
+                artist2_last_name="St John",
+                artist2_quals="ra",
+                artist2_ra_styled=True,
                 cat_nos=[42],
             )
         ]
@@ -460,19 +438,21 @@ class TestSecondArtistRaStyling:
         expected = (
             "<pstyle:Index Text>"
             "Sauerbruch, Matthias, "
-            "and Peter St John "
+            "and Peter "
+            "<cstyle:RA Member Cap Surname>St John<cstyle:> "
             "<cstyle:RA Caps>ra, <cstyle:>"
             "<cstyle:Index works numbers>42<cstyle:>"
         )
         assert line == expected
 
-    def test_second_artist_no_ra_tokens(self):
-        """Second artist without RA tokens should render plain."""
+    def test_artist2_no_ra_styling(self):
+        """Artist 2 without RA styling should render plain."""
         entries = [
             _entry(
                 last_name="Sauerbruch",
                 first_name="Matthias",
-                second_artist="and Peter St John",
+                artist2_first_name="Peter",
+                artist2_last_name="St John",
                 cat_nos=[42],
             )
         ]

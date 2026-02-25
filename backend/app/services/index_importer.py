@@ -123,13 +123,14 @@ def parse_multi_artist(
     artist's full name (possibly with embedded quals) into first_name.
 
     Returns None if the pattern is not detected, or a dict with keys:
-        first_name, last_name, quals, second_artist
-    representing the parsed primary artist + second artist suffix.
+        first_name, last_name, quals,
+        artist2_first_name, artist2_last_name, artist2_quals
+    representing the parsed primary artist + structured second artist.
     """
     if not last_name or not _SECOND_ARTIST_PREFIX.match(str(last_name).strip()):
         return None
 
-    second_artist = str(last_name).strip()
+    second_artist_raw = str(last_name).strip()
     raw_primary = str(first_name).strip() if first_name else ""
 
     if not raw_primary:
@@ -174,11 +175,38 @@ def parse_multi_artist(
         all_quals_parts.append(str(quals).strip())
     merged_quals = " ".join(all_quals_parts) if all_quals_parts else quals
 
+    # Parse the second artist: strip "and "/"& " prefix, then extract quals
+    a2_raw = _SECOND_ARTIST_PREFIX.sub("", second_artist_raw).strip()
+    a2_words = a2_raw.split()
+    a2_extracted_quals: list[str] = []
+    a2_remaining = a2_raw
+    while True:
+        m2 = _QUAL_IN_NAME_PATTERN.search(a2_remaining)
+        if not m2:
+            break
+        after = a2_remaining[m2.end() :].strip()
+        if _QUAL_IN_NAME_PATTERN.sub("", after).strip() == "":
+            a2_extracted_quals.append(a2_remaining[m2.start() :].strip())
+            a2_remaining = a2_remaining[: m2.start()].strip()
+            break
+        else:
+            a2_extracted_quals.insert(0, m2.group(0))
+            a2_remaining = (
+                a2_remaining[: m2.start()] + a2_remaining[m2.end() :]
+            ).strip()
+
+    a2_name_words = a2_remaining.split()
+    a2_last = a2_name_words[-1] if a2_name_words else None
+    a2_first = " ".join(a2_name_words[:-1]) if len(a2_name_words) > 1 else None
+    a2_quals = " ".join(a2_extracted_quals) if a2_extracted_quals else None
+
     return {
         "first_name": parsed_first,
         "last_name": parsed_last,
         "quals": merged_quals,
-        "second_artist": second_artist,
+        "artist2_first_name": a2_first,
+        "artist2_last_name": a2_last,
+        "artist2_quals": a2_quals,
     }
 
 
@@ -600,7 +628,12 @@ def _create_artist_entry(
     quals = row["quals"]
     title = row["title"]
     company_name = row["company"]
-    second_artist = None
+    artist2_first_name = None
+    artist2_last_name = None
+    artist2_quals = None
+    artist3_first_name = None
+    artist3_last_name = None
+    artist3_quals = None
 
     # Multi-artist parsing: detect "and X" / "& X" in last_name
     multi = parse_multi_artist(first_name, last_name, quals)
@@ -608,9 +641,22 @@ def _create_artist_entry(
         first_name = multi["first_name"]
         last_name = multi["last_name"]
         quals = multi["quals"]
-        second_artist = multi["second_artist"]
+        artist2_first_name = multi["artist2_first_name"]
+        artist2_last_name = multi["artist2_last_name"]
+        artist2_quals = multi["artist2_quals"]
 
     ra_member = is_ra_member(quals)
+
+    # Default RA styling: artist1 gets RA styling when is_ra_member and no
+    # second artist.  When a second artist is present the assignment is
+    # ambiguous — default to artist1 but emit a warning.
+    has_artist2 = bool(artist2_first_name or artist2_last_name)
+    artist1_ra_styled = ra_member
+    artist2_ra_styled = False
+    artist3_ra_styled = False
+    # Check if artist2 also has RA-type quals
+    if artist2_quals and is_ra_member(artist2_quals):
+        artist2_ra_styled = True
 
     is_company_flag = detect_company(first_name, last_name, quals)
 
@@ -634,7 +680,15 @@ def _create_artist_entry(
         last_name=last_name,
         quals=quals,
         company=company_name,
-        second_artist=second_artist,
+        artist2_first_name=artist2_first_name,
+        artist2_last_name=artist2_last_name,
+        artist2_quals=artist2_quals,
+        artist3_first_name=artist3_first_name,
+        artist3_last_name=artist3_last_name,
+        artist3_quals=artist3_quals,
+        artist1_ra_styled=artist1_ra_styled,
+        artist2_ra_styled=artist2_ra_styled,
+        artist3_ra_styled=artist3_ra_styled,
         is_ra_member=ra_member,
         is_company=is_company_flag,
         sort_key=sort,
@@ -685,8 +739,24 @@ def _create_artist_entry(
             )
         )
 
-    # Quals-in-name detection
+    # RA styling ambiguity warning: when artist2 is present and artist1
+    # has RA membership, the assignment may be wrong.
+    if has_artist2 and ra_member and not artist2_ra_styled:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="ra_styling_ambiguous",
+                message=f"Row {row['row_number']}: RA styling defaulted to artist 1 — verify correct assignment",
+            )
+        )
+
+    # Quals-in-name detection (check all artist name fields)
     embedded_qual = detect_quals_in_name(first_name, last_name)
+    if not embedded_qual:
+        embedded_qual = detect_quals_in_name(artist2_first_name, artist2_last_name)
+    if not embedded_qual:
+        embedded_qual = detect_quals_in_name(artist3_first_name, artist3_last_name)
     if embedded_qual:
         db.add(
             ValidationWarning(
@@ -704,7 +774,12 @@ def _create_artist_entry(
         "quals": quals,
         "title": title,
         "company": company_name,
-        "second_artist": second_artist,
+        "artist2_first_name": artist2_first_name,
+        "artist2_last_name": artist2_last_name,
+        "artist2_quals": artist2_quals,
+        "artist3_first_name": artist3_first_name,
+        "artist3_last_name": artist3_last_name,
+        "artist3_quals": artist3_quals,
     }
     non_ascii_hits = []
     for field_name, value in _non_ascii_fields.items():
@@ -741,7 +816,15 @@ _INDEX_OVERRIDE_FIELDS = [
     "last_name_override",
     "title_override",
     "quals_override",
-    "second_artist_override",
+    "artist2_first_name_override",
+    "artist2_last_name_override",
+    "artist2_quals_override",
+    "artist3_first_name_override",
+    "artist3_last_name_override",
+    "artist3_quals_override",
+    "artist1_ra_styled_override",
+    "artist2_ra_styled_override",
+    "artist3_ra_styled_override",
 ]
 
 

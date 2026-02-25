@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (577 tests across 24 test files) |
+| Testing    | pytest (617 tests across 26 test files) |
 
 ---
 
@@ -692,21 +692,45 @@ via the `catalogue-cognito-admin` inline policy.
 
 ## 11. AWS infrastructure
 
-### Production environment
+### Environment isolation
 
-| Component       | Service                  | Details                                               |
-| --------------- | ------------------------ | ----------------------------------------------------- |
-| Compute         | ECS Fargate              | Cluster: `catalogue`, services: prod + staging        |
-| Container image | ECR                      | Repository: `catalogue-app`                           |
-| Database        | RDS PostgreSQL 16        | Private subnet, encrypted                             |
-| File storage    | Amazon S3                | Upload bucket, local fallback for dev                 |
-| Load balancer   | ALB                      | HTTPS termination, host-based routing                 |
-| DNS             | External (Namecheap)     | `catalogue.hoy.la` (prod), `staging-catalogue.hoy.la` |
-| TLS             | ACM                      | Certificates for both domains                         |
-| Auth            | Cognito User Pool        | Pool: `eu-north-1_ThfApt8C5`                          |
-| Secrets         | Secrets Manager          | `DATABASE_URL`, API keys                              |
-| Monitoring      | CloudWatch               | Container logs, metrics                               |
-| Region          | `eu-north-1` (Stockholm) |                                                       |
+Staging and production are **fully isolated** — separate databases, S3 buckets,
+API keys, and Secrets Manager paths. Only Cognito (user authentication) is
+shared, so the same user accounts work in both environments.
+
+| Resource          | Staging                             | Production                       |
+| ----------------- | ----------------------------------- | -------------------------------- |
+| ECS Service       | `catalogue-staging`                 | `catalogue-prod`                 |
+| Task Definition   | `catalogue-staging`                 | `catalogue-prod`                 |
+| RDS Instance      | `catalogue-staging`                 | `catalogue-prod`                 |
+| S3 Bucket         | `ra-catalogue-staging-028597908565` | `ra-catalogue-prod-028597908565` |
+| Secrets prefix    | `catalogue-staging/*`               | `catalogue-prod/*`               |
+| Target Group      | `catalogue-staging-tg`              | `catalogue-prod-tg`              |
+| DNS               | `staging-catalogue.hoy.la`          | `catalogue.hoy.la`               |
+| Log stream prefix | `staging`                           | `prod`                           |
+
+### Shared resources
+
+| Component       | Service                  | Details                                         |
+| --------------- | ------------------------ | ----------------------------------------------- |
+| Compute         | ECS Fargate              | Cluster: `catalogue`                            |
+| Container image | ECR                      | Repository: `catalogue-app`                     |
+| Load balancer   | ALB                      | HTTPS termination, host-based routing           |
+| TLS             | ACM                      | Certificates for both domains                   |
+| Auth            | Cognito User Pool        | Pool: `eu-north-1_ThfApt8C5` (shared by design) |
+| Monitoring      | CloudWatch               | Container logs (`/ecs/catalogue`)               |
+| Region          | `eu-north-1` (Stockholm) |                                                 |
+
+### Secrets Manager
+
+Each environment has three secrets under its own prefix:
+
+- `catalogue-{env}/DATABASE_URL` — PostgreSQL connection string
+- `catalogue-{env}/API_KEY` — legacy API key for non-Cognito access
+- `catalogue-{env}/S3_BUCKET` — S3 bucket name for file uploads
+
+ECS task definitions reference secrets by ARN, so each service reads only
+its own environment's values.
 
 ### IAM roles
 
@@ -747,8 +771,11 @@ Merging to `main` via PR triggers production deployment.
 1. **test** — Python 3.12 + `pytest` on Ubuntu
 2. **docker** — Build image + docker-compose smoke test (health check)
 3. **push-ecr** — Authenticate via OIDC, build and push to ECR (pushes only)
-4. **deploy-staging** — Render ECS task definition, deploy to staging service
-5. **deploy-prod** — Render ECS task definition, deploy to prod service
+4. **deploy-staging** — Render `.aws/task-definition-staging.json`, deploy to `catalogue-staging` service
+5. **deploy-prod** — Render `.aws/task-definition-prod.json`, deploy to `catalogue-prod` service
+
+Each task definition pins its environment's Secrets Manager paths, so staging
+and production are fully isolated at the infrastructure level.
 
 ---
 
