@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (577 tests across 24 test files) |
+| Testing    | pytest (617 tests across 26 test files) |
 
 ---
 

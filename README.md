@@ -152,13 +152,15 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (577 tests across 24 test files)
+tests/            # pytest suite (617 tests across 26 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/
-  task-definition.json  # ECS task definition
+  task-definition-staging.json  # ECS task definition (staging)
+  task-definition-prod.json     # ECS task definition (production)
 docs/
   architecture_v1.md
+  dev-guide.md      # Developer guide (local setup, migrations, environments)
   export_spec_v1.md
   roadmap.md
 ```
