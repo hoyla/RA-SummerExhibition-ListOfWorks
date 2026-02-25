@@ -2,6 +2,7 @@
 Artists' Index routes: upload, list, artists, export, delete, exclude toggle.
 """
 
+import logging
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -50,6 +51,8 @@ from backend.app.services.export_diff_service import (
     compute_index_diff,
 )
 
+logger = logging.getLogger("catalogue")
+
 router = APIRouter(prefix="/index", tags=["index"])
 
 
@@ -87,6 +90,13 @@ def upload_index_excel(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        )
+    except Exception as exc:
+        logger.exception("Index import failed with unhandled error")
+        storage.delete(disk_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Import error: {exc}",
         )
 
     import_record.disk_filename = disk_name
