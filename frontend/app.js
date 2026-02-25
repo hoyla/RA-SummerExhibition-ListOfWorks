@@ -1510,13 +1510,14 @@ async function renderTemplates() {
       : '';
     const editBtn = `<a class="btn btn-sm" href="#/templates/${esc(t.id)}/edit">${(t.is_builtin || !canEdit()) ? 'View' : 'Edit'}</a>`;
     const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}',this)">Duplicate</button>`);
+    const expBtn  = ifAdmin(`<button class="btn btn-sm" onclick="exportTemplate('${esc(t.id)}','low',this)" title="Download as seed-format JSON">Export JSON</button>`);
     const delBtn  = t.is_builtin
       ? ''
       : ifAdmin(`<button class="btn btn-sm btn-danger" onclick="deleteTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`);
     return `<tr class="template-row">
       <td>${esc(t.name)} ${builtinBadge}</td>
       <td>${esc(created)}</td>
-      <td class="table-actions">${editBtn} ${dupBtn} ${delBtn}</td>
+      <td class="table-actions">${editBtn} ${dupBtn} ${expBtn} ${delBtn}</td>
     </tr>`;
   }).join('');
 
@@ -1528,13 +1529,14 @@ async function renderTemplates() {
       : '';
     const editBtn = `<a class="btn btn-sm" href="#/index-templates/${esc(t.id)}/edit">${(t.is_builtin || !canEdit()) ? 'View' : 'Edit'}</a>`;
     const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateIndexTemplate('${esc(t.id)}',this)">Duplicate</button>`);
+    const expBtn  = ifAdmin(`<button class="btn btn-sm" onclick="exportTemplate('${esc(t.id)}','index',this)" title="Download as seed-format JSON">Export JSON</button>`);
     const delBtn  = t.is_builtin
       ? ''
       : ifAdmin(`<button class="btn btn-sm btn-danger" onclick="deleteIndexTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`);
     return `<tr class="template-row">
       <td>${esc(t.name)} ${builtinBadge}</td>
       <td>${esc(created)}</td>
-      <td class="table-actions">${editBtn} ${dupBtn} ${delBtn}</td>
+      <td class="table-actions">${editBtn} ${dupBtn} ${expBtn} ${delBtn}</td>
     </tr>`;
   }).join('');
 
@@ -1618,6 +1620,40 @@ async function deleteIndexTemplate(id, name, btnEl) {
     renderTemplates();
   } catch (e) {
     showToast(`Could not delete: ${e.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Export template as seed-format JSON (shared by LoW + Index)
+// ---------------------------------------------------------------------------
+
+async function exportTemplate(id, kind, btnEl) {
+  const restore = btnLoading(btnEl, 'Exporting');
+  try {
+    await _ensureFreshToken();
+    const prefix = kind === 'index' ? '/index' : '';
+    const resp = await fetch(`${prefix}/templates/${id}/export`, {
+      headers: _apiHeaders(),
+    });
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    // Extract filename from Content-Disposition header, fall back to template.json
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="?([^"]+)"?/);
+    const filename = m ? m[1] : 'template.json';
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded ${filename}`, 'success', 3000);
+  } catch (e) {
+    showToast(`Export failed: ${e.message}`, 'error');
   } finally {
     restore();
   }

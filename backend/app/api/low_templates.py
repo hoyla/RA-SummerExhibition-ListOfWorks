@@ -3,9 +3,11 @@ Export template CRUD routes.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 import hashlib
 import json
+import re
 from typing import List
 from uuid import UUID
 
@@ -36,6 +38,41 @@ def list_templates(db: Session = Depends(get_db)):
         )
         for r in rows
     ]
+
+
+@router.get(
+    "/templates/{template_id}/export",
+    dependencies=[Depends(require_role("admin"))],
+)
+def export_template(template_id: UUID, db: Session = Depends(get_db)):
+    """Download a single LoW template as seed-format JSON.
+
+    Reconstructs the ``_name`` metadata field so the file can be
+    dropped straight into ``seed_templates/``.
+    """
+    r = (
+        db.query(Ruleset)
+        .filter(
+            Ruleset.id == template_id,
+            Ruleset.archived == False,
+            Ruleset.config_type == "template",
+        )
+        .first()
+    )
+    if not r:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+    seed = {"_name": r.name, **r.config}
+    body = json.dumps(seed, indent=2, ensure_ascii=False) + "\n"
+    slug = r.slug or re.sub(r"[^a-z0-9]+", "-", r.name.lower()).strip("-")
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{slug}.json"',
+        },
+    )
 
 
 @router.get("/templates/{template_id}")
