@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from backend.app.api.auth import require_role
@@ -54,8 +55,74 @@ def _to_out(ka: KnownArtist) -> KnownArtistOut:
 @router.get("", response_model=List[KnownArtistOut])
 def list_known_artists(db: Session = Depends(get_db)):
     """Return all known artist lookup entries."""
-    rows = db.query(KnownArtist).order_by(KnownArtist.match_last_name).all()
+    rows = (
+        db.query(KnownArtist)
+        .order_by(KnownArtist.match_last_name, KnownArtist.match_first_name)
+        .all()
+    )
     return [_to_out(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Export as seed-format JSON
+# ---------------------------------------------------------------------------
+
+_SEED_FIELDS = [
+    "match_first_name",
+    "match_last_name",
+    "match_quals",
+    "resolved_first_name",
+    "resolved_last_name",
+    "resolved_quals",
+    "resolved_is_company",
+    "resolved_artist2_first_name",
+    "resolved_artist2_last_name",
+    "resolved_artist2_quals",
+    "resolved_artist3_first_name",
+    "resolved_artist3_last_name",
+    "resolved_artist3_quals",
+    "resolved_artist1_ra_styled",
+    "resolved_artist2_ra_styled",
+    "resolved_artist3_ra_styled",
+    "notes",
+]
+
+
+@router.get(
+    "/export",
+    dependencies=[Depends(require_role("admin"))],
+)
+def export_known_artists(db: Session = Depends(get_db)):
+    """Export all known artists as a seed-format JSON file.
+
+    Returns a downloadable JSON array that can be saved as
+    ``seed_templates/known-artists.json`` for future deployments.
+    Only includes fields that have a non-null value, matching the
+    compact style used in the existing seed file.
+    Entries are sorted alphabetically by last name then first name.
+    """
+    rows = (
+        db.query(KnownArtist)
+        .order_by(KnownArtist.match_last_name, KnownArtist.match_first_name)
+        .all()
+    )
+    entries = []
+    for ka in rows:
+        entry = {}
+        for field in _SEED_FIELDS:
+            val = getattr(ka, field)
+            if val is not None:
+                entry[field] = val
+        entries.append(entry)
+
+    body = json.dumps(entries, indent=2, ensure_ascii=False) + "\n"
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": 'attachment; filename="known-artists.json"',
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

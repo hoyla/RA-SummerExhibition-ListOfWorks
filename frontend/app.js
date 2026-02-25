@@ -862,6 +862,7 @@ async function renderSettings() {
         <div>
           ${ifEditor('<button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>')}
           ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:6px" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
+          ${ifAdmin(`<button class="btn btn-sm" onclick="exportKnownArtists()" style="margin-left:6px" title="Download all known artists as a seed-format JSON file">Export JSON</button>`)}
         </div>
       </div>
       <p class="form-hint" style="margin:0 0 16px">Map recurring raw spreadsheet values to corrected output. Matched during import.</p>
@@ -1443,6 +1444,29 @@ async function seedKnownArtists() {
     const list = document.getElementById('known-artists-list');
     list.innerHTML = knownArtists.map(ka => _knownArtistCard(ka)).join('');
     _refreshAllKaPreviews();
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+  }
+}
+
+async function exportKnownArtists() {
+  const statusEl = document.getElementById('known-artists-status');
+  try {
+    await _ensureFreshToken();
+    const resp = await fetch('/known-artists/export', {
+      headers: _apiHeaders(),
+    });
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'known-artists.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (statusEl) { statusEl.textContent = '\u2713 JSON downloaded'; statusEl.className = 'status-msg success'; }
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }
