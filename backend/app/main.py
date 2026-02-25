@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Depends
+from fastapi.exceptions import ResponseValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -261,6 +262,26 @@ app = FastAPI(
         {"name": "ops", "description": "Health check and system info"},
     ],
 )
+
+
+# ---------------------------------------------------------------------------
+# Catch response-serialisation errors that FastAPI/Pydantic would
+# otherwise silently turn into bare 500s (with no log entry).
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(ResponseValidationError)
+async def _response_validation_error(request: Request, exc: ResponseValidationError):
+    logger.error(
+        "ResponseValidationError on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error (response validation)"},
+    )
 
 
 # ---------------------------------------------------------------------------

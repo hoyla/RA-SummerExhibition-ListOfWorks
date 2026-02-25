@@ -228,3 +228,54 @@ class TestVersionEndpoint:
             with TestClient(app) as c:
                 data = c.get("/version").json()
                 assert data["commit"] == "abc123def"
+
+
+# ---------------------------------------------------------------------------
+# ResponseValidationError handler
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel
+from fastapi.exceptions import ResponseValidationError
+
+
+class TestResponseValidationErrorHandler:
+    """Verify that Pydantic response-serialisation errors are logged and
+    returned as 500 with a meaningful body (instead of a bare 500 with
+    no log entry)."""
+
+    @pytest.fixture()
+    def bad_app(self):
+        app = FastAPI()
+
+        class StrictOut(BaseModel):
+            name: str
+            count: int
+
+        @app.exception_handler(ResponseValidationError)
+        async def _handler(request, exc):
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal Server Error (response validation)"},
+            )
+
+        @app.get("/good", response_model=StrictOut)
+        def good():
+            return {"name": "ok", "count": 1}
+
+        @app.get("/bad", response_model=StrictOut)
+        def bad():
+            # Return wrong types — Pydantic will fail to validate
+            return {"name": 123, "count": "not-an-int"}
+
+        with TestClient(app, raise_server_exceptions=False) as c:
+            yield c
+
+    def test_good_endpoint_still_works(self, bad_app):
+        r = bad_app.get("/good")
+        assert r.status_code == 200
+        assert r.json() == {"name": "ok", "count": 1}
+
+    def test_bad_endpoint_returns_500_with_detail(self, bad_app):
+        r = bad_app.get("/bad")
+        assert r.status_code == 500
+        assert "response validation" in r.json()["detail"]
