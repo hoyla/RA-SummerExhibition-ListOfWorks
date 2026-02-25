@@ -78,26 +78,26 @@ def upload_index_excel(
     disk_name = _make_key(original_name)
     storage.save(disk_name, file.file)
 
-    file_path = storage.full_path(disk_name)
-    try:
-        import_record = import_index_excel(
-            file_path,
-            db,
-            display_name=original_name,
-        )
-    except IndexImportError as exc:
-        storage.delete(disk_name)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        )
-    except Exception as exc:
-        logger.exception("Index import failed with unhandled error")
-        storage.delete(disk_name)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Import error: {exc}",
-        )
+    with storage.open_path(disk_name) as file_path:
+        try:
+            import_record = import_index_excel(
+                file_path,
+                db,
+                display_name=original_name,
+            )
+        except IndexImportError as exc:
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
+        except Exception as exc:
+            logger.exception("Index import failed with unhandled error")
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Import error: {exc}",
+            )
 
     import_record.disk_filename = disk_name
     db.commit()
@@ -383,17 +383,19 @@ def reimport_index_upload(
     disk_name = _make_key(original_name)
     storage.save(disk_name, file.file)
 
-    file_path = storage.full_path(disk_name)
-    try:
-        _record, stats = reimport_index_excel(
-            import_id,
-            file_path,
-            db,
-            display_name=original_name,
-        )
-    except IndexImportError as exc:
-        storage.delete(disk_name)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    with storage.open_path(disk_name) as file_path:
+        try:
+            _record, stats = reimport_index_excel(
+                import_id,
+                file_path,
+                db,
+                display_name=original_name,
+            )
+        except IndexImportError as exc:
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            )
 
     # Remove the previous upload file if it exists
     storage.delete(import_record.disk_filename or "")

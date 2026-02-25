@@ -110,6 +110,22 @@ class TestLocalStorageFullPath:
         assert fp.endswith("test.xlsx")
 
 
+class TestLocalStorageOpenPath:
+    def test_open_path_yields_valid_file(self, local_store):
+        local_store.save("test.xlsx", b"data")
+        with local_store.open_path("test.xlsx") as fp:
+            assert os.path.isfile(fp)
+            assert fp.endswith("test.xlsx")
+        # File still exists after context exit (LocalStorage doesn't clean up)
+        assert os.path.isfile(fp)
+
+    def test_open_path_content_readable(self, local_store):
+        local_store.save("test.xlsx", b"hello world")
+        with local_store.open_path("test.xlsx") as fp:
+            with open(fp, "rb") as f:
+                assert f.read() == b"hello world"
+
+
 class TestLocalStoragePathTraversal:
     def test_traversal_is_stripped(self, local_store):
         """Keys with path components should be sanitised to basename only."""
