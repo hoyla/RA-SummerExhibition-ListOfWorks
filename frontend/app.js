@@ -2482,7 +2482,7 @@ function _buildWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click to show' : 'Click to hide'}">${esc(type)}: ${n}</button>`;
+      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -2517,12 +2517,23 @@ function _buildWarningsPanel() {
 
   // Attach badge click handlers after innerHTML
   panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
       const type = btn.dataset.type;
-      if (_hiddenWarningTypes.has(type)) {
-        _hiddenWarningTypes.delete(type);
+      const allTypes = Object.keys(counts);
+      if (e.altKey) {
+        // Solo / unsolo: Alt+click shows only this type
+        const visibleTypes = allTypes.filter(t => !_hiddenWarningTypes.has(t));
+        if (visibleTypes.length === 1 && visibleTypes[0] === type) {
+          _hiddenWarningTypes = new Set();  // unsolo — restore all
+        } else {
+          _hiddenWarningTypes = new Set(allTypes.filter(t => t !== type));
+        }
       } else {
-        _hiddenWarningTypes.add(type);
+        if (_hiddenWarningTypes.has(type)) {
+          _hiddenWarningTypes.delete(type);
+        } else {
+          _hiddenWarningTypes.add(type);
+        }
       }
       _buildWarningsPanel();
     });
@@ -3460,7 +3471,7 @@ function _buildIndexWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenIndexWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click to show' : 'Click to hide'}">${esc(type)}: ${n}</button>`;
+      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -3494,12 +3505,23 @@ function _buildIndexWarningsPanel() {
 
   // Attach badge click handlers
   panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
       const type = btn.dataset.type;
-      if (_hiddenIndexWarningTypes.has(type)) {
-        _hiddenIndexWarningTypes.delete(type);
+      const allTypes = Object.keys(counts);
+      if (e.altKey) {
+        // Solo / unsolo: Alt+click shows only this type
+        const visibleTypes = allTypes.filter(t => !_hiddenIndexWarningTypes.has(t));
+        if (visibleTypes.length === 1 && visibleTypes[0] === type) {
+          _hiddenIndexWarningTypes = new Set();  // unsolo — restore all
+        } else {
+          _hiddenIndexWarningTypes = new Set(allTypes.filter(t => t !== type));
+        }
       } else {
-        _hiddenIndexWarningTypes.add(type);
+        if (_hiddenIndexWarningTypes.has(type)) {
+          _hiddenIndexWarningTypes.delete(type);
+        } else {
+          _hiddenIndexWarningTypes.add(type);
+        }
       }
       _buildIndexWarningsPanel();
     });
