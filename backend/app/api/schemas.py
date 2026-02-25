@@ -293,6 +293,26 @@ class IndexCatNumberOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AutoResolvedFields(BaseModel):
+    """Auto-resolved values (normalisation + known artist, before user override)."""
+
+    title: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    quals: str | None = None
+    company: str | None = None
+    is_company: bool = False
+    artist2_first_name: str | None = None
+    artist2_last_name: str | None = None
+    artist2_quals: str | None = None
+    artist3_first_name: str | None = None
+    artist3_last_name: str | None = None
+    artist3_quals: str | None = None
+    artist1_ra_styled: bool = False
+    artist2_ra_styled: bool = False
+    artist3_ra_styled: bool = False
+
+
 class IndexArtistOut(BaseModel):
     id: str
     row_number: int | None = None
@@ -322,6 +342,8 @@ class IndexArtistOut(BaseModel):
     is_company_auto: bool = False
     has_known_artist: bool = False
     has_override: bool = False
+    override: "IndexArtistOverrideOut | None" = None
+    auto_resolved: AutoResolvedFields | None = None
     sort_key: str
     include_in_export: bool
     cat_numbers: List[IndexCatNumberOut]

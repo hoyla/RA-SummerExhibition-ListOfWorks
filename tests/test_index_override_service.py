@@ -33,6 +33,7 @@ class _FakeArtist:
         self.raw_first_name = kwargs.get("raw_first_name")
         self.raw_last_name = kwargs.get("raw_last_name")
         self.raw_quals = kwargs.get("raw_quals")
+        self.raw_company = kwargs.get("raw_company")
         self.is_ra_member = kwargs.get("is_ra_member", False)
         self.is_company = kwargs.get("is_company", False)
         self.sort_key = kwargs.get("sort_key", "")
@@ -313,6 +314,47 @@ class TestResolveWithKnownArtist:
         )
         eff = resolve_index_artist(artist, None, known)
         assert eff.company == "Boyd & Evans"
+
+    def test_known_artist_company_updates_stale_auto_company(self):
+        """When the importer auto-derived company from a partial last_name,
+        a known artist that changes last_name must also update company.
+
+        Regression: Boyd & Evans had company='Boyd' (from import-time auto-
+        detection on the partial last_name) instead of 'Boyd & Evans' (the
+        known-artist-resolved last_name)."""
+        artist = _FakeArtist(
+            first_name=None,
+            last_name="Boyd",
+            company="Boyd",  # auto-derived during import from partial last_name
+            is_company=True,
+            raw_company=None,  # no explicit company in the spreadsheet
+        )
+        known = _FakeKnownArtist(
+            resolved_first_name="",
+            resolved_last_name="Boyd & Evans",
+            resolved_is_company=True,
+        )
+        eff = resolve_index_artist(artist, None, known)
+        assert eff.last_name == "Boyd & Evans"
+        assert eff.company == "Boyd & Evans"
+        assert eff.first_name is None
+
+    def test_explicit_raw_company_preserved(self):
+        """When the spreadsheet has an explicit company name, it should be
+        preserved even if last_name changes."""
+        artist = _FakeArtist(
+            first_name=None,
+            last_name="Boyd",
+            company="The Boyd Evans Partnership",  # explicit in spreadsheet
+            is_company=True,
+            raw_company="The Boyd Evans Partnership",
+        )
+        known = _FakeKnownArtist(
+            resolved_last_name="Boyd & Evans",
+            resolved_is_company=True,
+        )
+        eff = resolve_index_artist(artist, None, known)
+        assert eff.company == "The Boyd Evans Partnership"
 
     def test_zatorski_company(self):
         """Zatorski + Zatorski: known artist resolves to company."""

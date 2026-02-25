@@ -1187,6 +1187,27 @@ details.section-block[open] > .section-summary::before {
    Artists Index
    --------------------------------------------------------------------------- */
 
+.index-group-legend {
+  font-size: 0.82rem;
+  color: #555;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.index-group-legend-item {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.index-group-swatch {
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  border-radius: 1px;
+}
+
 .index-table {
   width: 100%;
 }
@@ -1361,4 +1382,41 @@ details.section-block[open] > .section-summary::before {
 
 .ka-clear-btn.ka-clear-active:hover {
   background: #a93226;
+}
+
+/* --- Normalisation detail feedback --- */
+
+.norm-highlight {
+  background: #e8f4f0;
+  font-weight: 600;
+}
+
+.norm-ws-only {
+  background: #fef9e7;
+}
+
+.ws-marker {
+  color: #c0392b;
+  font-weight: bold;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.norm-reasons {
+  background: #e8f4f0;
+  border: 1px solid #8fd6b8;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #1a7a5a;
+  margin-bottom: 8px;
+}
+
+/* Value comparison classes for detail table columns */
+.val-unchanged {
+  color: #aaa;
+}
+.val-changed {
+  color: #111;
+  font-weight: 600;
 }

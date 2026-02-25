@@ -3329,6 +3329,7 @@ async function renderIndexDetail(importId) {
     <section class="panel" id="index-warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
     <section class="panel">
       <h3>Artists</h3>
+      <div id="index-group-legend-slot"></div>
       <div class="works-filter-bar">
         <input type="text" id="index-filter" class="works-filter-input" placeholder="Filter by name, quals, or cat number\u2026" autocomplete="off">
         <span id="index-filter-count" class="works-filter-count"></span>
@@ -3557,6 +3558,17 @@ function renderIndexArtists(importId, artists) {
     }
   }
 
+  // Build a map from sort_key → list of artist names for tooltip text
+  const sortKeyNames = {};
+  for (const a of artists) {
+    const sk = a.sort_key || '';
+    if (sortKeyColor[sk]) {
+      if (!sortKeyNames[sk]) sortKeyNames[sk] = [];
+      const name = [a.first_name, a.last_name].filter(Boolean).join(' ') || '(unnamed)';
+      sortKeyNames[sk].push(name);
+    }
+  }
+
   // Group artists by first letter of sort_key
   const letterGroups = [];
   let currentLetter = null;
@@ -3572,6 +3584,19 @@ function renderIndexArtists(importId, artists) {
     currentGroup.artists.push(a);
   }
 
+  // Legend for grouped entries (only if groups exist)
+  const groupCount = Object.keys(sortKeyColor).length;
+  const legendSlot = document.getElementById('index-group-legend-slot');
+  if (legendSlot) {
+    legendSlot.innerHTML = groupCount > 0
+      ? `<div class="index-group-legend">
+          <span class="index-group-legend-item"><span class="index-group-swatch" style="background:#e74c3c"></span><span class="index-group-swatch" style="background:#2980b9"></span></span>
+          Coloured bars link entries that share the same sort position in the index
+          (e.g.&nbsp;multi-artist entries). Different colours distinguish separate groups.
+        </div>`
+      : '';
+  }
+
   const theadHTML = `<thead><tr>
     <th>Index Name</th>
     <th>Last Name</th>
@@ -3585,7 +3610,7 @@ function renderIndexArtists(importId, artists) {
   </tr></thead>`;
 
   container.innerHTML = letterGroups.map(g => {
-    const rows = g.artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''])).join('');
+    const rows = g.artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''], sortKeyNames)).join('');
     return `
     <details class="section-block" open>
       <summary class="section-summary">
@@ -3668,9 +3693,203 @@ function styledIndexName(a) {
   return result;
 }
 
-function indexArtistRowHTML(importId, a, groupColor) {
+// ---------------------------------------------------------------------------
+// Normalisation reason detection — explains what the import engine changed
+// ---------------------------------------------------------------------------
+
+function _normReasons(a) {
+  const reasons = [];
+  const fields = [
+    ['Last Name', a.raw_last_name, a.last_name],
+    ['First Name', a.raw_first_name, a.first_name],
+    ['Quals', a.raw_quals, a.quals],
+  ];
+  const trimmedFields = [];
+  const changedFields = [];
+  for (const [label, raw, norm] of fields) {
+    const r = raw ?? '';
+    const n = norm ?? '';
+    if (r === n) continue;
+    // Whitespace-only difference?
+    if (r.trim() === n.trim()) {
+      trimmedFields.push(label);
+    } else {
+      changedFields.push(label);
+    }
+  }
+  if (trimmedFields.length) {
+    reasons.push('Whitespace trimmed: ' + trimmedFields.join(', '));
+  }
+  if (changedFields.length) {
+    reasons.push('Values changed: ' + changedFields.join(', '));
+  }
+  // Company auto-detected
+  if (a.is_company_auto) {
+    reasons.push('Auto-detected as company (no first name)');
+  }
+  // Multi-artist parsed
+  if (a.artist2_first_name || a.artist2_last_name) {
+    const raw_ln = (a.raw_last_name ?? '').trim().toLowerCase();
+    if (raw_ln.startsWith('and ') || raw_ln.startsWith('& ')) {
+      reasons.push('Multi-artist entry parsed (second artist extracted from Last Name)');
+    }
+  }
+  return reasons;
+}
+
+/**
+ * Render a raw-value cell in the normalisation detail table.
+ * When the only difference from the normalised value is whitespace,
+ * make the trailing/leading spaces visible so the user understands
+ * why the Norm badge appeared.
+ */
+function _normRawCell(raw, norm) {
+  const r = raw ?? '';
+  const n = norm ?? '';
+  if (r === n) return esc(r);
+  // Whitespace-only diff → show the trimmed chars
+  if (r.trim() === n.trim()) {
+    // Highlight leading/trailing whitespace with a visible marker
+    const leading = r.length - r.trimStart().length;
+    const trailing = r.length - r.trimEnd().length;
+    let parts = '';
+    if (leading > 0) parts += '<span class="ws-marker" title="leading whitespace">·</span>'.repeat(leading);
+    parts += esc(r.trim());
+    if (trailing > 0) parts += '<span class="ws-marker" title="trailing whitespace">·</span>'.repeat(trailing);
+    return parts;
+  }
+  return esc(r);
+}
+
+/**
+ * Return a CSS class for the normalised cell: 'norm-highlight' for real
+ * value changes, 'norm-ws-only' for whitespace-only trimming, or ''.
+ */
+function _normCellClass(raw, norm) {
+  const r = raw ?? '';
+  const n = norm ?? '';
+  if (r === n) return '';
+  if (r.trim() === n.trim()) return 'norm-ws-only';
+  return 'norm-highlight';
+}
+
+/**
+ * Return CSS class for value comparison: 'val-changed' if different,
+ * 'val-unchanged' if same (or both empty).
+ */
+function _valClass(prev, curr) {
+  const p = prev ?? '';
+  const c = curr ?? '';
+  return (p === c || (!p && !c)) ? 'val-unchanged' : 'val-changed';
+}
+
+/**
+ * Build the detail comparison table rows for the artist detail panel.
+ * When the artist has an override, shows 3 columns (Raw | Auto-resolved | Effective).
+ * Otherwise shows 2 columns (Raw | Resolved).
+ */
+function _buildDetailTable(a) {
+  const hasOvr = a.has_override && a.auto_resolved;
+  const ar = a.auto_resolved || {};
+  const colSpan = hasOvr ? 4 : 3;
+
+  // Column headers
+  const thead = hasOvr
+    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Auto-resolved</th><th>Effective</th></tr></thead>'
+    : '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Resolved</th></tr></thead>';
+
+  // Helper: one comparison row (2-column or 3-column)
+  function row(label, rawVal, autoVal, effVal) {
+    const raw = rawVal ?? '';
+    const auto = autoVal ?? '';
+    const eff = effVal ?? '';
+    if (hasOvr) {
+      return `<tr>
+        <td>${esc(label)}</td>
+        <td>${_normRawCell(raw, auto)}</td>
+        <td class="${_valClass(raw, auto)}">${esc(auto)}</td>
+        <td class="${_valClass(auto, eff)}">${esc(eff)}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td>${_normRawCell(raw, eff)}</td>
+      <td class="${_valClass(raw, eff)}">${esc(eff)}</td>
+    </tr>`;
+  }
+
+  // Main comparison rows
+  const rows = [
+    row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
+    row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
+    row('Title',      a.raw_title,      hasOvr ? ar.title      : null, a.title),
+    row('Quals',      a.raw_quals,      hasOvr ? ar.quals      : null, a.quals),
+  ];
+
+  // Company row
+  if (hasOvr) {
+    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
+      <td class="${_valClass(a.raw_company, ar.company)}">${esc(ar.company ?? '')}</td>
+      <td class="${_valClass(ar.company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
+  } else {
+    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
+      <td class="${_valClass(a.raw_company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
+  }
+
+  // Address row (always just raw and courtesy note)
+  rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
+    <td colspan="${colSpan - 2}"><em class="muted">courtesy field</em></td></tr>`);
+
+  // RA Styled row
+  const raText = (a1, a2, a3) => {
+    let s = a1 ? 'Yes' : 'No';
+    if (a2) s += ' / A2: Yes';
+    if (a3) s += ' / A3: Yes';
+    return s;
+  };
+  if (hasOvr) {
+    const autoRA = raText(ar.artist1_ra_styled, ar.artist2_ra_styled, ar.artist3_ra_styled);
+    const effRA = raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled);
+    rows.push(`<tr><td>RA Styled</td><td></td>
+      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${autoRA}</td>
+      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${effRA}</td></tr>`);
+  } else {
+    rows.push(`<tr><td>RA Styled</td><td colspan="${colSpan - 1}">${raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled)}</td></tr>`);
+  }
+
+  // Additional artists
+  const fmtArtist = (fn, ln, q) => esc([fn, ln, q].filter(Boolean).join(' '));
+  if (a.artist2_first_name || a.artist2_last_name || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name))) {
+    if (hasOvr) {
+      const autoA2 = [ar.artist2_first_name, ar.artist2_last_name, ar.artist2_quals].filter(Boolean).join(' ');
+      const effA2 = [a.artist2_first_name, a.artist2_last_name, a.artist2_quals].filter(Boolean).join(' ');
+      rows.push(`<tr><td>Artist 2</td><td></td>
+        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(autoA2)}</td>
+        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(effA2)}</td></tr>`);
+    } else {
+      rows.push(`<tr><td>Artist 2</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals)}</td></tr>`);
+    }
+  }
+  if (a.artist3_first_name || a.artist3_last_name || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name))) {
+    if (hasOvr) {
+      const autoA3 = [ar.artist3_first_name, ar.artist3_last_name, ar.artist3_quals].filter(Boolean).join(' ');
+      const effA3 = [a.artist3_first_name, a.artist3_last_name, a.artist3_quals].filter(Boolean).join(' ');
+      rows.push(`<tr><td>Artist 3</td><td></td>
+        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(autoA3)}</td>
+        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(effA3)}</td></tr>`);
+    } else {
+      rows.push(`<tr><td>Artist 3</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals)}</td></tr>`);
+    }
+  }
+
+  return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
+}
+
+function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
   const included = a.include_in_export !== false;
   const groupStyle = groupColor ? `border-left: 4px solid ${groupColor};` : '';
+  const groupTitle = groupColor && sortKeyNames
+    ? `Linked entries (same sort position): ${(sortKeyNames[a.sort_key || ''] || []).join(', ')}` : '';
   const badges = [];
   if (a.is_ra_member) badges.push('<span class="badge badge-ra">RA</span>');
   const isOverridden = a.is_company !== a.is_company_auto;
@@ -3685,11 +3904,10 @@ function indexArtistRowHTML(importId, a, groupColor) {
       : '');
   }
 
-  // Detect normalisation changes
-  const hasNorm = (a.raw_last_name ?? '') !== (a.last_name ?? '')
-    || (a.raw_first_name ?? '') !== (a.first_name ?? '')
-    || (a.raw_quals ?? '') !== (a.quals ?? '');
-  if (hasNorm) badges.push('<span class="badge badge-normalised" title="Values changed by normalisation">Norm</span>');
+  // Detect normalisation changes and build human-readable reasons
+  const normReasons = _normReasons(a);
+  const hasNorm = normReasons.length > 0;
+  if (hasNorm) badges.push(`<span class="badge badge-normalised" title="${esc(normReasons.join('; '))}">Norm</span>`);
   if (a.has_known_artist) badges.push('<span class="badge badge-known" title="Matched a Known Artist rule">Known</span>');
   if (a.has_override) badges.push('<span class="badge badge-override" title="Has a user override">Override</span>');
   if (a.merged_from_rows && a.merged_from_rows.length > 1) {
@@ -3732,7 +3950,7 @@ function indexArtistRowHTML(importId, a, groupColor) {
     ? ` <span class="second-artist">${esc('and ' + additionalArtists.join(' and '))}</span>` : '';
 
   return `
-    <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" onclick="toggleIndexDetail('${esc(a.id)}')">
+    <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" ${groupTitle ? `title="${esc(groupTitle)}"` : ''} onclick="toggleIndexDetail('${esc(a.id)}')">
       <td class="col-index-name">${styledIndexName(a)}</td>
       <td class="col-lastname">${diffCell(a.raw_last_name, a.last_name)}${additionalArtistDisplay}</td>
       <td>${diffCell(a.raw_first_name, a.first_name)}</td>
@@ -3751,19 +3969,8 @@ function indexArtistRowHTML(importId, a, groupColor) {
     <tr id="idx-detail-${esc(a.id)}" class="index-detail-row" style="display:none">
       <td colspan="9">
         <div class="index-detail">
-          <table class="detail-table">
-            <thead><tr><th>Field</th><th>Spreadsheet (raw)</th><th>Normalised</th></tr></thead>
-            <tbody>
-              <tr><td>Last Name</td><td>${esc(a.raw_last_name ?? '')}</td><td class="${(a.raw_last_name ?? '') !== (a.last_name ?? '') ? 'norm-highlight' : ''}">${esc(a.last_name ?? '')}</td></tr>
-              <tr><td>First Name</td><td>${esc(a.raw_first_name ?? '')}</td><td class="${(a.raw_first_name ?? '') !== (a.first_name ?? '') ? 'norm-highlight' : ''}">${esc(a.first_name ?? '')}</td></tr>
-              <tr><td>Quals</td><td>${esc(a.raw_quals ?? '')}</td><td class="${(a.raw_quals ?? '') !== (a.quals ?? '') ? 'norm-highlight' : ''}">${esc(a.quals ?? '')}</td></tr>
-              <tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td><td>${esc(a.company ?? '')}</td></tr>
-              <tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td><td><em class="muted">courtesy field</em></td></tr>
-              <tr><td>RA Styled</td><td colspan="2">${a.artist1_ra_styled ? 'Yes' : 'No'}${a.artist2_ra_styled ? ' / A2: Yes' : ''}${a.artist3_ra_styled ? ' / A3: Yes' : ''}</td></tr>
-              ${a.artist2_first_name || a.artist2_last_name ? `<tr><td>Artist 2</td><td colspan="2">${esc([a.artist2_first_name, a.artist2_last_name, a.artist2_quals].filter(Boolean).join(' '))}</td></tr>` : ''}
-              ${a.artist3_first_name || a.artist3_last_name ? `<tr><td>Artist 3</td><td colspan="2">${esc([a.artist3_first_name, a.artist3_last_name, a.artist3_quals].filter(Boolean).join(' '))}</td></tr>` : ''}
-            </tbody>
-          </table>
+          ${hasNorm ? `<div class="norm-reasons"><strong>Normalisation:</strong> ${normReasons.map(r => esc(r)).join(' · ')}</div>` : ''}
+          ${_buildDetailTable(a)}
           <div style="margin-top:8px">
             ${ifEditor(`<button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
               onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>`)}

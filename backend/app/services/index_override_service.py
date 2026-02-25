@@ -313,8 +313,14 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     else:
         effective_company = auto_company
 
-    # If resolved as company and no company name, use last_name
-    if effective_company and not company:
+    # If resolved as company and no explicit company name from the
+    # spreadsheet, (re-)derive company from the resolved last_name.
+    # This is necessary because known-artist or override rules may change
+    # last_name after the importer auto-derived the company field from a
+    # partial/pre-resolution last_name (e.g. "Boyd" → "Boyd & Evans").
+    raw_company = getattr(artist, "raw_company", None)
+    has_raw_company = bool(raw_company and str(raw_company).strip())
+    if effective_company and not has_raw_company:
         company = last_name
 
     # Companies never have additional artists — the full name is
