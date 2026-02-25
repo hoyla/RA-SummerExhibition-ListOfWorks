@@ -84,6 +84,14 @@ def _setup_logging() -> None:
     if LOG_LEVEL != "DEBUG":
         logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
+    # Ensure uvicorn loggers propagate to root so that unhandled
+    # exceptions logged by Starlette's ServerErrorMiddleware appear
+    # in our structured JSON output instead of being silently lost.
+    for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        _lg = logging.getLogger(_name)
+        _lg.handlers.clear()
+        _lg.propagate = True
+
 
 _setup_logging()
 logger = logging.getLogger("catalogue")
