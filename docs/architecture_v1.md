@@ -484,10 +484,10 @@ Controls all index export behaviour:
 
 Routes are split across focused modules under `backend/app/api/`:
 
-- `imports.py` — upload, re-import, list, sections, preview, warnings, delete
-- `overrides.py` — per-work override CRUD and exclude toggle
-- `exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
-- `templates.py` — LoW export template CRUD and duplication
+- `low_imports.py` — upload, re-import, list, sections, preview, warnings, delete
+- `low_overrides.py` — per-work override CRUD and exclude toggle
+- `low_exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
+- `low_templates.py` — LoW export template CRUD and duplication
 - `normalisation_config.py` — global normalisation config
 - `known_artists.py` — Known Artists CRUD and seed
 - `index.py` — Index import, artists, overrides, warnings, export
