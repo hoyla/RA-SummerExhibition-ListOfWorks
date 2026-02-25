@@ -405,6 +405,7 @@ class KnownArtistOut(BaseModel):
     resolved_artist2_ra_styled: bool | None = None
     resolved_artist3_ra_styled: bool | None = None
     notes: str | None = None
+    is_seeded: bool = False
 
     model_config = {"from_attributes": True}
 

@@ -36,6 +36,9 @@ def build_known_artist_cache(db: Session) -> Dict[Tuple[str, str, str], KnownArt
     so that lookups are straightforward.  Entries with match_quals=NULL use
     "" as the quals key, allowing a two-pass lookup: first (first, last, quals)
     for an exact match, then (first, last, "") as a wildcard fallback.
+
+    When a user-created entry (is_seeded=False) and a built-in entry
+    (is_seeded=True) share the same match key, the user entry wins.
     """
     cache: Dict[Tuple[str, str, str], KnownArtist] = {}
     for ka in db.query(KnownArtist).all():
@@ -44,7 +47,9 @@ def build_known_artist_cache(db: Session) -> Dict[Tuple[str, str, str], KnownArt
             (ka.match_last_name or "").strip().lower(),
             (ka.match_quals or "").strip().lower(),
         )
-        cache[key] = ka
+        # User entries (is_seeded=False) take priority over seeded ones
+        if key not in cache or not ka.is_seeded:
+            cache[key] = ka
     return cache
 
 

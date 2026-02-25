@@ -243,14 +243,233 @@ a:hover { text-decoration: underline; }
 
 .panel.has-warnings { border-left: 4px solid var(--warning); }
 
-/* Known artists table */
-.known-artists-table { font-size: 12px; }
-.known-artists-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 4px 6px; white-space: nowrap; }
-.known-artists-table td { padding: 2px 4px; }
-.known-artists-table input[type="text"] { width: 100%; font-size: 12px; padding: 3px 5px; border: 1px solid var(--border); border-radius: 3px; box-sizing: border-box; }
-.known-artists-table input[type="checkbox"] { margin: 0; }
-.known-artists-table .btn-sm { padding: 2px 6px; font-size: 12px; line-height: 1; }
-.known-artists-table .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+/* Known artists cards */
+.ka-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  transition: box-shadow 0.15s;
+}
+.ka-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.ka-card-seeded {
+  border-color: #bbd0f5;
+  background: #f8faff;
+}
+.ka-card-seeded .ka-card-header {
+  background: #eef3f9;
+}
+.ka-card-seeded .ka-card-body {
+  opacity: 0.7;
+  pointer-events: none;
+}
+.ka-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.ka-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+.ka-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.ka-card-actions .btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.ka-preview-bar {
+  background: #eef3f9;
+  border-bottom: 1px solid #d5e0ec;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  min-height: 20px;
+}
+.ka-preview-bar .col-index-name {
+  font-size: 15px;
+}
+.ka-preview-bar-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6a89b0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ka-card-body {
+  padding: 16px;
+}
+.ka-check-label {
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.ka-field-state {
+  font-size: 11px;
+  margin-top: 2px;
+  min-height: 14px;
+}
+.ka-state-pass {
+  color: var(--muted);
+  font-style: italic;
+}
+.ka-state-cleared {
+  color: #c0392b;
+  font-weight: 500;
+}
+.ka-state-custom {
+  color: transparent;
+}
+.ka-artists-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+/* Dim fields irrelevant for companies */
+.ka-is-company .ka-a1-first-wrap,
+.ka-is-company .ka-section-a2 {
+  opacity: 0.35;
+  pointer-events: none;
+  position: relative;
+}
+.ka-is-company .ka-section-a2::after {
+  content: 'Not used for companies';
+  position: absolute;
+  top: 8px;
+  right: 0;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--muted);
+  pointer-events: none;
+}
+@media (max-width: 1100px) {
+  .ka-artists-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .ka-artists-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.ka-section {
+  min-width: 0;
+}
+.ka-section-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eee;
+}
+.ka-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ka-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ka-field input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: var(--font);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+}
+.ka-field input[type="text"]:focus {
+  outline: none;
+  border-color: #5070a0;
+  box-shadow: 0 0 0 2px rgba(80,112,160,0.15);
+}
+.ka-field-input {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.ka-field-input input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+.ka-field-check {
+  padding-top: 4px;
+}
+.ka-field-check label {
+  font-size: 13px;
+  font-weight: normal;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ka-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid #eee;
+}
+.ka-footer-notes {
+  flex: 1;
+  min-width: 180px;
+}
+.ka-footer-notes label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ka-footer-notes input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: var(--font);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+}
+.ka-footer-notes input[type="text"]:focus {
+  outline: none;
+  border-color: #5070a0;
+  box-shadow: 0 0 0 2px rgba(80,112,160,0.15);
+}
 
 .page-heading {
   font-size: 18px;
@@ -1105,11 +1324,6 @@ details.section-block[open] > .section-summary::before {
 /* Known Artist resolved field cells */
 .ka-res-cell {
   position: relative;
-  white-space: nowrap;
-}
-
-.ka-res-cell input[type="text"] {
-  width: calc(100% - 22px);
 }
 
 .ka-res-cell input[disabled] {
@@ -1119,21 +1333,24 @@ details.section-block[open] > .section-summary::before {
 }
 
 .ka-clear-btn {
-  background: none;
+  background: #f5f5f5;
   border: 1px solid #ccc;
   border-radius: 3px;
-  color: #999;
+  color: #666;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 500;
   line-height: 1;
-  padding: 1px 3px;
+  padding: 3px 7px;
   vertical-align: middle;
   margin-left: 2px;
+  white-space: nowrap;
 }
 
 .ka-clear-btn:hover {
   color: #c0392b;
   border-color: #c0392b;
+  background: #fdf2f2;
 }
 
 .ka-clear-btn.ka-clear-active {

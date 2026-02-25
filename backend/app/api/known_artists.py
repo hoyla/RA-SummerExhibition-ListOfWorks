@@ -21,6 +21,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/known-artists", tags=["known-artists"])
 
 
+def _to_out(ka: KnownArtist) -> KnownArtistOut:
+    """Map a KnownArtist row to its API output schema."""
+    return KnownArtistOut(
+        id=str(ka.id),
+        match_first_name=ka.match_first_name,
+        match_last_name=ka.match_last_name,
+        match_quals=ka.match_quals,
+        resolved_first_name=ka.resolved_first_name,
+        resolved_last_name=ka.resolved_last_name,
+        resolved_quals=ka.resolved_quals,
+        resolved_is_company=ka.resolved_is_company,
+        resolved_artist2_first_name=ka.resolved_artist2_first_name,
+        resolved_artist2_last_name=ka.resolved_artist2_last_name,
+        resolved_artist2_quals=ka.resolved_artist2_quals,
+        resolved_artist3_first_name=ka.resolved_artist3_first_name,
+        resolved_artist3_last_name=ka.resolved_artist3_last_name,
+        resolved_artist3_quals=ka.resolved_artist3_quals,
+        resolved_artist1_ra_styled=ka.resolved_artist1_ra_styled,
+        resolved_artist2_ra_styled=ka.resolved_artist2_ra_styled,
+        resolved_artist3_ra_styled=ka.resolved_artist3_ra_styled,
+        notes=ka.notes,
+        is_seeded=ka.is_seeded,
+    )
+
+
 # ---------------------------------------------------------------------------
 # List all
 # ---------------------------------------------------------------------------
@@ -30,29 +55,7 @@ router = APIRouter(prefix="/known-artists", tags=["known-artists"])
 def list_known_artists(db: Session = Depends(get_db)):
     """Return all known artist lookup entries."""
     rows = db.query(KnownArtist).order_by(KnownArtist.match_last_name).all()
-    return [
-        KnownArtistOut(
-            id=str(r.id),
-            match_first_name=r.match_first_name,
-            match_last_name=r.match_last_name,
-            match_quals=r.match_quals,
-            resolved_first_name=r.resolved_first_name,
-            resolved_last_name=r.resolved_last_name,
-            resolved_quals=r.resolved_quals,
-            resolved_is_company=r.resolved_is_company,
-            resolved_artist2_first_name=r.resolved_artist2_first_name,
-            resolved_artist2_last_name=r.resolved_artist2_last_name,
-            resolved_artist2_quals=r.resolved_artist2_quals,
-            resolved_artist3_first_name=r.resolved_artist3_first_name,
-            resolved_artist3_last_name=r.resolved_artist3_last_name,
-            resolved_artist3_quals=r.resolved_artist3_quals,
-            resolved_artist1_ra_styled=r.resolved_artist1_ra_styled,
-            resolved_artist2_ra_styled=r.resolved_artist2_ra_styled,
-            resolved_artist3_ra_styled=r.resolved_artist3_ra_styled,
-            notes=r.notes,
-        )
-        for r in rows
-    ]
+    return [_to_out(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -100,26 +103,7 @@ def create_known_artist(
             detail="A known artist entry with the same match fields already exists.",
         )
     db.refresh(ka)
-    return KnownArtistOut(
-        id=str(ka.id),
-        match_first_name=ka.match_first_name,
-        match_last_name=ka.match_last_name,
-        match_quals=ka.match_quals,
-        resolved_first_name=ka.resolved_first_name,
-        resolved_last_name=ka.resolved_last_name,
-        resolved_quals=ka.resolved_quals,
-        resolved_is_company=ka.resolved_is_company,
-        resolved_artist2_first_name=ka.resolved_artist2_first_name,
-        resolved_artist2_last_name=ka.resolved_artist2_last_name,
-        resolved_artist2_quals=ka.resolved_artist2_quals,
-        resolved_artist3_first_name=ka.resolved_artist3_first_name,
-        resolved_artist3_last_name=ka.resolved_artist3_last_name,
-        resolved_artist3_quals=ka.resolved_artist3_quals,
-        resolved_artist1_ra_styled=ka.resolved_artist1_ra_styled,
-        resolved_artist2_ra_styled=ka.resolved_artist2_ra_styled,
-        resolved_artist3_ra_styled=ka.resolved_artist3_ra_styled,
-        notes=ka.notes,
-    )
+    return _to_out(ka)
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +129,11 @@ def update_known_artist(
     )
     if not ka:
         raise HTTPException(status_code=404, detail="Known artist not found")
+    if ka.is_seeded:
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in entries cannot be edited. Duplicate to create an editable copy.",
+        )
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -159,26 +148,7 @@ def update_known_artist(
             detail="A known artist entry with the same match fields already exists.",
         )
     db.refresh(ka)
-    return KnownArtistOut(
-        id=str(ka.id),
-        match_first_name=ka.match_first_name,
-        match_last_name=ka.match_last_name,
-        match_quals=ka.match_quals,
-        resolved_first_name=ka.resolved_first_name,
-        resolved_last_name=ka.resolved_last_name,
-        resolved_quals=ka.resolved_quals,
-        resolved_is_company=ka.resolved_is_company,
-        resolved_artist2_first_name=ka.resolved_artist2_first_name,
-        resolved_artist2_last_name=ka.resolved_artist2_last_name,
-        resolved_artist2_quals=ka.resolved_artist2_quals,
-        resolved_artist3_first_name=ka.resolved_artist3_first_name,
-        resolved_artist3_last_name=ka.resolved_artist3_last_name,
-        resolved_artist3_quals=ka.resolved_artist3_quals,
-        resolved_artist1_ra_styled=ka.resolved_artist1_ra_styled,
-        resolved_artist2_ra_styled=ka.resolved_artist2_ra_styled,
-        resolved_artist3_ra_styled=ka.resolved_artist3_ra_styled,
-        notes=ka.notes,
-    )
+    return _to_out(ka)
 
 
 # ---------------------------------------------------------------------------
@@ -203,8 +173,85 @@ def delete_known_artist(
     )
     if not ka:
         raise HTTPException(status_code=404, detail="Known artist not found")
+    if ka.is_seeded:
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in entries cannot be deleted.",
+        )
     db.delete(ka)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Duplicate (create editable copy of a seeded entry)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{known_artist_id}/duplicate",
+    response_model=KnownArtistOut,
+    status_code=201,
+    dependencies=[Depends(require_role("editor"))],
+)
+def duplicate_known_artist(
+    known_artist_id: str,
+    db: Session = Depends(get_db),
+):
+    """Create an editable (non-seeded) copy of a known artist entry.
+
+    Typically used to customise a built-in (seeded) entry while
+    preserving the original.  The copy has ``is_seeded=False`` and can
+    be freely edited or deleted.
+    """
+    source = (
+        db.query(KnownArtist)
+        .filter(KnownArtist.id == uuid.UUID(known_artist_id))
+        .first()
+    )
+    if not source:
+        raise HTTPException(status_code=404, detail="Known artist not found")
+
+    # Check a user copy with the same match fields doesn't already exist
+    existing_user_copy = (
+        db.query(KnownArtist)
+        .filter(
+            KnownArtist.match_first_name == source.match_first_name,
+            KnownArtist.match_last_name == source.match_last_name,
+            KnownArtist.match_quals == source.match_quals,
+            KnownArtist.is_seeded == False,  # noqa: E712
+        )
+        .first()
+    )
+    if existing_user_copy:
+        raise HTTPException(
+            status_code=409,
+            detail="An editable copy of this entry already exists.",
+        )
+
+    copy = KnownArtist(
+        match_first_name=source.match_first_name,
+        match_last_name=source.match_last_name,
+        match_quals=source.match_quals,
+        resolved_first_name=source.resolved_first_name,
+        resolved_last_name=source.resolved_last_name,
+        resolved_quals=source.resolved_quals,
+        resolved_is_company=source.resolved_is_company,
+        resolved_artist2_first_name=source.resolved_artist2_first_name,
+        resolved_artist2_last_name=source.resolved_artist2_last_name,
+        resolved_artist2_quals=source.resolved_artist2_quals,
+        resolved_artist3_first_name=source.resolved_artist3_first_name,
+        resolved_artist3_last_name=source.resolved_artist3_last_name,
+        resolved_artist3_quals=source.resolved_artist3_quals,
+        resolved_artist1_ra_styled=source.resolved_artist1_ra_styled,
+        resolved_artist2_ra_styled=source.resolved_artist2_ra_styled,
+        resolved_artist3_ra_styled=source.resolved_artist3_ra_styled,
+        notes=source.notes,
+        is_seeded=False,
+    )
+    db.add(copy)
+    db.commit()
+    db.refresh(copy)
+    return _to_out(copy)
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +291,7 @@ def seed_known_artists(db: Session = Depends(get_db)):
                 KnownArtist.match_first_name == match_first,
                 KnownArtist.match_last_name == match_last,
                 KnownArtist.match_quals == entry.get("match_quals"),
+                KnownArtist.is_seeded == True,  # noqa: E712
             )
             .first()
         )
@@ -269,6 +317,7 @@ def seed_known_artists(db: Session = Depends(get_db)):
             resolved_artist2_ra_styled=entry.get("resolved_artist2_ra_styled"),
             resolved_artist3_ra_styled=entry.get("resolved_artist3_ra_styled"),
             notes=entry.get("notes"),
+            is_seeded=True,
         )
         db.add(ka)
         added += 1
