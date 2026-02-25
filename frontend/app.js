@@ -547,7 +547,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     banner.className = 'env-banner env-staging';
     banner.textContent = 'STAGING';
     document.body.insertBefore(banner, document.body.firstChild);
-    document.title = '[STAGING] ' + document.title;
+    document.title = 'RA Catalogue Tool (staging)';
+  } else if (/^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
+    const banner = document.createElement('div');
+    banner.className = 'env-banner env-local';
+    banner.textContent = 'LOCAL DEV';
+    document.body.insertBefore(banner, document.body.firstChild);
+    document.title = 'RA Catalogue Tool (local)';
+  } else {
+    document.title = 'RA Catalogue Tool (prod)';
   }
   // If Cognito mode and not logged in, show login
   if (_authMode === 'cognito' && !_idToken) {
