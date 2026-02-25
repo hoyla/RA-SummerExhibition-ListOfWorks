@@ -53,7 +53,7 @@ Tests run against an **in-memory SQLite database** — no Docker required.
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Run all 617 tests
+# Run all 683 tests
 python -m pytest tests/ -q
 
 # Run a single test file

@@ -265,6 +265,48 @@
 
 ---
 
+## Phase 19 – Settings UX & seed template management ✅
+
+### Settings page redesign
+
+- Known Artists section uses card-based layout (one card per artist rule)
+- Each card shows a live preview bar with the resolved index-format name
+- Three-state resolved fields (original → override → resolved) with
+  Clear / Undo controls and colour-coded state indicators
+- Company flag toggle dims irrelevant fields (Artist 1 first name, Artist 2)
+- Per-section Save buttons: "Save Preview Settings" (everyone, localStorage)
+  and "Save Tokens" (admin only, API call) replace the old global Save
+- Edition settings (prefix, brackets) grouped below numerical settings
+  (currency, thousands, decimals) with visual divider
+
+### Seeded Known Artists
+
+- `is_seeded` Boolean column on `KnownArtist` model (Alembic migration)
+- Widened unique constraint to `(match_first, match_last, match_quals, is_seeded)`
+  so user copies can coexist with seeded originals
+- Seeded entries are read-only in the UI (blue card styling, BUILT-IN badge,
+  locked fields, no Save/Delete buttons)
+- `POST /{id}/duplicate` endpoint creates a user-editable copy of a seeded entry
+- Cache builder prefers user entries over seeded ones during import resolution
+- 403 guards prevent API-level edits/deletes on seeded entries
+
+### Seed template JSON export
+
+- `GET /known-artists/export` — admin-only download of all known artists as
+  seed-format JSON (alphabetically sorted by last name, first name)
+- `GET /templates/{id}/export` — admin-only download of a LoW export template
+  as seed-format JSON (with `_name` metadata, filename from slug)
+- `GET /index/templates/{id}/export` — admin-only download of an Index export
+  template as seed-format JSON (with `_name` and `_config_type` metadata)
+- Export JSON buttons on the Settings page (Known Artists) and Templates page
+  (per-template row) — admin-only
+
+### Test count
+
+- 683 tests across 28 test files
+
+---
+
 ## Future considerations
 
 - Advanced title casing rules (LPG eccentricities)
@@ -294,8 +336,8 @@
   interactive tooling. Consider gating behind `RUN_MIGRATIONS=true` or moving
   to a startup event.
 
-- **Frontend modularity**: `frontend/app.js` is a single large file. Consider
-  splitting into modules or adding a minimal bundler step.
+- **Frontend modularity**: `frontend/app.js` is a single large file (~4200
+  lines). Consider splitting into modules or adding a minimal bundler step.
 
 **Low**
 
