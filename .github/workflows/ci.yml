@@ -71,6 +71,8 @@ jobs:
           done
           # Final check (fail the step if unhealthy)
           curl -sf --retry 3 --retry-delay 2 http://localhost:8000/health
+          # Verify in-container health check works (matches ECS healthCheck command)
+          docker compose exec app curl -sf http://localhost:8000/health
           docker compose down
 
       - name: Save image for ECR push
