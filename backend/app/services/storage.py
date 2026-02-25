@@ -199,12 +199,45 @@ class S3Storage(StorageBackend):
         directory is typically cleaned automatically.
         """
         import tempfile
+        import time
+        import glob
 
+        # Download the object into a uniquely-named temp file so callers
+        # that need a real filesystem path (eg. openpyxl) can use it.
         data = self.load(key)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        tmp.write(data)
-        tmp.close()
-        return tmp.name
+        tmp = tempfile.NamedTemporaryFile(delete=False, prefix="catalogue_s3_", suffix=".xlsx")
+        try:
+            tmp.write(data)
+            tmp.flush()
+            tmp_path = tmp.name
+        finally:
+            try:
+                tmp.close()
+            except Exception:
+                pass
+
+        # Opportunistic cleanup: remove any old temp files we previously
+        # created with the same prefix to avoid accumulating stale files on
+        # local disks. This is conservative and only removes files older
+        # than an hour.
+        try:
+            tmpdir = tempfile.gettempdir()
+            pattern = f"{tmpdir}/catalogue_s3_*.xlsx"
+            max_age = 60 * 60  # 1 hour
+            now = time.time()
+            for path in glob.glob(pattern):
+                try:
+                    if now - os.path.getmtime(path) > max_age:
+                        os.remove(path)
+                except FileNotFoundError:
+                    pass
+                except Exception:
+                    # Ignore failures; cleanup is best-effort
+                    pass
+        except Exception:
+            pass
+
+        return tmp_path
 
 
 # ---------------------------------------------------------------------------
