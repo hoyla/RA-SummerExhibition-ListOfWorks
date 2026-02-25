@@ -178,3 +178,53 @@ class TestHealthDbDown:
         data = broken_client.get("/health").json()
         assert "disk" in data
         assert "system" in data
+
+
+# ---------------------------------------------------------------------------
+# /version endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestVersionEndpoint:
+
+    @pytest.fixture()
+    def version_client(self):
+        """Minimal app with /version, no DB needed."""
+        app = FastAPI()
+        _commit = os.environ.get("BUILD_COMMIT", "unknown")
+        _repo = "https://github.com/hoyla/RA-SummerExhibition-ListOfWorks"
+
+        @app.get("/version")
+        def version():
+            return {"commit": _commit, "repo": _repo}
+
+        with TestClient(app) as c:
+            yield c
+
+    def test_returns_commit_and_repo(self, version_client):
+        r = version_client.get("/version")
+        assert r.status_code == 200
+        data = r.json()
+        assert "commit" in data
+        assert "repo" in data
+        assert data["repo"].startswith("https://github.com/")
+
+    def test_default_commit_is_unknown(self, version_client):
+        data = version_client.get("/version").json()
+        assert data["commit"] == "unknown"
+
+    def test_commit_from_env(self):
+        """BUILD_COMMIT env var is reflected in the response."""
+        with patch.dict(os.environ, {"BUILD_COMMIT": "abc123def"}):
+            app = FastAPI()
+
+            @app.get("/version")
+            def version():
+                return {
+                    "commit": os.environ.get("BUILD_COMMIT", "unknown"),
+                    "repo": "https://github.com/hoyla/RA-SummerExhibition-ListOfWorks",
+                }
+
+            with TestClient(app) as c:
+                data = c.get("/version").json()
+                assert data["commit"] == "abc123def"

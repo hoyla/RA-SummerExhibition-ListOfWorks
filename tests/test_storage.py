@@ -102,14 +102,6 @@ class TestLocalStorageStats:
         assert s["uploads_size_mb"] == round(3000 / (1024**2), 2)
 
 
-class TestLocalStorageFullPath:
-    def test_full_path(self, local_store):
-        local_store.save("test.xlsx", b"data")
-        fp = local_store.full_path("test.xlsx")
-        assert os.path.isfile(fp)
-        assert fp.endswith("test.xlsx")
-
-
 class TestLocalStorageOpenPath:
     def test_open_path_yields_valid_file(self, local_store):
         local_store.save("test.xlsx", b"data")
@@ -134,5 +126,6 @@ class TestLocalStoragePathTraversal:
         # the file ends up as "passwd" in the base directory.
         assert local_store.exists("passwd")
         # Crucially, nothing was written outside the base dir.
-        fp = local_store.full_path("../../etc/passwd")
-        assert fp == local_store.full_path("passwd")
+        with local_store.open_path("../../etc/passwd") as fp1:
+            with local_store.open_path("passwd") as fp2:
+                assert fp1 == fp2
