@@ -28,6 +28,7 @@ set -euo pipefail
 
 REGION="eu-north-1"
 ACCOUNT_ID="028597908565"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "============================================"
 echo "  Migrate to per-environment secrets"
@@ -239,7 +240,7 @@ echo ">>> Step 6: Registering task definitions and creating prod service..."
 ECR_URI="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/catalogue-app"
 
 for ENV in staging prod; do
-    TASK_DEF_CONTENT=$(cat ".aws/task-definition-${ENV}.json" \
+    TASK_DEF_CONTENT=$(cat "$SCRIPT_DIR/task-definition-${ENV}.json" \
         | sed "s|PLACEHOLDER|$ECR_URI:latest|g")
 
     echo "$TASK_DEF_CONTENT" > "/tmp/task-def-${ENV}-resolved.json"
