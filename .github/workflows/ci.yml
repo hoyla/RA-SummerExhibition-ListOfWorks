@@ -16,7 +16,8 @@ env:
   ECS_CLUSTER: catalogue
   ECS_SERVICE_STAGING: catalogue-staging
   ECS_SERVICE_PROD: catalogue-prod
-  TASK_DEF_FILE: .aws/task-definition.json
+  TASK_DEF_STAGING: .aws/task-definition-staging.json
+  TASK_DEF_PROD: .aws/task-definition-prod.json
 
 jobs:
   # ── 1. Unit tests (all branches + PRs) ─────────────────────────────
@@ -127,7 +128,7 @@ jobs:
         id: render
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.TASK_DEF_FILE }}
+          task-definition: ${{ env.TASK_DEF_STAGING }}
           container-name: app
           image: ${{ needs.push-ecr.outputs.image }}
 
@@ -160,7 +161,7 @@ jobs:
         id: render
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.TASK_DEF_FILE }}
+          task-definition: ${{ env.TASK_DEF_PROD }}
           container-name: app
           image: ${{ needs.push-ecr.outputs.image }}
 

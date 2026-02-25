@@ -10,12 +10,12 @@
 #   2. S3 buckets (staging + prod)
 #   3. CloudWatch log group
 #   4. VPC + subnets (or use default VPC)
-#   5. RDS PostgreSQL (staging)
-#   6. ECS cluster + services
+#   5. RDS PostgreSQL (staging + prod)
+#   6. ECS cluster + services (staging + prod)
 #   7. IAM roles (task execution, task, GitHub Actions deploy)
 #   8. GitHub OIDC provider
-#   9. Secrets Manager entries
-#  10. Application Load Balancer
+#   9. Secrets Manager entries (per-environment)
+#  10. Application Load Balancer (host-based routing)
 # ==========================================================================
 
 set -euo pipefail
@@ -187,11 +187,12 @@ echo "    RDS SG: $RDS_SG"
 echo ""
 
 # ------------------------------------------------------------------
-# 6. RDS PostgreSQL (staging — single, small instance)
+# 6. RDS PostgreSQL (staging + prod — separate instances)
 # ------------------------------------------------------------------
-echo ">>> 6/10  Creating RDS PostgreSQL instance (staging)..."
+echo ">>> 6/10  Creating RDS PostgreSQL instances..."
 
-DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+DB_PASSWORD_STAGING=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+DB_PASSWORD_PROD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
 
 # Create DB subnet group
 aws rds create-db-subnet-group \
@@ -200,26 +201,35 @@ aws rds create-db-subnet-group \
     --subnet-ids "$SUBNET_1" "$SUBNET_2" \
     --region "$REGION" --no-cli-pager 2>/dev/null || echo "    (subnet group exists)"
 
-aws rds create-db-instance \
-    --db-instance-identifier catalogue-staging \
-    --engine postgres \
-    --engine-version 16 \
-    --db-instance-class db.t4g.micro \
-    --allocated-storage 20 \
-    --storage-type gp3 \
-    --master-username catalogue \
-    --master-user-password "$DB_PASSWORD" \
-    --db-name catalogue \
-    --vpc-security-group-ids "$RDS_SG" \
-    --db-subnet-group-name catalogue-db-subnets \
-    --backup-retention-period 7 \
-    --no-publicly-accessible \
-    --no-multi-az \
-    --storage-encrypted \
-    --region "$REGION" --no-cli-pager 2>/dev/null || echo "    (instance exists)"
+for ENV in staging prod; do
+    DB_CLASS="db.t4g.micro"
+    if [ "$ENV" = "prod" ]; then
+        DB_PASSWORD="$DB_PASSWORD_PROD"
+    else
+        DB_PASSWORD="$DB_PASSWORD_STAGING"
+    fi
 
-echo "    ✓ catalogue-staging (db.t4g.micro, Postgres 16)"
-echo "    DB password saved to Secrets Manager in step 9"
+    aws rds create-db-instance \
+        --db-instance-identifier "catalogue-${ENV}" \
+        --engine postgres \
+        --engine-version 16 \
+        --db-instance-class "$DB_CLASS" \
+        --allocated-storage 20 \
+        --storage-type gp3 \
+        --master-username catalogue \
+        --master-user-password "$DB_PASSWORD" \
+        --db-name catalogue \
+        --vpc-security-group-ids "$RDS_SG" \
+        --db-subnet-group-name catalogue-db-subnets \
+        --backup-retention-period 7 \
+        --no-publicly-accessible \
+        --no-multi-az \
+        --storage-encrypted \
+        --region "$REGION" --no-cli-pager 2>/dev/null || echo "    catalogue-${ENV} (instance exists)"
+
+    echo "    ✓ catalogue-${ENV} (${DB_CLASS}, Postgres 16)"
+done
+echo "    DB passwords saved to Secrets Manager in step 9"
 echo ""
 
 # ------------------------------------------------------------------
@@ -252,7 +262,7 @@ aws iam attach-role-policy \
     --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy \
     --no-cli-pager 2>/dev/null || true
 
-# Allow reading secrets
+# Allow reading secrets (both environments)
 cat > /tmp/secrets-policy.json <<EOF
 {
   "Version": "2012-10-17",
@@ -261,7 +271,10 @@ cat > /tmp/secrets-policy.json <<EOF
     "Action": [
       "secretsmanager:GetSecretValue"
     ],
-    "Resource": "arn:aws:secretsmanager:$REGION:$ACCOUNT_ID:secret:catalogue/*"
+    "Resource": [
+      "arn:aws:secretsmanager:$REGION:$ACCOUNT_ID:secret:catalogue-staging/*",
+      "arn:aws:secretsmanager:$REGION:$ACCOUNT_ID:secret:catalogue-prod/*"
+    ]
   }]
 }
 EOF
@@ -408,44 +421,58 @@ echo "    ✓ catalogue-github-deploy: $DEPLOY_ROLE_ARN"
 echo ""
 
 # ------------------------------------------------------------------
-# 9. Secrets Manager
+# 9. Secrets Manager (per-environment)
 # ------------------------------------------------------------------
 echo ">>> 9/10  Storing secrets..."
 
-# Wait for RDS endpoint (it takes a few minutes)
-echo "    Waiting for RDS instance to become available..."
-echo "    (This may take 5-10 minutes — grab a coffee ☕)"
-aws rds wait db-instance-available \
-    --db-instance-identifier catalogue-staging \
-    --region "$REGION" --no-cli-pager
+API_KEY_STAGING=$(openssl rand -hex 32)
+API_KEY_PROD=$(openssl rand -hex 32)
 
-RDS_ENDPOINT=$(aws rds describe-db-instances \
-    --db-instance-identifier catalogue-staging \
-    --query 'DBInstances[0].Endpoint.Address' --output text \
-    --region "$REGION" --no-cli-pager)
+for ENV in staging prod; do
+    echo "    --- ${ENV} ---"
 
-DATABASE_URL="postgresql://catalogue:${DB_PASSWORD}@${RDS_ENDPOINT}:5432/catalogue"
-API_KEY=$(openssl rand -hex 32)
-S3_BUCKET="ra-catalogue-staging-$ACCOUNT_ID"
-
-for SECRET_NAME in DATABASE_URL API_KEY S3_BUCKET; do
-    SECRET_VALUE="${!SECRET_NAME}"
-    aws secretsmanager create-secret \
-        --name "catalogue/$SECRET_NAME" \
-        --secret-string "$SECRET_VALUE" \
-        --region "$REGION" --no-cli-pager 2>/dev/null || \
-    aws secretsmanager put-secret-value \
-        --secret-id "catalogue/$SECRET_NAME" \
-        --secret-string "$SECRET_VALUE" \
+    # Wait for RDS endpoint
+    echo "    Waiting for RDS instance catalogue-${ENV} to become available..."
+    echo "    (This may take 5-10 minutes — grab a coffee ☕)"
+    aws rds wait db-instance-available \
+        --db-instance-identifier "catalogue-${ENV}" \
         --region "$REGION" --no-cli-pager
-    echo "    ✓ catalogue/$SECRET_NAME"
+
+    RDS_ENDPOINT=$(aws rds describe-db-instances \
+        --db-instance-identifier "catalogue-${ENV}" \
+        --query 'DBInstances[0].Endpoint.Address' --output text \
+        --region "$REGION" --no-cli-pager)
+
+    if [ "$ENV" = "prod" ]; then
+        DB_PASSWORD="$DB_PASSWORD_PROD"
+        API_KEY="$API_KEY_PROD"
+    else
+        DB_PASSWORD="$DB_PASSWORD_STAGING"
+        API_KEY="$API_KEY_STAGING"
+    fi
+
+    DATABASE_URL="postgresql://catalogue:${DB_PASSWORD}@${RDS_ENDPOINT}:5432/catalogue"
+    S3_BUCKET="ra-catalogue-${ENV}-$ACCOUNT_ID"
+
+    for SECRET_NAME in DATABASE_URL API_KEY S3_BUCKET; do
+        SECRET_VALUE="${!SECRET_NAME}"
+        aws secretsmanager create-secret \
+            --name "catalogue-${ENV}/$SECRET_NAME" \
+            --secret-string "$SECRET_VALUE" \
+            --region "$REGION" --no-cli-pager 2>/dev/null || \
+        aws secretsmanager put-secret-value \
+            --secret-id "catalogue-${ENV}/$SECRET_NAME" \
+            --secret-string "$SECRET_VALUE" \
+            --region "$REGION" --no-cli-pager
+        echo "    ✓ catalogue-${ENV}/$SECRET_NAME"
+    done
 done
 echo ""
 
 # ------------------------------------------------------------------
-# 10. ALB + ECS Cluster + Service
+# 10. ALB + ECS Cluster + Services (staging + prod)
 # ------------------------------------------------------------------
-echo ">>> 10/10  Creating ALB, ECS cluster, and service..."
+echo ">>> 10/10  Creating ALB, ECS cluster, and services..."
 
 # Create ALB
 ALB_ARN=$(aws elbv2 create-load-balancer \
@@ -469,30 +496,68 @@ ALB_DNS=$(aws elbv2 describe-load-balancers \
 
 echo "    ALB: $ALB_DNS"
 
-# Target group
-TG_ARN=$(aws elbv2 create-target-group \
-    --name catalogue-staging-tg \
-    --protocol HTTP --port 8000 \
-    --vpc-id "$VPC_ID" \
-    --target-type ip \
-    --health-check-path /health \
-    --health-check-interval-seconds 30 \
-    --healthy-threshold-count 2 \
-    --unhealthy-threshold-count 3 \
-    --region "$REGION" \
-    --query 'TargetGroups[0].TargetGroupArn' --output text \
-    --no-cli-pager 2>/dev/null || \
-    aws elbv2 describe-target-groups \
-        --names catalogue-staging-tg \
+# Target groups — one per environment
+for ENV in staging prod; do
+    TG_NAME="catalogue-${ENV}-tg"
+    TG_ARN=$(aws elbv2 create-target-group \
+        --name "$TG_NAME" \
+        --protocol HTTP --port 8000 \
+        --vpc-id "$VPC_ID" \
+        --target-type ip \
+        --health-check-path /health \
+        --health-check-interval-seconds 30 \
+        --healthy-threshold-count 2 \
+        --unhealthy-threshold-count 3 \
+        --region "$REGION" \
         --query 'TargetGroups[0].TargetGroupArn' --output text \
-        --region "$REGION" --no-cli-pager)
+        --no-cli-pager 2>/dev/null || \
+        aws elbv2 describe-target-groups \
+            --names "$TG_NAME" \
+            --query 'TargetGroups[0].TargetGroupArn' --output text \
+            --region "$REGION" --no-cli-pager)
 
-# HTTP listener → target group
-aws elbv2 create-listener \
+    if [ "$ENV" = "staging" ]; then
+        TG_ARN_STAGING="$TG_ARN"
+    else
+        TG_ARN_PROD="$TG_ARN"
+    fi
+    echo "    ✓ Target group: $TG_NAME"
+done
+
+# HTTPS listener with host-based routing
+# Default action → prod target group
+# Rule: staging-catalogue.hoy.la → staging target group
+#
+# NOTE: To use HTTPS, an ACM certificate must already exist for
+# *.hoy.la or catalogue.hoy.la + staging-catalogue.hoy.la.
+# Replace CERT_ARN below with the real ARN, or use HTTP for initial setup.
+
+# Try to find an existing HTTPS listener, otherwise create HTTP
+LISTENER_ARN=$(aws elbv2 describe-listeners \
     --load-balancer-arn "$ALB_ARN" \
-    --protocol HTTP --port 80 \
-    --default-actions Type=forward,TargetGroupArn="$TG_ARN" \
-    --region "$REGION" --no-cli-pager 2>/dev/null || echo "    (listener exists)"
+    --query 'Listeners[0].ListenerArn' --output text \
+    --region "$REGION" --no-cli-pager 2>/dev/null || echo "None")
+
+if [ "$LISTENER_ARN" = "None" ] || [ -z "$LISTENER_ARN" ]; then
+    LISTENER_ARN=$(aws elbv2 create-listener \
+        --load-balancer-arn "$ALB_ARN" \
+        --protocol HTTP --port 80 \
+        --default-actions Type=forward,TargetGroupArn="$TG_ARN_PROD" \
+        --region "$REGION" \
+        --query 'Listeners[0].ListenerArn' --output text \
+        --no-cli-pager)
+    echo "    ✓ HTTP listener (default → prod)"
+fi
+
+# Host-based rule: staging-catalogue.hoy.la → staging TG
+aws elbv2 create-rule \
+    --listener-arn "$LISTENER_ARN" \
+    --priority 10 \
+    --conditions Field=host-header,Values=staging-catalogue.hoy.la \
+    --actions Type=forward,TargetGroupArn="$TG_ARN_STAGING" \
+    --region "$REGION" --no-cli-pager 2>/dev/null || echo "    (staging host rule exists)"
+
+echo "    ✓ Host rule: staging-catalogue.hoy.la → staging TG"
 
 # ECS cluster
 aws ecs create-cluster \
@@ -501,34 +566,44 @@ aws ecs create-cluster \
 
 echo "    ✓ ECS cluster: catalogue"
 
-# Register task definition with real role ARNs
-TASK_DEF_CONTENT=$(cat .aws/task-definition.json \
-    | sed "s|\${EXECUTION_ROLE_ARN}|$EXEC_ROLE_ARN|g" \
-    | sed "s|\${TASK_ROLE_ARN}|$TASK_ROLE_ARN|g" \
-    | sed "s|PLACEHOLDER|$ECR_URI:latest|g")
+# Register task definitions — one per environment
+for ENV in staging prod; do
+    TASK_DEF_CONTENT=$(cat ".aws/task-definition-${ENV}.json" \
+        | sed "s|PLACEHOLDER|$ECR_URI:latest|g")
 
-echo "$TASK_DEF_CONTENT" > /tmp/task-def-resolved.json
+    echo "$TASK_DEF_CONTENT" > "/tmp/task-def-${ENV}-resolved.json"
 
-TASK_DEF_ARN=$(aws ecs register-task-definition \
-    --cli-input-json file:///tmp/task-def-resolved.json \
-    --region "$REGION" \
-    --query 'taskDefinition.taskDefinitionArn' --output text \
-    --no-cli-pager)
+    TASK_DEF_ARN=$(aws ecs register-task-definition \
+        --cli-input-json "file:///tmp/task-def-${ENV}-resolved.json" \
+        --region "$REGION" \
+        --query 'taskDefinition.taskDefinitionArn' --output text \
+        --no-cli-pager)
 
-echo "    ✓ Task definition: $TASK_DEF_ARN"
+    echo "    ✓ Task definition (${ENV}): $TASK_DEF_ARN"
+done
 
-# Create ECS service (staging)
-aws ecs create-service \
-    --cluster catalogue \
-    --service-name catalogue-staging \
-    --task-definition catalogue-app \
-    --desired-count 1 \
-    --launch-type FARGATE \
-    --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$ECS_SG],assignPublicIp=ENABLED}" \
-    --load-balancers "targetGroupArn=$TG_ARN,containerName=app,containerPort=8000" \
-    --region "$REGION" --no-cli-pager 2>/dev/null || echo "    (service exists)"
+# Create ECS services — one per environment
+for ENV in staging prod; do
+    if [ "$ENV" = "staging" ]; then
+        TG_ARN="$TG_ARN_STAGING"
+        TASK_FAMILY="catalogue-staging"
+    else
+        TG_ARN="$TG_ARN_PROD"
+        TASK_FAMILY="catalogue-prod"
+    fi
 
-echo "    ✓ ECS service: catalogue-staging"
+    aws ecs create-service \
+        --cluster catalogue \
+        --service-name "catalogue-${ENV}" \
+        --task-definition "$TASK_FAMILY" \
+        --desired-count 1 \
+        --launch-type FARGATE \
+        --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$ECS_SG],assignPublicIp=ENABLED}" \
+        --load-balancers "targetGroupArn=$TG_ARN,containerName=app,containerPort=8000" \
+        --region "$REGION" --no-cli-pager 2>/dev/null || echo "    catalogue-${ENV} (service exists)"
+
+    echo "    ✓ ECS service: catalogue-${ENV}"
+done
 echo ""
 
 # ------------------------------------------------------------------
@@ -540,23 +615,38 @@ echo "============================================"
 echo ""
 echo "  ALB URL:    http://$ALB_DNS"
 echo "  ECR URI:    $ECR_URI"
-echo "  RDS Host:   $RDS_ENDPOINT"
-echo "  S3 Bucket:  $S3_BUCKET"
+echo ""
+echo "  Staging:"
+echo "    RDS:      catalogue-staging"
+echo "    S3:       ra-catalogue-staging-$ACCOUNT_ID"
+echo "    Secrets:  catalogue-staging/{DATABASE_URL,API_KEY,S3_BUCKET}"
+echo "    DNS:      staging-catalogue.hoy.la"
+echo ""
+echo "  Production:"
+echo "    RDS:      catalogue-prod"
+echo "    S3:       ra-catalogue-prod-$ACCOUNT_ID"
+echo "    Secrets:  catalogue-prod/{DATABASE_URL,API_KEY,S3_BUCKET}"
+echo "    DNS:      catalogue.hoy.la"
 echo ""
 echo "  Deploy Role ARN (add to GitHub secrets):"
 echo "    $DEPLOY_ROLE_ARN"
 echo ""
-echo "  API Key (share with team):"
-echo "    $API_KEY"
+echo "  API Keys (share with team):"
+echo "    Staging: $API_KEY_STAGING"
+echo "    Prod:    $API_KEY_PROD"
 echo ""
 echo "  Next steps:"
 echo "    1. Add AWS_DEPLOY_ROLE_ARN secret to GitHub repo:"
 echo "       $DEPLOY_ROLE_ARN"
 echo "    2. Create 'staging' environment in GitHub (no protection)"
 echo "    3. Create 'production' environment in GitHub (add reviewers)"
-echo "    4. Push to main — CI will build, test, and deploy!"
+echo "    4. Point DNS: staging-catalogue.hoy.la → ALB"
+echo "       Point DNS: catalogue.hoy.la → ALB"
+echo "    5. Push to a branch → deploys to staging"
+echo "       Merge to main → deploys to production"
 echo ""
 
 # Clean up temp files
 rm -f /tmp/ecs-trust.json /tmp/secrets-policy.json /tmp/s3-policy.json \
-      /tmp/github-trust.json /tmp/deploy-policy.json /tmp/task-def-resolved.json
+      /tmp/github-trust.json /tmp/deploy-policy.json \
+      /tmp/task-def-staging-resolved.json /tmp/task-def-prod-resolved.json
