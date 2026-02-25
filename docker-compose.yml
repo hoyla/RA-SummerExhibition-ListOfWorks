@@ -17,7 +17,10 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     image: catalogue-app
     restart: unless-stopped
     depends_on:

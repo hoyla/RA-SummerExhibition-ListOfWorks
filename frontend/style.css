@@ -82,6 +82,22 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.05em;
 }
 
+.header-meta {
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.header-meta-link {
+  color: #aaa;
+  text-decoration: none;
+}
+.header-meta-link:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
 /* Role switcher dropdown in header */
 .role-switcher-wrap {
   display: flex;

@@ -10,6 +10,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source
 COPY . .
 
+# Build metadata — set at build time, readable at runtime
+ARG BUILD_COMMIT=unknown
+ENV BUILD_COMMIT=$BUILD_COMMIT
+
 # Create uploads directory
 RUN mkdir -p /app/uploads
 

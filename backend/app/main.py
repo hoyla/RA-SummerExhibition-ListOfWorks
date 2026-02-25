@@ -458,6 +458,23 @@ def root():
     return {"status": "Catalogue tool running"}
 
 
+# ---------------------------------------------------------------------------
+# Version endpoint (unauthenticated) — commit SHA baked into the Docker image
+# ---------------------------------------------------------------------------
+
+_GITHUB_REPO = "https://github.com/hoyla/RA-SummerExhibition-ListOfWorks"
+_BUILD_COMMIT = os.environ.get("BUILD_COMMIT", "unknown")
+
+
+@app.get("/version", tags=["ops"])
+def version():
+    """Return the commit SHA this image was built from."""
+    return {
+        "commit": _BUILD_COMMIT,
+        "repo": _GITHUB_REPO,
+    }
+
+
 @app.get("/auth/config", tags=["ops"])
 def auth_config():
     """Public endpoint returning auth configuration for the frontend.

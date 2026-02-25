@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker compose build app
+        run: docker compose build --build-arg BUILD_COMMIT=${{ github.sha }} app
 
       - name: Smoke-test container starts
         run: |

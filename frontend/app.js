@@ -1,6 +1,39 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
+// Version info — populate header links from /version endpoint
+// ---------------------------------------------------------------------------
+
+(async function _loadVersionInfo() {
+  try {
+    const res = await fetch('/version');
+    if (!res.ok) return;
+    const data = await res.json();
+    const meta = document.getElementById('header-meta');
+    if (!meta) return;
+
+    const repoLink = document.createElement('a');
+    repoLink.href = data.repo;
+    repoLink.target = '_blank';
+    repoLink.rel = 'noopener';
+    repoLink.textContent = 'GitHub';
+    repoLink.className = 'header-meta-link';
+    meta.appendChild(repoLink);
+
+    if (data.commit && data.commit !== 'unknown') {
+      meta.appendChild(document.createTextNode(' · '));
+      const commitLink = document.createElement('a');
+      commitLink.href = data.repo + '/commit/' + data.commit;
+      commitLink.target = '_blank';
+      commitLink.rel = 'noopener';
+      commitLink.textContent = 'Deployed from ' + data.commit.substring(0, 7);
+      commitLink.className = 'header-meta-link';
+      meta.appendChild(commitLink);
+    }
+  } catch (_) { /* ignore */ }
+})();
+
+// ---------------------------------------------------------------------------
 // Toast notifications
 // ---------------------------------------------------------------------------
 
