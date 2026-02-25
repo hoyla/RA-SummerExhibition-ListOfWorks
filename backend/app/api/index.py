@@ -17,6 +17,7 @@ from backend.app.api.deps import get_db
 from backend.app.services.storage import storage
 from backend.app.services.export_renderer import escape_for_mac_roman
 from backend.app.api.schemas import (
+    AutoResolvedFields,
     IndexImportOut,
     IndexArtistOut,
     IndexCatNumberOut,
@@ -78,26 +79,26 @@ def upload_index_excel(
     disk_name = _make_key(original_name)
     storage.save(disk_name, file.file)
 
-    file_path = storage.full_path(disk_name)
-    try:
-        import_record = import_index_excel(
-            file_path,
-            db,
-            display_name=original_name,
-        )
-    except IndexImportError as exc:
-        storage.delete(disk_name)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        )
-    except Exception as exc:
-        logger.exception("Index import failed with unhandled error")
-        storage.delete(disk_name)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Import error: {exc}",
-        )
+    with storage.open_path(disk_name) as file_path:
+        try:
+            import_record = import_index_excel(
+                file_path,
+                db,
+                display_name=original_name,
+            )
+        except IndexImportError as exc:
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
+        except Exception as exc:
+            logger.exception("Index import failed with unhandled error")
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Import error: {exc}",
+            )
 
     import_record.disk_filename = disk_name
     db.commit()
@@ -198,7 +199,49 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
         known = lookup_known_artist(
             known_cache, a.raw_first_name, a.raw_last_name, a.raw_quals
         )
-        eff = resolve_index_artist(a, override_map.get(str(a.id)), known)
+        ovr = override_map.get(str(a.id))
+        eff = resolve_index_artist(a, ovr, known)
+
+        # Auto-resolved values (normalisation + known artist, no override)
+        auto_resolved_obj = None
+        override_obj = None
+        if ovr is not None:
+            auto = resolve_index_artist(a, None, known)
+            auto_resolved_obj = AutoResolvedFields(
+                title=auto.title,
+                first_name=auto.first_name,
+                last_name=auto.last_name,
+                quals=auto.quals,
+                company=auto.company,
+                is_company=auto.is_company,
+                artist2_first_name=auto.artist2_first_name,
+                artist2_last_name=auto.artist2_last_name,
+                artist2_quals=auto.artist2_quals,
+                artist3_first_name=auto.artist3_first_name,
+                artist3_last_name=auto.artist3_last_name,
+                artist3_quals=auto.artist3_quals,
+                artist1_ra_styled=auto.artist1_ra_styled,
+                artist2_ra_styled=auto.artist2_ra_styled,
+                artist3_ra_styled=auto.artist3_ra_styled,
+            )
+            override_obj = IndexArtistOverrideOut(
+                artist_id=str(a.id),
+                first_name_override=ovr.first_name_override,
+                last_name_override=ovr.last_name_override,
+                title_override=ovr.title_override,
+                quals_override=ovr.quals_override,
+                artist2_first_name_override=ovr.artist2_first_name_override,
+                artist2_last_name_override=ovr.artist2_last_name_override,
+                artist2_quals_override=ovr.artist2_quals_override,
+                artist3_first_name_override=ovr.artist3_first_name_override,
+                artist3_last_name_override=ovr.artist3_last_name_override,
+                artist3_quals_override=ovr.artist3_quals_override,
+                artist1_ra_styled_override=ovr.artist1_ra_styled_override,
+                artist2_ra_styled_override=ovr.artist2_ra_styled_override,
+                artist3_ra_styled_override=ovr.artist3_ra_styled_override,
+                is_company_override=ovr.is_company_override,
+            )
+
         result.append(
             IndexArtistOut(
                 id=str(a.id),
@@ -228,7 +271,9 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                 is_company=eff.is_company,
                 is_company_auto=eff.is_company_auto,
                 has_known_artist=known is not None,
-                has_override=str(a.id) in override_map,
+                has_override=ovr is not None,
+                override=override_obj,
+                auto_resolved=auto_resolved_obj,
                 sort_key=eff.sort_key,
                 include_in_export=eff.include_in_export,
                 cat_numbers=[
@@ -383,17 +428,19 @@ def reimport_index_upload(
     disk_name = _make_key(original_name)
     storage.save(disk_name, file.file)
 
-    file_path = storage.full_path(disk_name)
-    try:
-        _record, stats = reimport_index_excel(
-            import_id,
-            file_path,
-            db,
-            display_name=original_name,
-        )
-    except IndexImportError as exc:
-        storage.delete(disk_name)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    with storage.open_path(disk_name) as file_path:
+        try:
+            _record, stats = reimport_index_excel(
+                import_id,
+                file_path,
+                db,
+                display_name=original_name,
+            )
+        except IndexImportError as exc:
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            )
 
     # Remove the previous upload file if it exists
     storage.delete(import_record.disk_filename or "")

@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -102,12 +103,20 @@ class TestLocalStorageStats:
         assert s["uploads_size_mb"] == round(3000 / (1024**2), 2)
 
 
-class TestLocalStorageFullPath:
-    def test_full_path(self, local_store):
+class TestLocalStorageOpenPath:
+    def test_open_path_yields_valid_file(self, local_store):
         local_store.save("test.xlsx", b"data")
-        fp = local_store.full_path("test.xlsx")
+        with local_store.open_path("test.xlsx") as fp:
+            assert os.path.isfile(fp)
+            assert fp.endswith("test.xlsx")
+        # File still exists after context exit (LocalStorage doesn't clean up)
         assert os.path.isfile(fp)
-        assert fp.endswith("test.xlsx")
+
+    def test_open_path_content_readable(self, local_store):
+        local_store.save("test.xlsx", b"hello world")
+        with local_store.open_path("test.xlsx") as fp:
+            with open(fp, "rb") as f:
+                assert f.read() == b"hello world"
 
 
 class TestLocalStoragePathTraversal:
@@ -118,5 +127,85 @@ class TestLocalStoragePathTraversal:
         # the file ends up as "passwd" in the base directory.
         assert local_store.exists("passwd")
         # Crucially, nothing was written outside the base dir.
-        fp = local_store.full_path("../../etc/passwd")
-        assert fp == local_store.full_path("passwd")
+        with local_store.open_path("../../etc/passwd") as fp1:
+            with local_store.open_path("passwd") as fp2:
+                assert fp1 == fp2
+
+
+# ---------------------------------------------------------------------------
+# S3Storage – open_path temp-file lifecycle
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def s3_store():
+    """Construct an S3Storage with a fully mocked boto3 client.
+
+    boto3 is imported lazily inside ``S3Storage.__init__``, so we
+    inject a mock module via ``sys.modules`` for the duration of
+    construction, then expose the mock client for assertions.
+    """
+    import sys
+
+    mock_boto3 = MagicMock()
+    mock_client = MagicMock()
+    mock_boto3.client.return_value = mock_client
+
+    with patch.dict(sys.modules, {"boto3": mock_boto3}):
+        from backend.app.services.storage import S3Storage
+
+        store = S3Storage(bucket="test-bucket", region="eu-west-2")
+
+    yield store, mock_client
+
+
+class TestS3StorageOpenPath:
+    def test_yields_valid_temp_file(self, s3_store):
+        store, mock_client = s3_store
+        body = MagicMock()
+        body.read.return_value = b"spreadsheet data"
+        mock_client.get_object.return_value = {"Body": body}
+
+        with store.open_path("uploads/test.xlsx") as fp:
+            assert os.path.isfile(fp)
+            with open(fp, "rb") as f:
+                assert f.read() == b"spreadsheet data"
+
+    def test_temp_file_cleaned_up_after_exit(self, s3_store):
+        store, mock_client = s3_store
+        body = MagicMock()
+        body.read.return_value = b"data"
+        mock_client.get_object.return_value = {"Body": body}
+
+        with store.open_path("key.xlsx") as fp:
+            temp_path = fp  # capture before exit
+            assert os.path.isfile(temp_path)
+        # After context exit the temp file should be removed
+        assert not os.path.exists(temp_path)
+
+    def test_temp_file_cleaned_up_on_exception(self, s3_store):
+        store, mock_client = s3_store
+        body = MagicMock()
+        body.read.return_value = b"data"
+        mock_client.get_object.return_value = {"Body": body}
+
+        temp_path = None
+        with pytest.raises(RuntimeError, match="boom"):
+            with store.open_path("key.xlsx") as fp:
+                temp_path = fp
+                raise RuntimeError("boom")
+        assert temp_path is not None
+        assert not os.path.exists(temp_path)
+
+    def test_downloads_correct_key(self, s3_store):
+        store, mock_client = s3_store
+        body = MagicMock()
+        body.read.return_value = b"x"
+        mock_client.get_object.return_value = {"Body": body}
+
+        with store.open_path("folder/report.xlsx"):
+            pass
+
+        mock_client.get_object.assert_called_once_with(
+            Bucket="test-bucket", Key="folder/report.xlsx"
+        )

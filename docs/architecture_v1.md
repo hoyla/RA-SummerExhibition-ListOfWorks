@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (617 tests across 26 test files) |
+| Testing    | pytest (683 tests across 28 test files) |
 
 ---
 
@@ -283,19 +283,34 @@ Index import to correct names and set RA status without manual overrides.
 
 ### KnownArtist model
 
-| Column                   | Type    | Purpose                                  |
-| ------------------------ | ------- | ---------------------------------------- |
-| `id`                     | UUID PK |                                          |
-| `match_first_name`       | Text    | Match criterion (spreadsheet first name) |
-| `match_last_name`        | Text    | Match criterion (spreadsheet last name)  |
-| `resolved_first_name`    | Text    | Output first name                        |
-| `resolved_last_name`     | Text    | Output last name                         |
-| `resolved_quals`         | Text    | Output qualifications                    |
-| `resolved_second_artist` | Text    | Output second artist suffix              |
-| `resolved_is_company`    | Boolean | Override company flag                    |
-| `notes`                  | Text    | Human-readable explanation               |
+| Column                        | Type    | Purpose                                      |
+| ----------------------------- | ------- | -------------------------------------------- |
+| `id`                          | UUID PK |                                              |
+| `match_first_name`            | Text    | Match criterion (spreadsheet first name)     |
+| `match_last_name`             | Text    | Match criterion (spreadsheet last name)      |
+| `match_quals`                 | Text    | Match criterion (spreadsheet qualifications) |
+| `resolved_first_name`         | Text    | Output first name                            |
+| `resolved_last_name`          | Text    | Output last name                             |
+| `resolved_quals`              | Text    | Output qualifications                        |
+| `resolved_is_company`         | Boolean | Override company flag                        |
+| `resolved_artist2_first_name` | Text    | Second artist first name                     |
+| `resolved_artist2_last_name`  | Text    | Second artist last name                      |
+| `resolved_artist2_quals`      | Text    | Second artist qualifications                 |
+| `resolved_artist3_first_name` | Text    | Third artist first name                      |
+| `resolved_artist3_last_name`  | Text    | Third artist last name                       |
+| `resolved_artist3_quals`      | Text    | Third artist qualifications                  |
+| `resolved_artist1_ra_styled`  | Boolean | Force RA styling for artist 1                |
+| `resolved_artist2_ra_styled`  | Boolean | Force RA styling for artist 2                |
+| `resolved_artist3_ra_styled`  | Boolean | Force RA styling for artist 3                |
+| `notes`                       | Text    | Human-readable explanation                   |
+| `is_seeded`                   | Boolean | True for entries loaded from seed JSON       |
 
-Unique constraint on `(match_first_name, match_last_name)`.
+Unique constraint on `(match_first_name, match_last_name, match_quals, is_seeded)`.
+
+Seeded entries (loaded via `POST /known-artists/seed`) are read-only — the API
+returns 403 on edit/delete attempts. Users can duplicate a seeded entry to create
+an editable copy. The cache builder prefers user entries over seeded ones when
+both match the same key.
 
 ### Matching logic
 
@@ -306,8 +321,15 @@ NULL fields normalise to empty string. Matching is **exact** (no fuzzy matching)
 ### Seed data
 
 Stored at `backend/seed_templates/known-artists.json` — a JSON array of objects.
-Seeded via `POST /known-artists/seed`; existing matches are skipped.
-`""` means "clear this field to None"; `null` or absent means "don't override".
+Seeded via `POST /known-artists/seed`; entries are created with `is_seeded=True`.
+Existing matches (by `match_first_name` + `match_last_name` + `match_quals` +
+`is_seeded`) are skipped. `""` means "clear this field to None"; `null` or
+absent means "don't override".
+
+Admins can download the current known artists as seed-format JSON via
+`GET /known-artists/export`, sorted alphabetically by last name then first name.
+The exported file can be saved as `seed_templates/known-artists.json` to update
+the repository defaults.
 
 ### Resolution priority
 
@@ -484,10 +506,10 @@ Controls all index export behaviour:
 
 Routes are split across focused modules under `backend/app/api/`:
 
-- `imports.py` — upload, re-import, list, sections, preview, warnings, delete
-- `overrides.py` — per-work override CRUD and exclude toggle
-- `exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
-- `templates.py` — LoW export template CRUD and duplication
+- `low_imports.py` — upload, re-import, list, sections, preview, warnings, delete
+- `low_overrides.py` — per-work override CRUD and exclude toggle
+- `low_exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
+- `low_templates.py` — LoW export template CRUD and duplication
 - `normalisation_config.py` — global normalisation config
 - `known_artists.py` — Known Artists CRUD and seed
 - `index.py` — Index import, artists, overrides, warnings, export
@@ -537,6 +559,7 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | PUT    | `/templates/{id}`                          | Update a template (non-builtin only)      |
 | DELETE | `/templates/{id}`                          | Soft-delete a template (non-builtin only) |
 | POST   | `/templates/{id}/duplicate`                | Clone a template                          |
+| GET    | `/templates/{id}/export`                   | Export template as seed-format JSON       |
 | PUT    | `/imports/{id}/reimport`                   | Re-import with override preservation      |
 | GET    | `/imports/{id}/export-diff`                | Diff against last export snapshot         |
 | GET    | `/imports/{id}/audit-log`                  | Audit log for an import                   |
@@ -546,7 +569,9 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | POST   | `/known-artists`                           | Create a known artist rule                |
 | PATCH  | `/known-artists/{id}`                      | Update a known artist rule                |
 | DELETE | `/known-artists/{id}`                      | Delete a known artist rule                |
+| POST   | `/known-artists/{id}/duplicate`            | Duplicate a known artist (editable copy)  |
 | POST   | `/known-artists/seed`                      | Seed known artists from JSON              |
+| GET    | `/known-artists/export`                    | Export all known artists as seed JSON     |
 
 ### Artists Index routes
 
@@ -570,6 +595,7 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | PUT    | `/index/templates/{id}`                      | Update an Index template             |
 | DELETE | `/index/templates/{id}`                      | Soft-delete an Index template        |
 | POST   | `/index/templates/{id}/duplicate`            | Clone an Index template              |
+| GET    | `/index/templates/{id}/export`               | Export Index template as seed JSON   |
 
 ---
 
@@ -617,6 +643,10 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 - Combined Templates page for both LoW and Index templates (separate tabs)
 - Full template CRUD: list, create, edit, duplicate, delete (built-in templates read-only)
 - Config page: manage normalisation honorific tokens and display preferences
+- Known Artists manager: card-based layout with live preview, seeded entry
+  protection (read-only + BUILT-IN badge + Duplicate), per-card Save/Delete,
+  admin-only Export JSON and Load defaults
+- Export JSON buttons on Templates page for seed template management (admin)
 - Toast notifications for all async operations
 - Button loading states with spinners during API calls
 

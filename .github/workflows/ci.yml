@@ -53,12 +53,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t catalogue-app .
+        run: docker compose build --build-arg BUILD_COMMIT=${{ github.sha }} app
 
       - name: Smoke-test container starts
         run: |
           # Start Postgres + app via docker compose and hit health check
-          docker compose up -d --wait --timeout 60
+          docker compose up -d --no-build --wait --timeout 60
           # Retry up to 10 times (the app may still be initialising)
           for i in $(seq 1 10); do
             if curl -sf http://localhost:8000/health; then
@@ -73,6 +73,18 @@ jobs:
           curl -sf --retry 3 --retry-delay 2 http://localhost:8000/health
           docker compose down
 
+      - name: Save image for ECR push
+        if: github.event_name == 'push'
+        run: docker save catalogue-app | gzip > /tmp/catalogue-app.tar.gz
+
+      - name: Upload image artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/catalogue-app.tar.gz
+          retention-days: 1
+
   # ── 3. Push to ECR (pushes only, not PRs) ──────────────────────────
   push-ecr:
     if: github.event_name == 'push'
@@ -80,10 +92,17 @@ jobs:
     needs: docker
     timeout-minutes: 10
     outputs:
-      image: ${{ steps.build.outputs.image }}
+      image: ${{ steps.push.outputs.image }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: gunzip -c /tmp/catalogue-app.tar.gz | docker load
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -95,14 +114,15 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image
-        id: build
+      - name: Tag and push image
+        id: push
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY"
-          docker build -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .
+          docker tag catalogue-app "$IMAGE:$IMAGE_TAG"
+          docker tag catalogue-app "$IMAGE:latest"
           docker push "$IMAGE:$IMAGE_TAG"
           docker push "$IMAGE:latest"
           echo "image=$IMAGE:$IMAGE_TAG" >> "$GITHUB_OUTPUT"

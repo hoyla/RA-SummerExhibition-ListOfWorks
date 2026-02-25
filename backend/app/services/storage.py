@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO
 
@@ -54,6 +55,16 @@ class StorageBackend(ABC):
     @abstractmethod
     def size(self, key: str) -> int:
         """Return the size in bytes of the object at *key*."""
+        ...
+
+    @abstractmethod
+    def open_path(self, key: str):
+        """Context manager yielding a filesystem path for *key*.
+
+        For local storage this is simply the real file path.  For S3 the
+        object is downloaded to a temporary file which is automatically
+        removed when the context manager exits.
+        """
         ...
 
     def stats(self) -> dict:
@@ -130,12 +141,18 @@ class LocalStorage(StorageBackend):
         (e.g. ``load_workbook(filename=...)`` which needs a filesystem path)."""
         return self._base
 
+    @contextmanager
+    def open_path(self, key: str):
+        """Yield the absolute filesystem path for *key*.
+
+        For ``LocalStorage`` this is the real file — no cleanup needed.
+        """
+        yield str(self._path(key))
+
     def full_path(self, key: str) -> str:
         """Return the absolute filesystem path for *key*.
 
-        This is specific to ``LocalStorage`` — callers that need a real path
-        (such as ``openpyxl.load_workbook``) should use this.  On S3 the
-        equivalent would be a temporary download.
+        .. deprecated:: Use :meth:`open_path` instead.
         """
         return str(self._path(key))
 
@@ -191,20 +208,25 @@ class S3Storage(StorageBackend):
         resp = self._s3.head_object(Bucket=self._bucket_name, Key=key)
         return resp["ContentLength"]
 
-    def full_path(self, key: str) -> str:
-        """Download to a temp file and return its path.
-
-        openpyxl needs a real filesystem path, so we download on demand.
-        The caller is responsible for cleanup if desired, though the temp
-        directory is typically cleaned automatically.
-        """
+    @contextmanager
+    def open_path(self, key: str):
+        """Download the S3 object to a temp file, yield its path, then clean up."""
         import tempfile
 
         data = self.load(key)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        tmp.write(data)
-        tmp.close()
-        return tmp.name
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False, prefix="catalogue_s3_", suffix=".xlsx"
+        )
+        try:
+            tmp.write(data)
+            tmp.flush()
+            tmp.close()
+            yield tmp.name
+        finally:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------

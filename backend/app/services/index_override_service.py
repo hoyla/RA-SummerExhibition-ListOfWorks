@@ -36,6 +36,9 @@ def build_known_artist_cache(db: Session) -> Dict[Tuple[str, str, str], KnownArt
     so that lookups are straightforward.  Entries with match_quals=NULL use
     "" as the quals key, allowing a two-pass lookup: first (first, last, quals)
     for an exact match, then (first, last, "") as a wildcard fallback.
+
+    When a user-created entry (is_seeded=False) and a built-in entry
+    (is_seeded=True) share the same match key, the user entry wins.
     """
     cache: Dict[Tuple[str, str, str], KnownArtist] = {}
     for ka in db.query(KnownArtist).all():
@@ -44,7 +47,9 @@ def build_known_artist_cache(db: Session) -> Dict[Tuple[str, str, str], KnownArt
             (ka.match_last_name or "").strip().lower(),
             (ka.match_quals or "").strip().lower(),
         )
-        cache[key] = ka
+        # User entries (is_seeded=False) take priority over seeded ones
+        if key not in cache or not ka.is_seeded:
+            cache[key] = ka
     return cache
 
 
@@ -308,8 +313,14 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     else:
         effective_company = auto_company
 
-    # If resolved as company and no company name, use last_name
-    if effective_company and not company:
+    # If resolved as company and no explicit company name from the
+    # spreadsheet, (re-)derive company from the resolved last_name.
+    # This is necessary because known-artist or override rules may change
+    # last_name after the importer auto-derived the company field from a
+    # partial/pre-resolution last_name (e.g. "Boyd" → "Boyd & Evans").
+    raw_company = getattr(artist, "raw_company", None)
+    has_raw_company = bool(raw_company and str(raw_company).strip())
+    if effective_company and not has_raw_company:
         company = last_name
 
     # Companies never have additional artists — the full name is

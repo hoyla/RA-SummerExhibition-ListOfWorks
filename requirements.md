@@ -55,6 +55,8 @@ The system must:
 5. Rows must be merged by identity key when they share the same name/quals
    and have no courtesy address (`Address 1`).
 6. Known Artists lookup must be applied to correct names and set RA status.
+7. Re-import: a new Excel file can replace the data of an existing index import
+   while preserving editorial overrides matched by sort key and courtesy address.
 
 ---
 
@@ -174,6 +176,8 @@ The system must provide:
 | POST   | `/templates/{id}/duplicate`                | Clone a template                          |
 | GET    | `/config`                                  | Get global normalisation config           |
 | PUT    | `/config`                                  | Save global normalisation config          |
+| GET    | `/known-artists`                           | List all known artist rules               |
+| POST   | `/known-artists`                           | Create a known artist rule                |
 | PATCH  | `/known-artists/{id}`                      | Update a known artist rule                |
 | DELETE | `/known-artists/{id}`                      | Delete a known artist rule                |
 | POST   | `/known-artists/seed`                      | Seed known artists from JSON              |
@@ -190,7 +194,9 @@ The system must provide:
 | DELETE | `/index/imports/{id}`                        | Delete index import and all data                          |
 | GET    | `/index/imports/{id}/artists`                | List all artists for an index import                      |
 | GET    | `/index/imports/{id}/warnings`               | Validation warnings for the index import                  |
+| PUT    | `/index/imports/{id}/reimport`               | Re-import with override preservation                      |
 | GET    | `/index/imports/{id}/export-tags`            | Export index as Tagged Text (`?letter=`, `?template_id=`) |
+| GET    | `/index/imports/{id}/export-diff`            | Diff against last index export snapshot                   |
 | GET    | `/index/imports/{id}/artists/{aid}/override` | Get artist override                                       |
 | PUT    | `/index/imports/{id}/artists/{aid}/override` | Set/update artist override                                |
 | DELETE | `/index/imports/{id}/artists/{aid}/override` | Remove artist override                                    |

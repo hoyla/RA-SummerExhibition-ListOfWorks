@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Depends
+from fastapi.exceptions import ResponseValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -82,6 +83,14 @@ def _setup_logging() -> None:
     root.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
     if LOG_LEVEL != "DEBUG":
         logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+    # Ensure uvicorn loggers propagate to root so that unhandled
+    # exceptions logged by Starlette's ServerErrorMiddleware appear
+    # in our structured JSON output instead of being silently lost.
+    for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        _lg = logging.getLogger(_name)
+        _lg.handlers.clear()
+        _lg.propagate = True
 
 
 _setup_logging()
@@ -261,6 +270,26 @@ app = FastAPI(
         {"name": "ops", "description": "Health check and system info"},
     ],
 )
+
+
+# ---------------------------------------------------------------------------
+# Catch response-serialisation errors that FastAPI/Pydantic would
+# otherwise silently turn into bare 500s (with no log entry).
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(ResponseValidationError)
+async def _response_validation_error(request: Request, exc: ResponseValidationError):
+    logger.error(
+        "ResponseValidationError on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error (response validation)"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +485,23 @@ def health():
 @app.get("/", tags=["ops"])
 def root():
     return {"status": "Catalogue tool running"}
+
+
+# ---------------------------------------------------------------------------
+# Version endpoint (unauthenticated) — commit SHA baked into the Docker image
+# ---------------------------------------------------------------------------
+
+_GITHUB_REPO = "https://github.com/hoyla/RA-SummerExhibition-ListOfWorks"
+_BUILD_COMMIT = os.environ.get("BUILD_COMMIT", "unknown")
+
+
+@app.get("/version", tags=["ops"])
+def version():
+    """Return the commit SHA this image was built from."""
+    return {
+        "commit": _BUILD_COMMIT,
+        "repo": _GITHUB_REPO,
+    }
 
 
 @app.get("/auth/config", tags=["ops"])

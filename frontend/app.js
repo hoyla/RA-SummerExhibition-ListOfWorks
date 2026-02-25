@@ -1,6 +1,39 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
+// Version info — populate header links from /version endpoint
+// ---------------------------------------------------------------------------
+
+(async function _loadVersionInfo() {
+  try {
+    const res = await fetch('/version');
+    if (!res.ok) return;
+    const data = await res.json();
+    const meta = document.getElementById('header-meta');
+    if (!meta) return;
+
+    const repoLink = document.createElement('a');
+    repoLink.href = data.repo;
+    repoLink.target = '_blank';
+    repoLink.rel = 'noopener';
+    repoLink.textContent = 'GitHub';
+    repoLink.className = 'header-meta-link';
+    meta.appendChild(repoLink);
+
+    if (data.commit && data.commit !== 'unknown') {
+      meta.appendChild(document.createTextNode(' · '));
+      const commitLink = document.createElement('a');
+      commitLink.href = data.repo + '/commit/' + data.commit;
+      commitLink.target = '_blank';
+      commitLink.rel = 'noopener';
+      commitLink.textContent = 'Deployed from ' + data.commit.substring(0, 7);
+      commitLink.className = 'header-meta-link';
+      meta.appendChild(commitLink);
+    }
+  } catch (_) { /* ignore */ }
+})();
+
+// ---------------------------------------------------------------------------
 // Toast notifications
 // ---------------------------------------------------------------------------
 
@@ -769,53 +802,6 @@ async function renderSettings() {
     </section>
     ` : ''}
 
-    <h3 class="settings-group-heading">Normalisation</h3>
-    <p class="settings-group-desc">Applied when an Excel file is imported. Changes here take effect on the <em>next</em> import.</p>
-    <section class="panel">
-      <h4 class="panel-subheading">Honorific Tokens</h4>
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Recognised tokens</label>
-          <input id="cfg-honorific-tokens" type="text" value="${esc(honorificTokensValue)}"${canAdmin() ? '' : ' readonly'}>
-          <span class="form-hint">Comma-separated list of abbreviations stripped from the end of artist names, e.g. &ldquo;RA, HON, PRA&rdquo;</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h4 class="panel-subheading">Known Artists</h4>
-      <p class="form-hint" style="margin:0 0 12px">Map recurring raw spreadsheet values to corrected output. Matched during import.</p>
-      <table class="data-table known-artists-table" id="known-artists-table">
-        <thead>
-          <tr>
-            <th>Match First</th>
-            <th>Match Last</th>
-            <th>Match Quals</th>
-            <th>&rarr; First</th>
-            <th>&rarr; Last</th>
-            <th>&rarr; Quals</th>
-            <th>&rarr; A2 First</th>
-            <th>&rarr; A2 Last</th>
-            <th>&rarr; A2 Quals</th>
-            <th>A1 RA</th>
-            <th>A2 RA</th>
-            <th>Company</th>
-            <th>Index Name Preview</th>
-            <th>Notes</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${knownArtists.map(ka => _knownArtistRow(ka)).join('')}
-        </tbody>
-      </table>
-      <div style="margin-top:8px">
-        ${ifEditor('<button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>')}
-        ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:8px" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
-        <span id="known-artists-status" class="status-msg" style="margin-left:8px"></span>
-      </div>
-    </section>
-
     <h3 class="settings-group-heading">Preview</h3>
     <p class="settings-group-desc">Controls how values appear in this browser view only &mdash; stored locally, never sent to the server.</p>
     <section class="panel">
@@ -833,6 +819,9 @@ async function renderSettings() {
           <label>Decimal places</label>
           <select id="disp-decimal-places">${dpOpts(dispDp)}</select>
         </div>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+      <div class="settings-form">
         <div class="form-row">
           <label>Edition prefix</label>
           <input id="disp-edition-prefix" type="text" value="${esc(dispEdPrefix)}" style="max-width:200px">
@@ -846,12 +835,42 @@ async function renderSettings() {
           </label>
         </div>
       </div>
+      <div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="savePreviewSettings()">Save Preview Settings</button>
+        <span id="preview-settings-status" class="status-msg"></span>
+      </div>
     </section>
 
-    <div class="form-actions" style="padding-bottom:20px">
-      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
-      <span id="settings-status" class="status-msg"></span>
-    </div>`;
+    <h3 class="settings-group-heading">Normalisation</h3>
+    <p class="settings-group-desc">Applied when an Excel file is imported. Changes here take effect on the <em>next</em> import.</p>
+    <section class="panel">
+      <h4 class="panel-subheading">Honorific Tokens</h4>
+      <div class="form-row">
+        <label>Recognised tokens</label>
+        <input id="cfg-honorific-tokens" type="text" value="${esc(honorificTokensValue)}"${canAdmin() ? '' : ' readonly'}>
+        <span class="form-hint">Comma-separated abbreviations stripped from the end of artist names, e.g. &ldquo;RA, HON, PRA&rdquo;</span>
+      </div>
+      <div class="form-actions" style="margin-top:12px">
+        ${ifAdmin('<button class="btn btn-primary btn-sm" onclick="saveHonorificTokens()">Save Tokens</button>')}
+        <span id="honorific-status" class="status-msg"></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h4 class="panel-subheading" style="margin:0">Known Artists</h4>
+        <div>
+          ${ifEditor('<button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>')}
+          ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:6px" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
+          ${ifAdmin(`<button class="btn btn-sm" onclick="exportKnownArtists()" style="margin-left:6px" title="Download all known artists as a seed-format JSON file">Export JSON</button>`)}
+        </div>
+      </div>
+      <p class="form-hint" style="margin:0 0 16px">Map recurring raw spreadsheet values to corrected output. Matched during import.</p>
+      <div id="known-artists-list">
+        ${knownArtists.map(ka => _knownArtistCard(ka)).join('')}
+      </div>
+      <span id="known-artists-status" class="status-msg" style="display:block;margin-top:8px"></span>
+    </section>`;
 
   // Populate Index Name previews now that the DOM is ready
   _refreshAllKaPreviews();
@@ -861,14 +880,14 @@ async function renderSettings() {
 }
 
 async function saveSettings() {
-  const rawTokens = document.getElementById('cfg-honorific-tokens')?.value ?? '';
-  const honorific_tokens = rawTokens.split(',').map(t => t.trim()).filter(Boolean);
-  const statusEl = document.getElementById('settings-status');
-  if (!statusEl) return;
-  statusEl.textContent = 'Saving\u2026';
-  statusEl.className = 'status-msg';
+  // Legacy: now split into savePreviewSettings() and saveHonorificTokens()
+  await savePreviewSettings();
+  await saveHonorificTokens();
+}
+
+function savePreviewSettings() {
+  const statusEl = document.getElementById('preview-settings-status');
   try {
-    await api('PUT', '/config', { honorific_tokens });
     _saveDisplayCfg(
       (document.getElementById('disp-currency')?.value      ?? '').trim() || '\u00a3',
       document.getElementById('disp-thousands-sep')?.value  ?? ',',
@@ -876,6 +895,21 @@ async function saveSettings() {
       (document.getElementById('disp-edition-prefix')?.value ?? '').trim() || 'edition of',
       document.getElementById('disp-edition-brackets')?.checked ?? true,
     );
+    if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${esc(e.message)}`; statusEl.className = 'status-msg error'; }
+  }
+}
+
+async function saveHonorificTokens() {
+  const rawTokens = document.getElementById('cfg-honorific-tokens')?.value ?? '';
+  const honorific_tokens = rawTokens.split(',').map(t => t.trim()).filter(Boolean);
+  const statusEl = document.getElementById('honorific-status');
+  if (!statusEl) return;
+  statusEl.textContent = 'Saving\u2026';
+  statusEl.className = 'status-msg';
+  try {
+    await api('PUT', '/config', { honorific_tokens });
     statusEl.textContent = '\u2713 Saved';
     statusEl.className = 'status-msg success';
   } catch (e) {
@@ -1074,9 +1108,9 @@ function _kaPreviewIndexName(tr) {
     nameParts.push(`<span class="${pillClass}">${esc(quals)}</span>`);
   }
 
-  // Additional artists from structured fields
+  // Additional artists from structured fields (suppressed for companies, matching index export)
   const suffixes = [];
-  if (a2First || a2Last) {
+  if (!isCompany && (a2First || a2Last)) {
     const parts = ['and'];
     if (a2First) parts.push(esc(a2First));
     if (a2Last) {
@@ -1105,82 +1139,192 @@ function _updateKaPreview(tr) {
 
 /** Refresh all Known Artist preview cells (call after table body changes). */
 function _refreshAllKaPreviews() {
-  document.querySelectorAll('#known-artists-table tbody tr').forEach(_updateKaPreview);
+  document.querySelectorAll('#known-artists-list .ka-card').forEach(card => {
+    _updateKaPreview(card);
+    _updateKaCompanyState(card);
+  });
+}
+
+/** Toggle disabled state on fields irrelevant for companies. */
+function _updateKaCompanyState(card) {
+  const isCompany = card.querySelector('.ka-company')?.checked || false;
+  card.classList.toggle('ka-is-company', isCompany);
 }
 
 /**
- * Build a resolved field cell with a clear toggle.
+ * Build a labelled resolved field with a clear toggle (card layout).
  * Three states:
  *   null  → input empty, placeholder "no change", clear button inactive
  *   ""    → input disabled, shows "(cleared)", clear button active
  *   "val" → input has text, clear button inactive
  */
-function _kaResolvedCell(cls, value, showClear) {
+function _kaResolvedField(label, cls, value, locked) {
   const isCleared = value === '';
   const hasValue = value !== null && value !== '';
   const displayVal = hasValue ? esc(value) : '';
   const clearActive = isCleared ? ' ka-clear-active' : '';
-  const clearBtn = showClear
-    ? ` <button type="button" class="ka-clear-btn${clearActive}" title="${isCleared ? 'Undo clear (revert to no change)' : 'Clear this field (set to empty)'}" onclick="_toggleKaClear(this)">\u2298</button>`
-    : '';
-  return `<td class="ka-res-cell"><input type="text" class="${cls}" value="${displayVal}" placeholder="${isCleared ? '(cleared)' : 'no change'}" ${isCleared ? 'disabled' : ''} oninput="_onKaResInput(this)">${clearBtn}</td>`;
+  const stateClass = isCleared ? 'ka-state-cleared' : (hasValue ? 'ka-state-custom' : 'ka-state-pass');
+  const stateText = isCleared ? 'Will be blanked in output' : (hasValue ? '' : 'No override \u2014 uses match value');
+  const inputDis = (isCleared || locked) ? 'disabled' : '';
+  const clearBtn = locked ? '' : `<button type="button" class="ka-clear-btn${clearActive}" title="${isCleared ? 'Undo: restore to no override' : 'Explicitly blank this field in output'}" onclick="_toggleKaClear(this)">${isCleared ? 'Undo' : 'Clear'}</button>`;
+  return `<div class="ka-field ka-res-cell">
+    <label>${label}</label>
+    <div class="ka-field-input">
+      <input type="text" class="${cls}" value="${displayVal}" placeholder="${isCleared ? '(cleared)' : 'no override'}" ${inputDis} oninput="_onKaResInput(this)"${locked ? ' readonly' : ''}>
+      ${clearBtn}
+    </div>
+    <span class="ka-field-state ${stateClass}">${stateText}</span>
+  </div>`;
 }
 
 /** When user types in a resolved field, deactivate clear state. */
 function _onKaResInput(input) {
   const clearBtn = input.parentElement.querySelector('.ka-clear-btn');
-  if (clearBtn) clearBtn.classList.remove('ka-clear-active');
+  if (clearBtn) {
+    clearBtn.classList.remove('ka-clear-active');
+    clearBtn.textContent = 'Clear';
+    clearBtn.title = 'Explicitly blank this field in output';
+  }
   input.disabled = false;
-  input.placeholder = 'no change';
-  _updateKaPreview(input.closest('tr'));
+  input.placeholder = 'no override';
+  // Update state indicator
+  const stateEl = input.closest('.ka-res-cell')?.querySelector('.ka-field-state');
+  if (stateEl) {
+    if (input.value.trim()) {
+      stateEl.className = 'ka-field-state ka-state-custom';
+      stateEl.textContent = '';
+    } else {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 uses match value';
+    }
+  }
+  _updateKaPreview(input.closest('.ka-card'));
+}
+
+/** When user types in a match field, update the card headline and preview. */
+function _onKaFieldChange(input) {
+  const card = input.closest('.ka-card');
+  const first = card.querySelector('.ka-match-first')?.value?.trim() || '';
+  const last = card.querySelector('.ka-match-last')?.value?.trim() || '';
+  const titleEl = card.querySelector('.ka-card-title');
+  if (titleEl) titleEl.textContent = [first, last].filter(Boolean).join(' ') || 'New Entry';
+  _updateKaPreview(card);
 }
 
 /** Toggle a resolved field between "no change" (null) and "cleared" (""). */
 function _toggleKaClear(btn) {
   const input = btn.parentElement.querySelector('input[type="text"]');
   const isActive = btn.classList.toggle('ka-clear-active');
+  const stateEl = input.closest('.ka-res-cell')?.querySelector('.ka-field-state');
   if (isActive) {
     input.value = '';
     input.disabled = true;
     input.placeholder = '(cleared)';
-    btn.title = 'Undo clear (revert to no change)';
+    btn.textContent = 'Undo';
+    btn.title = 'Undo: restore to no override';
+    if (stateEl) {
+      stateEl.className = 'ka-field-state ka-state-cleared';
+      stateEl.textContent = 'Will be blanked in output';
+    }
   } else {
     input.disabled = false;
-    input.placeholder = 'no change';
-    btn.title = 'Clear this field (set to empty)';
+    input.placeholder = 'no override';
+    btn.textContent = 'Clear';
+    btn.title = 'Explicitly blank this field in output';
+    if (stateEl) {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 uses match value';
+    }
   }
-  _updateKaPreview(input.closest('tr'));
+  _updateKaPreview(input.closest('.ka-card'));
 }
 
-function _knownArtistRow(ka) {
+function _knownArtistCard(ka) {
   const id = ka.id || '';
-  const ro = canEdit() ? '' : ' readonly';
-  const dis = canEdit() ? '' : ' disabled';
-  return `<tr data-ka-id="${esc(id)}">
-    <td><input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
-    <td><input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
-    <td><input type="text" class="ka-match-quals" value="${esc(ka.match_quals ?? '')}" placeholder="" oninput="_updateKaPreview(this.closest('tr'))"${ro}></td>
-    ${_kaResolvedCell('ka-res-first', ka.resolved_first_name, true)}
-    ${_kaResolvedCell('ka-res-last', ka.resolved_last_name, true)}
-    ${_kaResolvedCell('ka-res-quals', ka.resolved_quals, true)}
-    ${_kaResolvedCell('ka-res-a2-first', ka.resolved_artist2_first_name, true)}
-    ${_kaResolvedCell('ka-res-a2-last', ka.resolved_artist2_last_name, true)}
-    ${_kaResolvedCell('ka-res-a2-quals', ka.resolved_artist2_quals, true)}
-    <td style="text-align:center"><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}></td>
-    <td style="text-align:center"><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}></td>
-    <td style="text-align:center"><input type="checkbox" class="ka-company" onchange="_updateKaPreview(this.closest('tr'))"${ka.resolved_is_company ? ' checked' : ''}${dis}></td>
-    <td class="ka-preview col-index-name"></td>
-    <td><input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"${ro}></td>
-    <td>
-      ${ifEditor(`<button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times;</button>
-      <button class="btn btn-sm" onclick="saveKnownArtistRow(this)" title="Save">&check;</button>`)}
-    </td>
-  </tr>`;
+  const seeded = ka.is_seeded || false;
+  const locked = seeded || !canEdit();
+  const ro = locked ? ' readonly' : '';
+  const dis = locked ? ' disabled' : '';
+  const matchDisplay = [ka.match_first_name, ka.match_last_name].filter(Boolean).join(' ') || 'New Entry';
+  const seededCls = seeded ? ' ka-card-seeded' : '';
+
+  // Header actions differ for seeded vs editable cards
+  let actions = '';
+  if (seeded && canEdit()) {
+    actions = `<span class="badge badge-builtin">built-in</span>
+      <button class="btn btn-sm" onclick="duplicateKnownArtist(this)" title="Create an editable copy of this entry">Duplicate</button>`;
+  } else if (!seeded) {
+    actions = ifEditor(`<button class="btn btn-sm" onclick="saveKnownArtistRow(this)" title="Save">&#10003; Save</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>`);
+  }
+
+  return `<div class="ka-card${seededCls}" data-ka-id="${esc(id)}" data-ka-seeded="${seeded}">
+    <div class="ka-card-header">
+      <span class="ka-card-title">${esc(matchDisplay)}</span>
+      <span class="ka-card-actions">
+        ${actions}
+      </span>
+    </div>
+    <div class="ka-preview-bar">
+      <span class="ka-preview-bar-label">Index Preview</span>
+      <span class="ka-preview col-index-name"></span>
+    </div>
+    <div class="ka-card-body">
+      <div class="ka-artists-grid">
+        <div class="ka-section">
+          <h5 class="ka-section-heading">Match Pattern</h5>
+          <div class="ka-fields">
+            <div class="ka-field">
+              <label>First Name</label>
+              <input type="text" class="ka-match-first" value="${esc(ka.match_first_name ?? '')}" oninput="_onKaFieldChange(this)"${ro}>
+            </div>
+            <div class="ka-field">
+              <label>Last Name</label>
+              <input type="text" class="ka-match-last" value="${esc(ka.match_last_name ?? '')}" oninput="_onKaFieldChange(this)"${ro}>
+            </div>
+            <div class="ka-field">
+              <label>Qualifications</label>
+              <input type="text" class="ka-match-quals" value="${esc(ka.match_quals ?? '')}" oninput="_onKaFieldChange(this)"${ro}>
+            </div>
+          </div>
+        </div>
+        <div class="ka-section">
+          <h5 class="ka-section-heading">Resolved &rarr; Artist 1</h5>
+          <div class="ka-fields">
+            <div class="ka-a1-first-wrap">${_kaResolvedField('First Name', 'ka-res-first', ka.resolved_first_name, locked)}</div>
+            ${_kaResolvedField('Last Name', 'ka-res-last', ka.resolved_last_name, locked)}
+            ${_kaResolvedField('Qualifications', 'ka-res-quals', ka.resolved_quals, locked)}
+            <div class="ka-field ka-field-check">
+              <label><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+            </div>
+          </div>
+        </div>
+        <div class="ka-section ka-section-a2">
+          <h5 class="ka-section-heading">Resolved &rarr; Artist 2</h5>
+          <div class="ka-fields">
+            ${_kaResolvedField('First Name', 'ka-res-a2-first', ka.resolved_artist2_first_name, locked)}
+            ${_kaResolvedField('Last Name', 'ka-res-a2-last', ka.resolved_artist2_last_name, locked)}
+            ${_kaResolvedField('Qualifications', 'ka-res-a2-quals', ka.resolved_artist2_quals, locked)}
+            <div class="ka-field ka-field-check">
+              <label><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ka-card-footer">
+        <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <div class="ka-footer-notes">
+          <label>Notes</label>
+          <input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"${ro}>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 function addKnownArtistRow() {
-  const tbody = document.querySelector('#known-artists-table tbody');
-  tbody.insertAdjacentHTML('beforeend', _knownArtistRow({
+  const list = document.getElementById('known-artists-list');
+  list.insertAdjacentHTML('beforeend', _knownArtistCard({
     id: '', match_first_name: '', match_last_name: '', match_quals: '',
     resolved_first_name: '', resolved_last_name: '',
     resolved_quals: '',
@@ -1189,6 +1333,11 @@ function addKnownArtistRow() {
     resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
     resolved_is_company: false, notes: '',
   }));
+  // Scroll to and refresh preview for the new card
+  const cards = list.querySelectorAll('.ka-card');
+  const newest = cards[cards.length - 1];
+  _updateKaPreview(newest);
+  newest.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function _readKaRow(tr) {
@@ -1230,7 +1379,7 @@ function _readKaRow(tr) {
 }
 
 async function saveKnownArtistRow(btn) {
-  const tr = btn.closest('tr');
+  const tr = btn.closest('.ka-card');
   const id = tr.dataset.kaId;
   const body = _readKaRow(tr);
   const statusEl = document.getElementById('known-artists-status');
@@ -1249,7 +1398,7 @@ async function saveKnownArtistRow(btn) {
 }
 
 async function deleteKnownArtist(btn) {
-  const tr = btn.closest('tr');
+  const tr = btn.closest('.ka-card');
   const id = tr.dataset.kaId;
   const statusEl = document.getElementById('known-artists-status');
   if (!id) { tr.remove(); return; }
@@ -1258,6 +1407,25 @@ async function deleteKnownArtist(btn) {
     await api('DELETE', `/known-artists/${id}`);
     tr.remove();
     if (statusEl) { statusEl.textContent = '\u2713 Deleted'; statusEl.className = 'status-msg success'; }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+  }
+}
+
+async function duplicateKnownArtist(btn) {
+  const card = btn.closest('.ka-card');
+  const id = card.dataset.kaId;
+  const statusEl = document.getElementById('known-artists-status');
+  if (!id) return;
+  try {
+    const copy = await api('POST', `/known-artists/${id}/duplicate`);
+    // Insert the new editable card right after the seeded one
+    card.insertAdjacentHTML('afterend', _knownArtistCard(copy));
+    const newCard = card.nextElementSibling;
+    _updateKaPreview(newCard);
+    _updateKaCompanyState(newCard);
+    newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (statusEl) { statusEl.textContent = '\u2713 Editable copy created'; statusEl.className = 'status-msg success'; }
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }
@@ -1273,9 +1441,32 @@ async function seedKnownArtists() {
     }
     // Reload the table
     const knownArtists = await api('GET', '/known-artists');
-    const tbody = document.querySelector('#known-artists-table tbody');
-    tbody.innerHTML = knownArtists.map(ka => _knownArtistRow(ka)).join('');
+    const list = document.getElementById('known-artists-list');
+    list.innerHTML = knownArtists.map(ka => _knownArtistCard(ka)).join('');
     _refreshAllKaPreviews();
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+  }
+}
+
+async function exportKnownArtists() {
+  const statusEl = document.getElementById('known-artists-status');
+  try {
+    await _ensureFreshToken();
+    const resp = await fetch('/known-artists/export', {
+      headers: _apiHeaders(),
+    });
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'known-artists.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (statusEl) { statusEl.textContent = '\u2713 JSON downloaded'; statusEl.className = 'status-msg success'; }
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }
@@ -1319,13 +1510,14 @@ async function renderTemplates() {
       : '';
     const editBtn = `<a class="btn btn-sm" href="#/templates/${esc(t.id)}/edit">${(t.is_builtin || !canEdit()) ? 'View' : 'Edit'}</a>`;
     const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateTemplate('${esc(t.id)}',this)">Duplicate</button>`);
+    const expBtn  = ifAdmin(`<button class="btn btn-sm" onclick="exportTemplate('${esc(t.id)}','low',this)" title="Download as seed-format JSON">Export JSON</button>`);
     const delBtn  = t.is_builtin
       ? ''
       : ifAdmin(`<button class="btn btn-sm btn-danger" onclick="deleteTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`);
     return `<tr class="template-row">
       <td>${esc(t.name)} ${builtinBadge}</td>
       <td>${esc(created)}</td>
-      <td class="table-actions">${editBtn} ${dupBtn} ${delBtn}</td>
+      <td class="table-actions">${editBtn} ${dupBtn} ${expBtn} ${delBtn}</td>
     </tr>`;
   }).join('');
 
@@ -1337,13 +1529,14 @@ async function renderTemplates() {
       : '';
     const editBtn = `<a class="btn btn-sm" href="#/index-templates/${esc(t.id)}/edit">${(t.is_builtin || !canEdit()) ? 'View' : 'Edit'}</a>`;
     const dupBtn  = ifEditor(`<button class="btn btn-sm" onclick="duplicateIndexTemplate('${esc(t.id)}',this)">Duplicate</button>`);
+    const expBtn  = ifAdmin(`<button class="btn btn-sm" onclick="exportTemplate('${esc(t.id)}','index',this)" title="Download as seed-format JSON">Export JSON</button>`);
     const delBtn  = t.is_builtin
       ? ''
       : ifAdmin(`<button class="btn btn-sm btn-danger" onclick="deleteIndexTemplate('${esc(t.id)}','${esc(t.name)}',this)">Delete</button>`);
     return `<tr class="template-row">
       <td>${esc(t.name)} ${builtinBadge}</td>
       <td>${esc(created)}</td>
-      <td class="table-actions">${editBtn} ${dupBtn} ${delBtn}</td>
+      <td class="table-actions">${editBtn} ${dupBtn} ${expBtn} ${delBtn}</td>
     </tr>`;
   }).join('');
 
@@ -1427,6 +1620,40 @@ async function deleteIndexTemplate(id, name, btnEl) {
     renderTemplates();
   } catch (e) {
     showToast(`Could not delete: ${e.message}`, 'error');
+  } finally {
+    restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Export template as seed-format JSON (shared by LoW + Index)
+// ---------------------------------------------------------------------------
+
+async function exportTemplate(id, kind, btnEl) {
+  const restore = btnLoading(btnEl, 'Exporting');
+  try {
+    await _ensureFreshToken();
+    const prefix = kind === 'index' ? '/index' : '';
+    const resp = await fetch(`${prefix}/templates/${id}/export`, {
+      headers: _apiHeaders(),
+    });
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    // Extract filename from Content-Disposition header, fall back to template.json
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="?([^"]+)"?/);
+    const filename = m ? m[1] : 'template.json';
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded ${filename}`, 'success', 3000);
+  } catch (e) {
+    showToast(`Export failed: ${e.message}`, 'error');
   } finally {
     restore();
   }
@@ -2255,7 +2482,7 @@ function _buildWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click to show' : 'Click to hide'}">${esc(type)}: ${n}</button>`;
+      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -2290,12 +2517,23 @@ function _buildWarningsPanel() {
 
   // Attach badge click handlers after innerHTML
   panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
       const type = btn.dataset.type;
-      if (_hiddenWarningTypes.has(type)) {
-        _hiddenWarningTypes.delete(type);
+      const allTypes = Object.keys(counts);
+      if (e.altKey) {
+        // Solo / unsolo: Alt+click shows only this type
+        const visibleTypes = allTypes.filter(t => !_hiddenWarningTypes.has(t));
+        if (visibleTypes.length === 1 && visibleTypes[0] === type) {
+          _hiddenWarningTypes = new Set();  // unsolo — restore all
+        } else {
+          _hiddenWarningTypes = new Set(allTypes.filter(t => t !== type));
+        }
       } else {
-        _hiddenWarningTypes.add(type);
+        if (_hiddenWarningTypes.has(type)) {
+          _hiddenWarningTypes.delete(type);
+        } else {
+          _hiddenWarningTypes.add(type);
+        }
       }
       _buildWarningsPanel();
     });
@@ -3102,6 +3340,7 @@ async function renderIndexDetail(importId) {
     <section class="panel" id="index-warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
     <section class="panel">
       <h3>Artists</h3>
+      <div id="index-group-legend-slot"></div>
       <div class="works-filter-bar">
         <input type="text" id="index-filter" class="works-filter-input" placeholder="Filter by name, quals, or cat number\u2026" autocomplete="off">
         <span id="index-filter-count" class="works-filter-count"></span>
@@ -3232,7 +3471,7 @@ function _buildIndexWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenIndexWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click to show' : 'Click to hide'}">${esc(type)}: ${n}</button>`;
+      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -3266,12 +3505,23 @@ function _buildIndexWarningsPanel() {
 
   // Attach badge click handlers
   panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
       const type = btn.dataset.type;
-      if (_hiddenIndexWarningTypes.has(type)) {
-        _hiddenIndexWarningTypes.delete(type);
+      const allTypes = Object.keys(counts);
+      if (e.altKey) {
+        // Solo / unsolo: Alt+click shows only this type
+        const visibleTypes = allTypes.filter(t => !_hiddenIndexWarningTypes.has(t));
+        if (visibleTypes.length === 1 && visibleTypes[0] === type) {
+          _hiddenIndexWarningTypes = new Set();  // unsolo — restore all
+        } else {
+          _hiddenIndexWarningTypes = new Set(allTypes.filter(t => t !== type));
+        }
       } else {
-        _hiddenIndexWarningTypes.add(type);
+        if (_hiddenIndexWarningTypes.has(type)) {
+          _hiddenIndexWarningTypes.delete(type);
+        } else {
+          _hiddenIndexWarningTypes.add(type);
+        }
       }
       _buildIndexWarningsPanel();
     });
@@ -3330,6 +3580,17 @@ function renderIndexArtists(importId, artists) {
     }
   }
 
+  // Build a map from sort_key → list of artist names for tooltip text
+  const sortKeyNames = {};
+  for (const a of artists) {
+    const sk = a.sort_key || '';
+    if (sortKeyColor[sk]) {
+      if (!sortKeyNames[sk]) sortKeyNames[sk] = [];
+      const name = [a.first_name, a.last_name].filter(Boolean).join(' ') || '(unnamed)';
+      sortKeyNames[sk].push(name);
+    }
+  }
+
   // Group artists by first letter of sort_key
   const letterGroups = [];
   let currentLetter = null;
@@ -3345,6 +3606,19 @@ function renderIndexArtists(importId, artists) {
     currentGroup.artists.push(a);
   }
 
+  // Legend for grouped entries (only if groups exist)
+  const groupCount = Object.keys(sortKeyColor).length;
+  const legendSlot = document.getElementById('index-group-legend-slot');
+  if (legendSlot) {
+    legendSlot.innerHTML = groupCount > 0
+      ? `<div class="index-group-legend">
+          <span class="index-group-legend-item"><span class="index-group-swatch" style="background:#e74c3c"></span><span class="index-group-swatch" style="background:#2980b9"></span></span>
+          Coloured bars link entries that share the same sort position in the index
+          (e.g.&nbsp;multi-artist entries). Different colours distinguish separate groups.
+        </div>`
+      : '';
+  }
+
   const theadHTML = `<thead><tr>
     <th>Index Name</th>
     <th>Last Name</th>
@@ -3358,7 +3632,7 @@ function renderIndexArtists(importId, artists) {
   </tr></thead>`;
 
   container.innerHTML = letterGroups.map(g => {
-    const rows = g.artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''])).join('');
+    const rows = g.artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''], sortKeyNames)).join('');
     return `
     <details class="section-block" open>
       <summary class="section-summary">
@@ -3441,9 +3715,203 @@ function styledIndexName(a) {
   return result;
 }
 
-function indexArtistRowHTML(importId, a, groupColor) {
+// ---------------------------------------------------------------------------
+// Normalisation reason detection — explains what the import engine changed
+// ---------------------------------------------------------------------------
+
+function _normReasons(a) {
+  const reasons = [];
+  const fields = [
+    ['Last Name', a.raw_last_name, a.last_name],
+    ['First Name', a.raw_first_name, a.first_name],
+    ['Quals', a.raw_quals, a.quals],
+  ];
+  const trimmedFields = [];
+  const changedFields = [];
+  for (const [label, raw, norm] of fields) {
+    const r = raw ?? '';
+    const n = norm ?? '';
+    if (r === n) continue;
+    // Whitespace-only difference?
+    if (r.trim() === n.trim()) {
+      trimmedFields.push(label);
+    } else {
+      changedFields.push(label);
+    }
+  }
+  if (trimmedFields.length) {
+    reasons.push('Whitespace trimmed: ' + trimmedFields.join(', '));
+  }
+  if (changedFields.length) {
+    reasons.push('Values changed: ' + changedFields.join(', '));
+  }
+  // Company auto-detected
+  if (a.is_company_auto) {
+    reasons.push('Auto-detected as company (no first name)');
+  }
+  // Multi-artist parsed
+  if (a.artist2_first_name || a.artist2_last_name) {
+    const raw_ln = (a.raw_last_name ?? '').trim().toLowerCase();
+    if (raw_ln.startsWith('and ') || raw_ln.startsWith('& ')) {
+      reasons.push('Multi-artist entry parsed (second artist extracted from Last Name)');
+    }
+  }
+  return reasons;
+}
+
+/**
+ * Render a raw-value cell in the normalisation detail table.
+ * When the only difference from the normalised value is whitespace,
+ * make the trailing/leading spaces visible so the user understands
+ * why the Norm badge appeared.
+ */
+function _normRawCell(raw, norm) {
+  const r = raw ?? '';
+  const n = norm ?? '';
+  if (r === n) return esc(r);
+  // Whitespace-only diff → show the trimmed chars
+  if (r.trim() === n.trim()) {
+    // Highlight leading/trailing whitespace with a visible marker
+    const leading = r.length - r.trimStart().length;
+    const trailing = r.length - r.trimEnd().length;
+    let parts = '';
+    if (leading > 0) parts += '<span class="ws-marker" title="leading whitespace">·</span>'.repeat(leading);
+    parts += esc(r.trim());
+    if (trailing > 0) parts += '<span class="ws-marker" title="trailing whitespace">·</span>'.repeat(trailing);
+    return parts;
+  }
+  return esc(r);
+}
+
+/**
+ * Return a CSS class for the normalised cell: 'norm-highlight' for real
+ * value changes, 'norm-ws-only' for whitespace-only trimming, or ''.
+ */
+function _normCellClass(raw, norm) {
+  const r = raw ?? '';
+  const n = norm ?? '';
+  if (r === n) return '';
+  if (r.trim() === n.trim()) return 'norm-ws-only';
+  return 'norm-highlight';
+}
+
+/**
+ * Return CSS class for value comparison: 'val-changed' if different,
+ * 'val-unchanged' if same (or both empty).
+ */
+function _valClass(prev, curr) {
+  const p = prev ?? '';
+  const c = curr ?? '';
+  return (p === c || (!p && !c)) ? 'val-unchanged' : 'val-changed';
+}
+
+/**
+ * Build the detail comparison table rows for the artist detail panel.
+ * When the artist has an override, shows 3 columns (Raw | Auto-resolved | Effective).
+ * Otherwise shows 2 columns (Raw | Resolved).
+ */
+function _buildDetailTable(a) {
+  const hasOvr = a.has_override && a.auto_resolved;
+  const ar = a.auto_resolved || {};
+  const colSpan = hasOvr ? 4 : 3;
+
+  // Column headers
+  const thead = hasOvr
+    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Auto-resolved</th><th>Effective</th></tr></thead>'
+    : '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Resolved</th></tr></thead>';
+
+  // Helper: one comparison row (2-column or 3-column)
+  function row(label, rawVal, autoVal, effVal) {
+    const raw = rawVal ?? '';
+    const auto = autoVal ?? '';
+    const eff = effVal ?? '';
+    if (hasOvr) {
+      return `<tr>
+        <td>${esc(label)}</td>
+        <td>${_normRawCell(raw, auto)}</td>
+        <td class="${_valClass(raw, auto)}">${esc(auto)}</td>
+        <td class="${_valClass(auto, eff)}">${esc(eff)}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td>${_normRawCell(raw, eff)}</td>
+      <td class="${_valClass(raw, eff)}">${esc(eff)}</td>
+    </tr>`;
+  }
+
+  // Main comparison rows
+  const rows = [
+    row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
+    row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
+    row('Title',      a.raw_title,      hasOvr ? ar.title      : null, a.title),
+    row('Quals',      a.raw_quals,      hasOvr ? ar.quals      : null, a.quals),
+  ];
+
+  // Company row
+  if (hasOvr) {
+    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
+      <td class="${_valClass(a.raw_company, ar.company)}">${esc(ar.company ?? '')}</td>
+      <td class="${_valClass(ar.company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
+  } else {
+    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
+      <td class="${_valClass(a.raw_company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
+  }
+
+  // Address row (always just raw and courtesy note)
+  rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
+    <td colspan="${colSpan - 2}"><em class="muted">courtesy field</em></td></tr>`);
+
+  // RA Styled row
+  const raText = (a1, a2, a3) => {
+    let s = a1 ? 'Yes' : 'No';
+    if (a2) s += ' / A2: Yes';
+    if (a3) s += ' / A3: Yes';
+    return s;
+  };
+  if (hasOvr) {
+    const autoRA = raText(ar.artist1_ra_styled, ar.artist2_ra_styled, ar.artist3_ra_styled);
+    const effRA = raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled);
+    rows.push(`<tr><td>RA Styled</td><td></td>
+      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${autoRA}</td>
+      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${effRA}</td></tr>`);
+  } else {
+    rows.push(`<tr><td>RA Styled</td><td colspan="${colSpan - 1}">${raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled)}</td></tr>`);
+  }
+
+  // Additional artists
+  const fmtArtist = (fn, ln, q) => esc([fn, ln, q].filter(Boolean).join(' '));
+  if (a.artist2_first_name || a.artist2_last_name || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name))) {
+    if (hasOvr) {
+      const autoA2 = [ar.artist2_first_name, ar.artist2_last_name, ar.artist2_quals].filter(Boolean).join(' ');
+      const effA2 = [a.artist2_first_name, a.artist2_last_name, a.artist2_quals].filter(Boolean).join(' ');
+      rows.push(`<tr><td>Artist 2</td><td></td>
+        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(autoA2)}</td>
+        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(effA2)}</td></tr>`);
+    } else {
+      rows.push(`<tr><td>Artist 2</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals)}</td></tr>`);
+    }
+  }
+  if (a.artist3_first_name || a.artist3_last_name || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name))) {
+    if (hasOvr) {
+      const autoA3 = [ar.artist3_first_name, ar.artist3_last_name, ar.artist3_quals].filter(Boolean).join(' ');
+      const effA3 = [a.artist3_first_name, a.artist3_last_name, a.artist3_quals].filter(Boolean).join(' ');
+      rows.push(`<tr><td>Artist 3</td><td></td>
+        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(autoA3)}</td>
+        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(effA3)}</td></tr>`);
+    } else {
+      rows.push(`<tr><td>Artist 3</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals)}</td></tr>`);
+    }
+  }
+
+  return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
+}
+
+function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
   const included = a.include_in_export !== false;
   const groupStyle = groupColor ? `border-left: 4px solid ${groupColor};` : '';
+  const groupTitle = groupColor && sortKeyNames
+    ? `Linked entries (same sort position): ${(sortKeyNames[a.sort_key || ''] || []).join(', ')}` : '';
   const badges = [];
   if (a.is_ra_member) badges.push('<span class="badge badge-ra">RA</span>');
   const isOverridden = a.is_company !== a.is_company_auto;
@@ -3458,11 +3926,10 @@ function indexArtistRowHTML(importId, a, groupColor) {
       : '');
   }
 
-  // Detect normalisation changes
-  const hasNorm = (a.raw_last_name ?? '') !== (a.last_name ?? '')
-    || (a.raw_first_name ?? '') !== (a.first_name ?? '')
-    || (a.raw_quals ?? '') !== (a.quals ?? '');
-  if (hasNorm) badges.push('<span class="badge badge-normalised" title="Values changed by normalisation">Norm</span>');
+  // Detect normalisation changes and build human-readable reasons
+  const normReasons = _normReasons(a);
+  const hasNorm = normReasons.length > 0;
+  if (hasNorm) badges.push(`<span class="badge badge-normalised" title="${esc(normReasons.join('; '))}">Norm</span>`);
   if (a.has_known_artist) badges.push('<span class="badge badge-known" title="Matched a Known Artist rule">Known</span>');
   if (a.has_override) badges.push('<span class="badge badge-override" title="Has a user override">Override</span>');
   if (a.merged_from_rows && a.merged_from_rows.length > 1) {
@@ -3505,7 +3972,7 @@ function indexArtistRowHTML(importId, a, groupColor) {
     ? ` <span class="second-artist">${esc('and ' + additionalArtists.join(' and '))}</span>` : '';
 
   return `
-    <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" onclick="toggleIndexDetail('${esc(a.id)}')">
+    <tr id="idx-${esc(a.id)}" class="index-row ${included ? '' : 'row-excluded'}" style="${groupStyle}" ${groupTitle ? `title="${esc(groupTitle)}"` : ''} onclick="toggleIndexDetail('${esc(a.id)}')">
       <td class="col-index-name">${styledIndexName(a)}</td>
       <td class="col-lastname">${diffCell(a.raw_last_name, a.last_name)}${additionalArtistDisplay}</td>
       <td>${diffCell(a.raw_first_name, a.first_name)}</td>
@@ -3524,19 +3991,8 @@ function indexArtistRowHTML(importId, a, groupColor) {
     <tr id="idx-detail-${esc(a.id)}" class="index-detail-row" style="display:none">
       <td colspan="9">
         <div class="index-detail">
-          <table class="detail-table">
-            <thead><tr><th>Field</th><th>Spreadsheet (raw)</th><th>Normalised</th></tr></thead>
-            <tbody>
-              <tr><td>Last Name</td><td>${esc(a.raw_last_name ?? '')}</td><td class="${(a.raw_last_name ?? '') !== (a.last_name ?? '') ? 'norm-highlight' : ''}">${esc(a.last_name ?? '')}</td></tr>
-              <tr><td>First Name</td><td>${esc(a.raw_first_name ?? '')}</td><td class="${(a.raw_first_name ?? '') !== (a.first_name ?? '') ? 'norm-highlight' : ''}">${esc(a.first_name ?? '')}</td></tr>
-              <tr><td>Quals</td><td>${esc(a.raw_quals ?? '')}</td><td class="${(a.raw_quals ?? '') !== (a.quals ?? '') ? 'norm-highlight' : ''}">${esc(a.quals ?? '')}</td></tr>
-              <tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td><td>${esc(a.company ?? '')}</td></tr>
-              <tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td><td><em class="muted">courtesy field</em></td></tr>
-              <tr><td>RA Styled</td><td colspan="2">${a.artist1_ra_styled ? 'Yes' : 'No'}${a.artist2_ra_styled ? ' / A2: Yes' : ''}${a.artist3_ra_styled ? ' / A3: Yes' : ''}</td></tr>
-              ${a.artist2_first_name || a.artist2_last_name ? `<tr><td>Artist 2</td><td colspan="2">${esc([a.artist2_first_name, a.artist2_last_name, a.artist2_quals].filter(Boolean).join(' '))}</td></tr>` : ''}
-              ${a.artist3_first_name || a.artist3_last_name ? `<tr><td>Artist 3</td><td colspan="2">${esc([a.artist3_first_name, a.artist3_last_name, a.artist3_quals].filter(Boolean).join(' '))}</td></tr>` : ''}
-            </tbody>
-          </table>
+          ${hasNorm ? `<div class="norm-reasons"><strong>Normalisation:</strong> ${normReasons.map(r => esc(r)).join(' · ')}</div>` : ''}
+          ${_buildDetailTable(a)}
           <div style="margin-top:8px">
             ${ifEditor(`<button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
               onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>`)}

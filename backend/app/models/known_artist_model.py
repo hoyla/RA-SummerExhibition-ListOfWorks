@@ -54,6 +54,9 @@ class KnownArtist(Base):
     # Human-readable note explaining why this override exists
     notes = Column(Text, nullable=True)
 
+    # True for entries loaded from the seed file (read-only in the UI)
+    is_seeded = Column(Boolean, nullable=False, default=False, server_default="false")
+
     created_at = Column(
         TIMESTAMP(timezone=True),
         server_default=func.now(),
@@ -71,6 +74,7 @@ class KnownArtist(Base):
             "match_first_name",
             "match_last_name",
             "match_quals",
+            "is_seeded",
             name="uq_known_artist_match",
         ),
     )

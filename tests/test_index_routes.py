@@ -11,6 +11,7 @@ from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
 from backend.app.models.audit_log_model import AuditLog
+from backend.app.models.known_artist_model import KnownArtist
 
 
 # ---------------------------------------------------------------------------
@@ -755,3 +756,94 @@ class TestMergeUnmerge:
         assert len(artists) == 2
         for a in artists:
             assert a["merged_from_rows"] is None
+
+
+# ---------------------------------------------------------------------------
+# Auto-resolved & override fields in artist listing
+# ---------------------------------------------------------------------------
+
+
+class TestArtistListingAutoResolved:
+    """Test that the artist listing includes auto_resolved and override fields."""
+
+    def test_no_override_fields_are_null(self, client, db_session):
+        """Without an override, auto_resolved and override should be null."""
+        imp, artists = _seed_index_import(db_session)
+        r = client.get(f"/index/imports/{imp.id}/artists")
+        assert r.status_code == 200
+        for a in r.json():
+            assert a["auto_resolved"] is None
+            assert a["override"] is None
+            assert a["has_override"] is False
+
+    def test_with_override_returns_auto_resolved_and_override(self, client, db_session):
+        """When an override is set, auto_resolved shows pre-override values
+        and override contains the override record."""
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]  # Adams, Roger
+
+        # Set an override changing the first name
+        client.put(
+            f"/index/imports/{imp.id}/artists/{artist.id}/override",
+            json={"first_name_override": "Bob"},
+        )
+
+        r = client.get(f"/index/imports/{imp.id}/artists")
+        adams = [a for a in r.json() if a["id"] == str(artist.id)][0]
+
+        assert adams["has_override"] is True
+        assert adams["override"] is not None
+        assert adams["override"]["first_name_override"] == "Bob"
+
+        assert adams["auto_resolved"] is not None
+        # Auto-resolved should show the original normalised first name
+        assert adams["auto_resolved"]["first_name"] == "Roger"
+
+        # Effective value should reflect the override
+        assert adams["first_name"] == "Bob"
+
+    def test_auto_resolved_includes_known_artist(self, client, db_session):
+        """auto_resolved should include known artist resolution but not user override."""
+        imp, artists = _seed_index_import(db_session)
+        artist = artists[0]  # Adams, Roger
+
+        # Create a known artist rule that changes Roger -> Rodger
+        ka = KnownArtist(
+            match_first_name="Roger",
+            match_last_name="Adams",
+            resolved_first_name="Rodger",
+            resolved_last_name="Adams",
+        )
+        db_session.add(ka)
+        db_session.commit()
+
+        # Set an override on top of the known artist
+        client.put(
+            f"/index/imports/{imp.id}/artists/{artist.id}/override",
+            json={"first_name_override": "Bob"},
+        )
+
+        r = client.get(f"/index/imports/{imp.id}/artists")
+        adams = [a for a in r.json() if a["id"] == str(artist.id)][0]
+
+        # Auto-resolved should include known artist (Rodger) but NOT override
+        assert adams["auto_resolved"]["first_name"] == "Rodger"
+
+        # Effective value should be the override (Bob)
+        assert adams["first_name"] == "Bob"
+
+    def test_non_overridden_artist_unaffected(self, client, db_session):
+        """Artists without overrides should remain unaffected when others have them."""
+        imp, artists = _seed_index_import(db_session)
+
+        # Override Adams only
+        client.put(
+            f"/index/imports/{imp.id}/artists/{artists[0].id}/override",
+            json={"first_name_override": "Bob"},
+        )
+
+        r = client.get(f"/index/imports/{imp.id}/artists")
+        parker = [a for a in r.json() if a["last_name"] == "Parker"][0]
+        assert parker["auto_resolved"] is None
+        assert parker["override"] is None
+        assert parker["has_override"] is False

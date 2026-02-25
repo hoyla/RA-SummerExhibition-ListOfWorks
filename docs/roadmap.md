@@ -265,6 +265,48 @@
 
 ---
 
+## Phase 19 – Settings UX & seed template management ✅
+
+### Settings page redesign
+
+- Known Artists section uses card-based layout (one card per artist rule)
+- Each card shows a live preview bar with the resolved index-format name
+- Three-state resolved fields (original → override → resolved) with
+  Clear / Undo controls and colour-coded state indicators
+- Company flag toggle dims irrelevant fields (Artist 1 first name, Artist 2)
+- Per-section Save buttons: "Save Preview Settings" (everyone, localStorage)
+  and "Save Tokens" (admin only, API call) replace the old global Save
+- Edition settings (prefix, brackets) grouped below numerical settings
+  (currency, thousands, decimals) with visual divider
+
+### Seeded Known Artists
+
+- `is_seeded` Boolean column on `KnownArtist` model (Alembic migration)
+- Widened unique constraint to `(match_first, match_last, match_quals, is_seeded)`
+  so user copies can coexist with seeded originals
+- Seeded entries are read-only in the UI (blue card styling, BUILT-IN badge,
+  locked fields, no Save/Delete buttons)
+- `POST /{id}/duplicate` endpoint creates a user-editable copy of a seeded entry
+- Cache builder prefers user entries over seeded ones during import resolution
+- 403 guards prevent API-level edits/deletes on seeded entries
+
+### Seed template JSON export
+
+- `GET /known-artists/export` — admin-only download of all known artists as
+  seed-format JSON (alphabetically sorted by last name, first name)
+- `GET /templates/{id}/export` — admin-only download of a LoW export template
+  as seed-format JSON (with `_name` metadata, filename from slug)
+- `GET /index/templates/{id}/export` — admin-only download of an Index export
+  template as seed-format JSON (with `_name` and `_config_type` metadata)
+- Export JSON buttons on the Settings page (Known Artists) and Templates page
+  (per-template row) — admin-only
+
+### Test count
+
+- 683 tests across 28 test files
+
+---
+
 ## Future considerations
 
 - Advanced title casing rules (LPG eccentricities)
@@ -276,74 +318,34 @@
 
 ---
 
-## Maintenance & CI health (prioritised)
+## Maintenance backlog
 
-This project is production-ready in many places; the following maintenance
-items are prioritised to improve security, reliability, and developer
-experience. They are intentionally practical and scoped so a minor commit can
-exercise the GitHub Actions CI pipeline to confirm branch, commit and workflow
-health.
+**High**
 
-**Priority 1 — High**
+- **S3 temp-file cleanup**: `S3Storage.full_path()` writes a temporary file
+  with `delete=False`. Convert to a context-managed pattern or enforce cleanup
+  by callers to avoid temp-file accumulation.
 
-- **Audit upload filename handling**: ensure uploads are sanitized and
-  deterministically prefixed (UUID) to avoid collisions and path traversal.
-  Add a unit test and a small route-level test to validate the stored filename.
+**Medium**
 
-- **S3 temp-file cleanup**: `S3Storage.full_path()` currently writes a
-  temporary file with `delete=False`. Convert to a context-managed pattern or
-  document and enforce cleanup by callers to avoid temp-file accumulation.
+- **Price parsing precision**: preserve `Decimal` precision through
+  `parse_price()`, rendering, and tests so cents/decimals are never silently
+  truncated by float conversion.
 
-**Priority 2 — Medium**
+- **Alembic migration gating**: automatic `upgrade head` on import can surprise
+  interactive tooling. Consider gating behind `RUN_MIGRATIONS=true` or moving
+  to a startup event.
 
-- **Price parsing precision**: keep `Decimal` precision in `parse_price()` so
-  cents/decimals are preserved across normalisation and rendering. Update
-  formatting in the renderer and tests accordingly.
+- **Frontend modularity**: `frontend/app.js` is a single large file (~4200
+  lines). Consider splitting into modules or adding a minimal bundler step.
 
-- **Alembic migrations gating**: running Alembic during module import can
-  surprise interactive tooling. Consider moving automatic `upgrade` to a
-  startup event or gating it behind an env var like `RUN_MIGRATIONS=true`.
+**Low**
 
-- **Frontend modularity**: consider splitting `frontend/app.js` into modules or
-  adding a minimal bundler step to improve maintainability and enable source
-  maps.
-
-**Priority 3 — Low**
-
-- **Tagged Text header consistency**: standardise the ASCII/MAC header emission
-  between LoW and Index renderers.
+- **Tagged Text header consistency**: standardise the ASCII-MAC header emission
+  between the LoW and Index renderers.
 
 - **JWKS caching resilience**: add a TTL or refresh-on-failure strategy for
-  Cognito JWKS to handle key rotation without requiring a container restart.
+  Cognito JWKS to handle key rotation without a container restart.
 
-- **Request tracing**: add request-id propagation (X-Request-Id) to logs for
-  easier troubleshooting across services.
-
-**CI smoke-test (branch/commit/workflow verification)**
-
-To confirm GitHub Actions and branch-based deployment behave as expected,
-create a small documentation commit on a non-main branch (this should trigger
-CI and a staging deployment according to the repo's workflow):
-
-1. Create and switch to a branch:
-
-```bash
-git checkout -b docs/ci-smoke-test
-```
-
-2. Commit the documentation change (already present locally) and push:
-
-```bash
-git add docs/roadmap.md
-git commit -m "docs: add maintenance & CI health checklist"
-git push -u origin docs/ci-smoke-test
-```
-
-3. Observe GitHub Actions for the branch — the CI should run tests, linters,
-   and (if configured) deploy to staging. Merge to `main` only after CI
-   completes successfully.
-
-If you want, I can create the branch and commit locally for you and either
-attempt to push (if you want me to), or provide the exact commands to run on
-your machine. Running the minor commit is a quick way to validate that the
-workflows trigger and the pipeline is healthy.
+- **Request tracing**: add `X-Request-Id` propagation to logs for easier
+  troubleshooting.

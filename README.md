@@ -124,10 +124,10 @@ backend/app/
   api/            # FastAPI route handlers
     index.py      # Artists' Index routes
     index_templates.py
-    imports.py    # List of Works routes
-    overrides.py
-    exports.py
-    templates.py
+    low_imports.py    # List of Works routes
+    low_overrides.py
+    low_exports.py
+    low_templates.py
     known_artists.py
     users.py      # Cognito user management (admin-only)
     auth.py       # Authentication (Cognito JWT / API key / no-auth)

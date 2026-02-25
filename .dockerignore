@@ -29,3 +29,10 @@ docs/
 .idea/
 *.swp
 *.swo
+
+# CI/CD and infra (not needed at runtime)
+.github/
+.aws/
+
+# Test sample files
+test_sample_files/

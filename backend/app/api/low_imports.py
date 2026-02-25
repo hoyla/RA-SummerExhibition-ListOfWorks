@@ -46,20 +46,25 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     disk_name = _make_key(original_name)
     storage.save(disk_name, file.file)
 
-    file_path = storage.full_path(disk_name)
-    ruleset = resolve_export_config(db)
-    honorific_tokens = None
-    if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
-        honorific_tokens = ruleset.config["honorific_tokens"]
-    # Pass the original filename so the Import record shows the user-facing name
-    try:
-        import_record = import_excel(
-            file_path, db, honorific_tokens=honorific_tokens, display_name=original_name
-        )
-    except ExcelImportError as exc:
-        # Clean up the saved file on validation failure
-        storage.delete(disk_name)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    with storage.open_path(disk_name) as file_path:
+        ruleset = resolve_export_config(db)
+        honorific_tokens = None
+        if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
+            honorific_tokens = ruleset.config["honorific_tokens"]
+        # Pass the original filename so the Import record shows the user-facing name
+        try:
+            import_record = import_excel(
+                file_path,
+                db,
+                honorific_tokens=honorific_tokens,
+                display_name=original_name,
+            )
+        except ExcelImportError as exc:
+            # Clean up the saved file on validation failure
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            )
 
     # Persist the storage key so we can clean up later
     import_record.disk_filename = disk_name
@@ -91,23 +96,25 @@ def reimport_upload(
     disk_name = _make_key(original_name)
     storage.save(disk_name, file.file)
 
-    file_path = storage.full_path(disk_name)
-    ruleset = resolve_export_config(db)
-    honorific_tokens = None
-    if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
-        honorific_tokens = ruleset.config["honorific_tokens"]
+    with storage.open_path(disk_name) as file_path:
+        ruleset = resolve_export_config(db)
+        honorific_tokens = None
+        if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
+            honorific_tokens = ruleset.config["honorific_tokens"]
 
-    try:
-        _record, stats = reimport_excel(
-            import_id,
-            file_path,
-            db,
-            honorific_tokens=honorific_tokens,
-            display_name=original_name,
-        )
-    except ExcelImportError as exc:
-        storage.delete(disk_name)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        try:
+            _record, stats = reimport_excel(
+                import_id,
+                file_path,
+                db,
+                honorific_tokens=honorific_tokens,
+                display_name=original_name,
+            )
+        except ExcelImportError as exc:
+            storage.delete(disk_name)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            )
 
     # Remove the previous upload file if it exists
     storage.delete(import_record.disk_filename or "")

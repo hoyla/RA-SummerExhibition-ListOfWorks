@@ -5,9 +5,11 @@ Mirrors the List of Works template routes but uses config_type='index_template'.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 import hashlib
 import json
+import re
 from typing import List
 from uuid import UUID
 
@@ -40,6 +42,42 @@ def list_index_templates(db: Session = Depends(get_db)):
         )
         for r in rows
     ]
+
+
+@router.get(
+    "/templates/{template_id}/export",
+    dependencies=[Depends(require_role("admin"))],
+)
+def export_index_template(template_id: UUID, db: Session = Depends(get_db)):
+    """Download a single index template as seed-format JSON.
+
+    Reconstructs ``_name`` and ``_config_type`` metadata fields so the
+    file can be dropped straight into ``seed_templates/``.
+    """
+    r = (
+        db.query(Ruleset)
+        .filter(
+            Ruleset.id == template_id,
+            Ruleset.archived == False,
+            Ruleset.config_type == CONFIG_TYPE,
+        )
+        .first()
+    )
+    if not r:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Index template not found",
+        )
+    seed = {"_name": r.name, "_config_type": CONFIG_TYPE, **r.config}
+    body = json.dumps(seed, indent=2, ensure_ascii=False) + "\n"
+    slug = r.slug or re.sub(r"[^a-z0-9]+", "-", r.name.lower()).strip("-")
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{slug}.json"',
+        },
+    )
 
 
 @router.get("/templates/{template_id}")

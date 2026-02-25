@@ -20,14 +20,7 @@ import uuid as _uuid
 
 import pytest
 from openpyxl import Workbook
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
-from backend.app.db import Base
-from backend.app.api.import_routes import router, get_db
 from backend.app.models.import_model import Import
 from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
@@ -35,38 +28,10 @@ from backend.app.models.override_model import WorkOverride
 from backend.app.models.validation_warning_model import ValidationWarning
 from backend.app.models.audit_log_model import AuditLog
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def db_session():
-    eng = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(bind=eng)
-    Session = sessionmaker(autocommit=False, autoflush=False, bind=eng)
-    session = Session()
-    yield session
-    session.close()
-    eng.dispose()
-
-
-@pytest.fixture()
-def client(db_session):
-    app = FastAPI()
-    app.include_router(router)
-
-    def _override():
-        yield db_session
-
-    app.dependency_overrides[get_db] = _override
-    with TestClient(app, raise_server_exceptions=False) as c:
-        yield c
+# Re-import uses raise_server_exceptions=False so we can assert on 4xx/5xx
+# status codes directly.  The ``client_lenient`` fixture from conftest
+# provides this (and inherits the FK-pragma-enabled db_session).
+client = pytest.fixture(name="client")(lambda client_lenient: client_lenient)
 
 
 # ---------------------------------------------------------------------------
