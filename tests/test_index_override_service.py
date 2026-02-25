@@ -34,6 +34,7 @@ class _FakeArtist:
         self.raw_last_name = kwargs.get("raw_last_name")
         self.raw_quals = kwargs.get("raw_quals")
         self.raw_company = kwargs.get("raw_company")
+        self.raw_address = kwargs.get("raw_address")
         self.is_ra_member = kwargs.get("is_ra_member", False)
         self.is_company = kwargs.get("is_company", False)
         self.sort_key = kwargs.get("sort_key", "")
@@ -56,12 +57,15 @@ class _FakeOverride:
         self.artist1_ra_styled_override = kwargs.get("artist1_ra_styled_override")
         self.artist2_ra_styled_override = kwargs.get("artist2_ra_styled_override")
         self.artist3_ra_styled_override = kwargs.get("artist3_ra_styled_override")
+        self.company_override = kwargs.get("company_override")
+        self.address_override = kwargs.get("address_override")
 
 
 class _FakeKnownArtist:
     def __init__(self, **kwargs):
         self.resolved_first_name = kwargs.get("resolved_first_name")
         self.resolved_last_name = kwargs.get("resolved_last_name")
+        self.resolved_title = kwargs.get("resolved_title")
         self.resolved_quals = kwargs.get("resolved_quals")
         self.resolved_artist2_first_name = kwargs.get("resolved_artist2_first_name")
         self.resolved_artist2_last_name = kwargs.get("resolved_artist2_last_name")
@@ -73,6 +77,8 @@ class _FakeKnownArtist:
         self.resolved_artist2_ra_styled = kwargs.get("resolved_artist2_ra_styled")
         self.resolved_artist3_ra_styled = kwargs.get("resolved_artist3_ra_styled")
         self.resolved_is_company = kwargs.get("resolved_is_company")
+        self.resolved_company = kwargs.get("resolved_company")
+        self.resolved_address = kwargs.get("resolved_address")
 
 
 # ---------------------------------------------------------------------------
@@ -528,3 +534,126 @@ class TestSortKeyRecomputation:
         )
         eff = resolve_index_artist(artist, None)
         assert eff.sort_key == "adams roger"
+
+
+# ---------------------------------------------------------------------------
+# Tests — company text and address overrides
+# ---------------------------------------------------------------------------
+
+
+class TestCompanyAndAddressOverrides:
+    def test_raw_address_passes_through(self):
+        """Without override or known artist, raw_address becomes address."""
+        artist = _FakeArtist(
+            first_name="Roger",
+            last_name="Adams",
+            raw_address="London",
+        )
+        eff = resolve_index_artist(artist, None)
+        assert eff.address == "London"
+
+    def test_known_artist_overrides_address(self):
+        """Known artist resolved_address takes priority over raw_address."""
+        artist = _FakeArtist(
+            first_name="Roger",
+            last_name="Adams",
+            raw_address="London",
+        )
+        known = _FakeKnownArtist(resolved_address="Paris")
+        eff = resolve_index_artist(artist, None, known)
+        assert eff.address == "Paris"
+
+    def test_override_address_takes_priority(self):
+        """User override address takes highest priority."""
+        artist = _FakeArtist(
+            first_name="Roger",
+            last_name="Adams",
+            raw_address="London",
+        )
+        known = _FakeKnownArtist(resolved_address="Paris")
+        ovr = _FakeOverride(address_override="Berlin")
+        eff = resolve_index_artist(artist, ovr, known)
+        assert eff.address == "Berlin"
+
+    def test_known_artist_company_text(self):
+        """Known artist resolved_company overrides auto-derived company."""
+        artist = _FakeArtist(
+            first_name="Boyd",
+            last_name="& Evans",
+            company="Boyd",
+            is_company=True,
+        )
+        known = _FakeKnownArtist(
+            resolved_last_name="Boyd & Evans",
+            resolved_is_company=True,
+            resolved_company="Boyd & Evans Partnership",
+        )
+        eff = resolve_index_artist(artist, None, known)
+        assert eff.company == "Boyd & Evans Partnership"
+
+    def test_override_company_text(self):
+        """User override company_override takes highest priority."""
+        artist = _FakeArtist(
+            first_name="Boyd",
+            last_name="& Evans",
+            company="Boyd",
+            is_company=True,
+        )
+        ovr = _FakeOverride(company_override="Boyd Evans Ltd")
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.company == "Boyd Evans Ltd"
+
+    def test_address_cleared_by_empty_string_override(self):
+        """Empty-string override clears the address."""
+        artist = _FakeArtist(
+            first_name="Roger",
+            last_name="Adams",
+            raw_address="London",
+        )
+        ovr = _FakeOverride(address_override="")
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.address is None
+
+    def test_company_text_cleared_by_empty_string_override(self):
+        """Empty-string override clears the company text."""
+        artist = _FakeArtist(
+            first_name="Roger",
+            last_name="Adams",
+            company="Acme Corp",
+        )
+        ovr = _FakeOverride(company_override="")
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.company is None
+
+
+class TestTitleFromKnownArtist:
+    """Tests for resolved_title from known artist (layer 2)."""
+
+    def test_known_artist_sets_title(self):
+        """Known artist resolved_title applies when no override."""
+        artist = _FakeArtist(first_name="David", last_name="Adjaye")
+        known = _FakeKnownArtist(resolved_title="Sir")
+        eff = resolve_index_artist(artist, None, known)
+        assert eff.title == "Sir"
+
+    def test_override_title_beats_known_artist_title(self):
+        """User override title takes priority over known artist."""
+        artist = _FakeArtist(first_name="David", last_name="Adjaye")
+        known = _FakeKnownArtist(resolved_title="Sir")
+        ovr = _FakeOverride(title_override="Lord")
+        eff = resolve_index_artist(artist, ovr, known)
+        assert eff.title == "Lord"
+
+    def test_known_artist_title_in_index_name(self):
+        """Title from known artist appears in the composite index name."""
+        artist = _FakeArtist(first_name="David", last_name="Adjaye")
+        known = _FakeKnownArtist(resolved_title="Sir")
+        eff = resolve_index_artist(artist, None, known)
+        assert "Sir David" in eff.index_name
+
+    def test_known_artist_title_cleared_by_empty_override(self):
+        """Empty-string override clears the title."""
+        artist = _FakeArtist(first_name="David", last_name="Adjaye", title="Sir")
+        ovr = _FakeOverride(title_override="")
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.title is None

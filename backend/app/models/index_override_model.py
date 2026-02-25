@@ -26,6 +26,8 @@ class IndexArtistOverride(Base):
     )
 
     is_company_override = Column(Boolean, nullable=True)
+    company_override = Column(Text, nullable=True)
+    address_override = Column(Text, nullable=True)
 
     first_name_override = Column(Text, nullable=True)
     last_name_override = Column(Text, nullable=True)
@@ -44,6 +46,9 @@ class IndexArtistOverride(Base):
     artist1_ra_styled_override = Column(Boolean, nullable=True)
     artist2_ra_styled_override = Column(Boolean, nullable=True)
     artist3_ra_styled_override = Column(Boolean, nullable=True)
+
+    # Human-readable note explaining why this override exists
+    notes = Column(Text, nullable=True)
 
     updated_at = Column(
         TIMESTAMP(timezone=True),

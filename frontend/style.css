@@ -447,7 +447,12 @@ a:hover { text-decoration: underline; }
   flex: 1;
   min-width: 180px;
 }
-.ka-footer-notes label {
+.ka-footer-field {
+  flex: 0 1 180px;
+  min-width: 120px;
+}
+.ka-footer-notes label,
+.ka-footer-field label {
   display: block;
   font-size: 11px;
   font-weight: 500;
@@ -456,7 +461,8 @@ a:hover { text-decoration: underline; }
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.ka-footer-notes input[type="text"] {
+.ka-footer-notes input[type="text"],
+.ka-footer-field input[type="text"] {
   width: 100%;
   padding: 6px 8px;
   font-size: 13px;
@@ -465,7 +471,8 @@ a:hover { text-decoration: underline; }
   border-radius: var(--radius);
   box-sizing: border-box;
 }
-.ka-footer-notes input[type="text"]:focus {
+.ka-footer-notes input[type="text"]:focus,
+.ka-footer-field input[type="text"]:focus {
   outline: none;
   border-color: #5070a0;
   box-shadow: 0 0 0 2px rgba(80,112,160,0.15);
@@ -681,9 +688,33 @@ details.section-block[open] > .section-summary::before {
 }
 
 .override-field-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px 20px;
+  /* no longer grid itself — contained grid is .ka-artists-grid */
+}
+
+/* Override form grid inherits KA card styling */
+.ovr-grid {
+  margin-bottom: 14px;
+}
+.ovr-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eee;
+}
+.ovr-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
+/* Current-value hint inside the new field layout */
+.ka-field-input .current-val-hint {
+  font-size: 11px;
+  padding: 2px 6px;
+  white-space: nowrap;
 }
 
 .form-row {

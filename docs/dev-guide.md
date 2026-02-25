@@ -53,7 +53,7 @@ Tests run against an **in-memory SQLite database** — no Docker required.
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Run all 683 tests
+# Run all 700 tests
 python -m pytest tests/ -q
 
 # Run a single test file
@@ -131,8 +131,21 @@ def downgrade() -> None:
 The `down_revision` must point to the **latest existing** migration. Check with:
 
 ```bash
+# Show current head(s) — must be exactly one
+alembic heads
+
+# If you see multiple heads, your new migration's down_revision is wrong.
+# It should point to the single current head, not an older revision.
+
+# List all migration files
 ls backend/alembic/versions/ | sort
 ```
+
+> **⚠️ Multiple heads = broken chain.** If `alembic heads` shows more than
+> one head, a migration has been pointed at a stale `down_revision`. This
+> causes `alembic upgrade head` to fail on container startup. Fix it by
+> changing the new migration's `down_revision` to the correct parent.
+> Always run `alembic heads` after creating a migration to verify.
 
 ### How migrations run
 

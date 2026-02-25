@@ -213,6 +213,7 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                 last_name=auto.last_name,
                 quals=auto.quals,
                 company=auto.company,
+                address=auto.address,
                 is_company=auto.is_company,
                 artist2_first_name=auto.artist2_first_name,
                 artist2_last_name=auto.artist2_last_name,
@@ -240,6 +241,9 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                 artist2_ra_styled_override=ovr.artist2_ra_styled_override,
                 artist3_ra_styled_override=ovr.artist3_ra_styled_override,
                 is_company_override=ovr.is_company_override,
+                company_override=ovr.company_override,
+                address_override=ovr.address_override,
+                notes=ovr.notes,
             )
 
         result.append(
@@ -258,6 +262,7 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                 last_name=eff.last_name,
                 quals=eff.quals,
                 company=eff.company,
+                address=eff.address,
                 artist2_first_name=eff.artist2_first_name,
                 artist2_last_name=eff.artist2_last_name,
                 artist2_quals=eff.artist2_quals,
@@ -495,6 +500,8 @@ _OVERRIDE_TEXT_FIELDS = [
     "artist3_first_name_override",
     "artist3_last_name_override",
     "artist3_quals_override",
+    "company_override",
+    "address_override",
 ]
 
 
@@ -515,6 +522,9 @@ def _override_to_out(override: IndexArtistOverride) -> IndexArtistOverrideOut:
         artist2_ra_styled_override=override.artist2_ra_styled_override,
         artist3_ra_styled_override=override.artist3_ra_styled_override,
         is_company_override=override.is_company_override,
+        company_override=override.company_override,
+        address_override=override.address_override,
+        notes=override.notes,
     )
 
 
