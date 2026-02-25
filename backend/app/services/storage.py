@@ -205,7 +205,9 @@ class S3Storage(StorageBackend):
         # Download the object into a uniquely-named temp file so callers
         # that need a real filesystem path (eg. openpyxl) can use it.
         data = self.load(key)
-        tmp = tempfile.NamedTemporaryFile(delete=False, prefix="catalogue_s3_", suffix=".xlsx")
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False, prefix="catalogue_s3_", suffix=".xlsx"
+        )
         try:
             tmp.write(data)
             tmp.flush()
