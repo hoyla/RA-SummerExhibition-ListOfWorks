@@ -36,7 +36,10 @@ class KnownArtist(Base):
     resolved_first_name = Column(Text, nullable=True)
     resolved_last_name = Column(Text, nullable=True)
     resolved_quals = Column(Text, nullable=True)
+    resolved_title = Column(Text, nullable=True)
     resolved_is_company = Column(Boolean, nullable=True)
+    resolved_company = Column(Text, nullable=True)
+    resolved_address = Column(Text, nullable=True)
 
     # Multi-artist resolved fields
     resolved_artist2_first_name = Column(Text, nullable=True)

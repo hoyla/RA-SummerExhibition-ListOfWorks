@@ -301,6 +301,7 @@ class AutoResolvedFields(BaseModel):
     last_name: str | None = None
     quals: str | None = None
     company: str | None = None
+    address: str | None = None
     is_company: bool = False
     artist2_first_name: str | None = None
     artist2_last_name: str | None = None
@@ -328,6 +329,7 @@ class IndexArtistOut(BaseModel):
     last_name: str | None = None
     quals: str | None = None
     company: str | None = None
+    address: str | None = None
     artist2_first_name: str | None = None
     artist2_last_name: str | None = None
     artist2_quals: str | None = None
@@ -369,6 +371,9 @@ class IndexArtistOverrideIn(BaseModel):
     artist2_ra_styled_override: bool | None = None
     artist3_ra_styled_override: bool | None = None
     is_company_override: bool | None = None
+    company_override: str | None = None
+    address_override: str | None = None
+    notes: str | None = None
 
 
 class IndexArtistOverrideOut(BaseModel):
@@ -387,6 +392,9 @@ class IndexArtistOverrideOut(BaseModel):
     artist2_ra_styled_override: bool | None = None
     artist3_ra_styled_override: bool | None = None
     is_company_override: bool | None = None
+    company_override: str | None = None
+    address_override: str | None = None
+    notes: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -415,8 +423,11 @@ class KnownArtistOut(BaseModel):
     match_quals: str | None = None
     resolved_first_name: str | None = None
     resolved_last_name: str | None = None
+    resolved_title: str | None = None
     resolved_quals: str | None = None
     resolved_is_company: bool | None = None
+    resolved_company: str | None = None
+    resolved_address: str | None = None
     resolved_artist2_first_name: str | None = None
     resolved_artist2_last_name: str | None = None
     resolved_artist2_quals: str | None = None
@@ -438,8 +449,11 @@ class KnownArtistCreate(BaseModel):
     match_quals: str | None = None
     resolved_first_name: str | None = None
     resolved_last_name: str | None = None
+    resolved_title: str | None = None
     resolved_quals: str | None = None
     resolved_is_company: bool | None = None
+    resolved_company: str | None = None
+    resolved_address: str | None = None
     resolved_artist2_first_name: str | None = None
     resolved_artist2_last_name: str | None = None
     resolved_artist2_quals: str | None = None
@@ -458,8 +472,11 @@ class KnownArtistUpdate(BaseModel):
     match_quals: str | None = None
     resolved_first_name: str | None = None
     resolved_last_name: str | None = None
+    resolved_title: str | None = None
     resolved_quals: str | None = None
     resolved_is_company: bool | None = None
+    resolved_company: str | None = None
+    resolved_address: str | None = None
     resolved_artist2_first_name: str | None = None
     resolved_artist2_last_name: str | None = None
     resolved_artist2_quals: str | None = None

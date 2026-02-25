@@ -1293,6 +1293,7 @@ function _knownArtistCard(ka) {
           <div class="ka-fields">
             <div class="ka-a1-first-wrap">${_kaResolvedField('First Name', 'ka-res-first', ka.resolved_first_name, locked)}</div>
             ${_kaResolvedField('Last Name', 'ka-res-last', ka.resolved_last_name, locked)}
+            ${_kaResolvedField('Title', 'ka-res-title', ka.resolved_title, locked)}
             ${_kaResolvedField('Qualifications', 'ka-res-quals', ka.resolved_quals, locked)}
             <div class="ka-field ka-field-check">
               <label><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
@@ -1313,6 +1314,14 @@ function _knownArtistCard(ka) {
       </div>
       <div class="ka-card-footer">
         <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <div class="ka-footer-field">
+          <label>Company Name</label>
+          <input type="text" class="ka-res-company" value="${esc(ka.resolved_company ?? '')}" placeholder="no override"${ro}>
+        </div>
+        <div class="ka-footer-field">
+          <label>Address</label>
+          <input type="text" class="ka-res-address" value="${esc(ka.resolved_address ?? '')}" placeholder="no override"${ro}>
+        </div>
         <div class="ka-footer-notes">
           <label>Notes</label>
           <input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"${ro}>
@@ -1327,11 +1336,13 @@ function addKnownArtistRow() {
   list.insertAdjacentHTML('beforeend', _knownArtistCard({
     id: '', match_first_name: '', match_last_name: '', match_quals: '',
     resolved_first_name: '', resolved_last_name: '',
+    resolved_title: '',
     resolved_quals: '',
     resolved_artist2_first_name: '', resolved_artist2_last_name: '',
     resolved_artist2_quals: '',
     resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
-    resolved_is_company: false, notes: '',
+    resolved_is_company: false, resolved_company: '', resolved_address: '',
+    notes: '',
   }));
   // Scroll to and refresh preview for the new card
   const cards = list.querySelectorAll('.ka-card');
@@ -1367,6 +1378,7 @@ function _readKaRow(tr) {
     match_quals:                   val('.ka-match-quals'),
     resolved_first_name:           resVal('.ka-res-first'),
     resolved_last_name:            resVal('.ka-res-last'),
+    resolved_title:                resVal('.ka-res-title'),
     resolved_quals:                resVal('.ka-res-quals'),
     resolved_artist2_first_name:   resVal('.ka-res-a2-first'),
     resolved_artist2_last_name:    resVal('.ka-res-a2-last'),
@@ -1374,6 +1386,8 @@ function _readKaRow(tr) {
     resolved_artist1_ra_styled:    a1RaEl?.checked || null,
     resolved_artist2_ra_styled:    a2RaEl?.checked || null,
     resolved_is_company:           isCompany,
+    resolved_company:              val('.ka-res-company'),
+    resolved_address:              val('.ka-res-address'),
     notes:                         val('.ka-notes'),
   };
 }
@@ -3858,9 +3872,15 @@ function _buildDetailTable(a) {
       <td class="${_valClass(a.raw_company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
   }
 
-  // Address row (always just raw and courtesy note)
-  rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
-    <td colspan="${colSpan - 2}"><em class="muted">courtesy field</em></td></tr>`);
+  // Address row
+  if (hasOvr) {
+    rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
+      <td class="${_valClass(a.raw_address, ar.address)}">${esc(ar.address ?? '')}</td>
+      <td class="${_valClass(ar.address, a.address)}">${esc(a.address ?? '')}</td></tr>`);
+  } else {
+    rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
+      <td class="${_valClass(a.raw_address, a.address)}">${esc(a.address ?? '')}</td></tr>`);
+  }
 
   // RA Styled row
   const raText = (a1, a2, a3) => {
@@ -4124,69 +4144,83 @@ function showIndexOverrideForm(importId, artistId, existing) {
   const companyChecked = o.is_company_override === true ? ' checked' : '';
   const companyIndeterminate = o.is_company_override === null || o.is_company_override === undefined;
 
+  // Helper: build an override text field (label + optional current-value hint + input)
+  const ovrField = (label, fieldName, placeholder) => `
+    <div class="ka-field">
+      <label>${label}</label>
+      <div class="ka-field-input">
+        ${hint(fieldName, fieldName)}
+        <input type="text" name="${fieldName}" value="${val(fieldName)}" placeholder="${placeholder}">
+      </div>
+    </div>`;
+
+  // Helper: RA styled tri-state checkbox
+  const raCheck = (name, value) => {
+    const checked = value === true ? 'checked' : '';
+    const indet = value === null || value === undefined ? 'data-indeterminate="1"' : '';
+    return `<div class="ka-field ka-field-check">
+      <label><input type="checkbox" name="${name}" ${checked} ${indet}> RA styled</label>
+    </div>`;
+  };
+
   const cell = document.getElementById(`idx-ovc-${artistId}`);
   cell.innerHTML = `
-    <div class="override-form" style="margin-top:10px" onclick="event.stopPropagation()">
+    <div class="override-form" onclick="event.stopPropagation()">
       <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy</span></h5>
       <div class="override-field-form" id="idx-ovf-${esc(artistId)}">
-        <div class="form-row"><label>Last Name</label>
-          ${hint('last_name_override','last_name_override')}
-          <input type="text" name="last_name_override" value="${val('last_name_override')}" placeholder="Override last name"></div>
-        <div class="form-row"><label>First Name</label>
-          ${hint('first_name_override','first_name_override')}
-          <input type="text" name="first_name_override" value="${val('first_name_override')}" placeholder="Override first name"></div>
-        <div class="form-row"><label>Title</label>
-          ${hint('title_override','title_override')}
-          <input type="text" name="title_override" value="${val('title_override')}" placeholder="Override title (e.g. Sir)"></div>
-        <div class="form-row"><label>Quals</label>
-          ${hint('quals_override','quals_override')}
-          <input type="text" name="quals_override" value="${val('quals_override')}" placeholder="Override quals (e.g. CBE RA)"></div>
-        <div class="form-row"><label>A2 First Name</label>
-          ${hint('artist2_first_name_override','artist2_first_name_override')}
-          <input type="text" name="artist2_first_name_override" value="${val('artist2_first_name_override')}" placeholder="Artist 2 first name"></div>
-        <div class="form-row"><label>A2 Last Name</label>
-          ${hint('artist2_last_name_override','artist2_last_name_override')}
-          <input type="text" name="artist2_last_name_override" value="${val('artist2_last_name_override')}" placeholder="Artist 2 last name"></div>
-        <div class="form-row"><label>A2 Quals</label>
-          ${hint('artist2_quals_override','artist2_quals_override')}
-          <input type="text" name="artist2_quals_override" value="${val('artist2_quals_override')}" placeholder="Artist 2 quals"></div>
-        <div class="form-row"><label>A3 First Name</label>
-          ${hint('artist3_first_name_override','artist3_first_name_override')}
-          <input type="text" name="artist3_first_name_override" value="${val('artist3_first_name_override')}" placeholder="Artist 3 first name"></div>
-        <div class="form-row"><label>A3 Last Name</label>
-          ${hint('artist3_last_name_override','artist3_last_name_override')}
-          <input type="text" name="artist3_last_name_override" value="${val('artist3_last_name_override')}" placeholder="Artist 3 last name"></div>
-        <div class="form-row"><label>A3 Quals</label>
-          ${hint('artist3_quals_override','artist3_quals_override')}
-          <input type="text" name="artist3_quals_override" value="${val('artist3_quals_override')}" placeholder="Artist 3 quals"></div>
-        <div class="form-row"><label>RA Styling</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" name="artist1_ra_styled_override" ${o.artist1_ra_styled_override === true ? 'checked' : ''}
-              ${o.artist1_ra_styled_override === null || o.artist1_ra_styled_override === undefined ? 'data-indeterminate="1"' : ''}>
-            A1
-          </label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" name="artist2_ra_styled_override" ${o.artist2_ra_styled_override === true ? 'checked' : ''}
-              ${o.artist2_ra_styled_override === null || o.artist2_ra_styled_override === undefined ? 'data-indeterminate="1"' : ''}>
-            A2
-          </label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" name="artist3_ra_styled_override" ${o.artist3_ra_styled_override === true ? 'checked' : ''}
-              ${o.artist3_ra_styled_override === null || o.artist3_ra_styled_override === undefined ? 'data-indeterminate="1"' : ''}>
-            A3
-          </label>
+        <div class="ka-artists-grid ovr-grid">
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Artist 1</h5>
+            <div class="ka-fields">
+              ${ovrField('First Name', 'first_name_override', 'Override first name')}
+              ${ovrField('Last Name', 'last_name_override', 'Override last name')}
+              ${ovrField('Title', 'title_override', 'e.g. Sir')}
+              ${ovrField('Quals', 'quals_override', 'e.g. CBE RA')}
+              ${raCheck('artist1_ra_styled_override', o.artist1_ra_styled_override)}
+            </div>
+          </div>
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Artist 2</h5>
+            <div class="ka-fields">
+              ${ovrField('First Name', 'artist2_first_name_override', 'Artist 2 first name')}
+              ${ovrField('Last Name', 'artist2_last_name_override', 'Artist 2 last name')}
+              ${ovrField('Quals', 'artist2_quals_override', 'Artist 2 quals')}
+              ${raCheck('artist2_ra_styled_override', o.artist2_ra_styled_override)}
+            </div>
+          </div>
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Artist 3</h5>
+            <div class="ka-fields">
+              ${ovrField('First Name', 'artist3_first_name_override', 'Artist 3 first name')}
+              ${ovrField('Last Name', 'artist3_last_name_override', 'Artist 3 last name')}
+              ${ovrField('Quals', 'artist3_quals_override', 'Artist 3 quals')}
+              ${raCheck('artist3_ra_styled_override', o.artist3_ra_styled_override)}
+            </div>
+          </div>
         </div>
-        <div class="form-row"><label>Company</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
+        <div class="ka-card-footer ovr-footer">
+          <label class="ka-check-label">
             <input type="checkbox" name="is_company_override" ${companyChecked}
               ${companyIndeterminate ? 'data-indeterminate="1"' : ''}>
-            Mark as company
+            Company / Partnership
           </label>
-        </div>
-        <div class="form-actions">
-          <button class="btn btn-primary" onclick="saveIndexOverride('${esc(importId)}','${esc(artistId)}')">Save</button>
-          ${existing ? `<button class="btn btn-danger" onclick="deleteIndexOverride('${esc(importId)}','${esc(artistId)}')">Delete Override</button>` : ''}
-          <span id="idx-ovs-${esc(artistId)}" class="status-msg"></span>
+          <div class="ka-footer-field">
+            <label>Company Name</label>
+            <input type="text" name="company_override" value="${val('company_override')}" placeholder="Override company name">
+          </div>
+          <div class="ka-footer-field">
+            <label>Address</label>
+            <input type="text" name="address_override" value="${val('address_override')}" placeholder="Override address">
+          </div>
+          <div class="ka-footer-notes">
+            <label>Notes</label>
+            <input type="text" name="notes" value="${val('notes')}" placeholder="Why this override exists">
+          </div>
+          <div class="ovr-actions">
+            <button class="btn btn-primary" onclick="saveIndexOverride('${esc(importId)}','${esc(artistId)}')">Save</button>
+            ${existing ? `<button class="btn btn-danger" onclick="deleteIndexOverride('${esc(importId)}','${esc(artistId)}')">Delete Override</button>` : ''}
+            <span id="idx-ovs-${esc(artistId)}" class="status-msg"></span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -4216,7 +4250,7 @@ async function saveIndexOverride(importId, artistId) {
   const textFields = ['first_name_override', 'last_name_override', 'title_override',
     'quals_override', 'artist2_first_name_override', 'artist2_last_name_override',
     'artist2_quals_override', 'artist3_first_name_override', 'artist3_last_name_override',
-    'artist3_quals_override'];
+    'artist3_quals_override', 'company_override', 'address_override', 'notes'];
 
   const body = {};
   for (const f of textFields) {

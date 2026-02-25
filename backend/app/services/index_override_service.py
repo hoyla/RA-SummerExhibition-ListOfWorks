@@ -182,6 +182,7 @@ class EffectiveIndexArtist:
     last_name: Optional[str]
     quals: Optional[str]
     company: Optional[str]
+    address: Optional[str]
 
     # Multi-artist fields (resolved)
     artist2_first_name: Optional[str]
@@ -248,6 +249,9 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     artist2_ra_styled = bool(getattr(artist, "artist2_ra_styled", False))
     artist3_ra_styled = bool(getattr(artist, "artist3_ra_styled", False))
     company = artist.company
+    address = getattr(artist, "raw_address", None)
+    if address:
+        address = str(address).strip() or None
     auto_company = bool(artist.is_company)
 
     # Layer 2: Known artist overrides
@@ -256,6 +260,8 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
             first_name = known_artist.resolved_first_name or None
         if known_artist.resolved_last_name is not None:
             last_name = known_artist.resolved_last_name or None
+        if getattr(known_artist, "resolved_title", None) is not None:
+            title = known_artist.resolved_title or None
         if known_artist.resolved_quals is not None:
             quals = known_artist.resolved_quals or None
         if getattr(known_artist, "resolved_artist2_first_name", None) is not None:
@@ -276,6 +282,10 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
             artist2_ra_styled = bool(known_artist.resolved_artist2_ra_styled)
         if getattr(known_artist, "resolved_artist3_ra_styled", None) is not None:
             artist3_ra_styled = bool(known_artist.resolved_artist3_ra_styled)
+        if getattr(known_artist, "resolved_company", None) is not None:
+            company = known_artist.resolved_company or None
+        if getattr(known_artist, "resolved_address", None) is not None:
+            address = known_artist.resolved_address or None
 
     # Layer 3 (highest priority): User overrides
     if override is not None:
@@ -305,6 +315,10 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
             artist2_ra_styled = bool(override.artist2_ra_styled_override)
         if getattr(override, "artist3_ra_styled_override", None) is not None:
             artist3_ra_styled = bool(override.artist3_ra_styled_override)
+        if getattr(override, "company_override", None) is not None:
+            company = override.company_override or None
+        if getattr(override, "address_override", None) is not None:
+            address = override.address_override or None
     # Company flag: override > known_artist > auto-detected
     if override is not None and override.is_company_override is not None:
         effective_company = override.is_company_override
@@ -314,13 +328,22 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
         effective_company = auto_company
 
     # If resolved as company and no explicit company name from the
-    # spreadsheet, (re-)derive company from the resolved last_name.
+    # spreadsheet OR from known_artist/override, (re-)derive company
+    # from the resolved last_name.
     # This is necessary because known-artist or override rules may change
     # last_name after the importer auto-derived the company field from a
     # partial/pre-resolution last_name (e.g. "Boyd" → "Boyd & Evans").
+    # However, if known_artist or override explicitly set a company text,
+    # that takes priority over auto-derivation.
     raw_company = getattr(artist, "raw_company", None)
     has_raw_company = bool(raw_company and str(raw_company).strip())
-    if effective_company and not has_raw_company:
+    has_explicit_company = (
+        known_artist is not None
+        and getattr(known_artist, "resolved_company", None) is not None
+    ) or (
+        override is not None and getattr(override, "company_override", None) is not None
+    )
+    if effective_company and not has_raw_company and not has_explicit_company:
         company = last_name
 
     # Companies never have additional artists — the full name is
@@ -359,6 +382,7 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
         last_name=last_name,
         quals=quals,
         company=company,
+        address=address,
         artist2_first_name=artist2_first_name,
         artist2_last_name=artist2_last_name,
         artist2_quals=artist2_quals,
