@@ -75,34 +75,19 @@ def mock_cognito():
 
 
 @pytest.fixture()
-def role_client():
-    """TestClient that uses the *real* admin guard (no Cognito auth)."""
+def role_client(db_session):
+    """TestClient that uses the *real* admin guard (no Cognito auth).
+
+    Reuses the shared ``db_session`` fixture from conftest so that FK
+    enforcement and isolation are consistent across the whole test suite.
+    """
     from backend.app.api.import_routes import router, get_db
 
     app = FastAPI()
     app.include_router(router)
 
-    # Provide a dummy DB — user routes don't use it, but other sub-routers
-    # registered on the same aggregation router may need the dependency.
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.pool import StaticPool
-    from backend.app.db import Base
-
-    eng = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(bind=eng)
-    _Session = sessionmaker(bind=eng)
-
     def _override():
-        s = _Session()
-        try:
-            yield s
-        finally:
-            s.close()
+        yield db_session
 
     app.dependency_overrides[get_db] = _override
 

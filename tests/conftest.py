@@ -93,3 +93,23 @@ def client(db_session):
 
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
+
+
+@pytest.fixture()
+def client_lenient(db_session):
+    """Like ``client`` but with ``raise_server_exceptions=False``.
+
+    Use this when the test intentionally triggers 4xx/5xx responses and
+    needs to inspect the status code rather than having the exception
+    propagate into the test runner.
+    """
+    app = FastAPI()
+    app.include_router(router)
+
+    def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        yield c
