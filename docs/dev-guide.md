@@ -82,14 +82,26 @@ pip install -r requirements-dev.txt
 must create a corresponding Alembic migration. The model change alone does NOT
 alter the database.
 
+> **⚠️ Tests will NOT catch a missing migration.** The test suite uses SQLite
+> with `Base.metadata.create_all()`, which builds tables directly from your
+> models — Alembic is never involved. A column can exist in the model (all
+> tests pass) but be completely absent from the real PostgreSQL database,
+> causing a silent 500 in production. Always verify against Docker.
+
 Checklist:
 
 1. Edit the model in `backend/app/models/`
 2. Create a new migration file in `backend/alembic/versions/`
-3. Test locally: `docker compose up -d --build app` (migration runs on startup)
-4. Check logs: `docker compose logs app --tail=20` — look for
+3. **Rebuild Docker**: `docker compose up -d --build app` (migration runs on startup)
+4. **Check logs**: `docker compose logs app --tail=20` — look for
    `Running upgrade ... → ...`
-5. Run tests: `python -m pytest tests/ -x -q`
+5. **Hit the affected endpoint** with `curl` or the UI to confirm it works
+   against real PostgreSQL (don't rely on tests alone)
+6. Run tests: `python -m pytest tests/ -x -q`
+
+If you change multiple related tables (e.g. `index_artists` and
+`index_artist_overrides`), make sure **both** get migrations — it's easy to
+forget the secondary table.
 
 ### Migration file template
 
@@ -155,14 +167,66 @@ AWS resources use **per-environment secrets** in AWS Secrets Manager:
 
 ---
 
-## Error handling
+## Error handling and logging architecture
+
+The app uses structured JSON logging via a custom formatter on the root
+Python logger. All application code logs through `logging.getLogger("catalogue")`.
+
+### How errors flow through the stack
+
+FastAPI/Starlette wraps requests in several layers. Understanding the order
+matters when debugging silent failures:
+
+```
+Request → ServerErrorMiddleware → CORS → _log_requests → _set_user_context → Route handler → Response
+```
+
+| Error type                                   | Where it happens                                                 | How it's handled                                             | Visible in logs?                                      |
+| -------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------- |
+| **HTTPException** (4xx)                      | Route handler raises it                                          | FastAPI returns JSON error                                   | ✅ Yes — `_log_requests` sees the status code         |
+| **RequestValidationError** (422)             | Before route handler — bad input                                 | FastAPI returns 422 with details                             | ✅ Yes                                                |
+| **Unhandled exception** in route             | Inside route handler                                             | `ServerErrorMiddleware` catches, logs traceback, returns 500 | ✅ Yes — routed through `uvicorn.error` → root logger |
+| **ResponseValidationError**                  | During response body serialization (after `call_next()` returns) | Custom `@app.exception_handler` logs and returns JSON 500    | ✅ Yes (since Feb 2026 fix)                           |
+| **DB schema mismatch** (e.g. missing column) | SQLAlchemy query execution                                       | Falls into unhandled exception path                          | ✅ Yes (if uvicorn logger is configured correctly)    |
+
+### Key implementation details
+
+- `_setup_logging()` in `main.py` forces all uvicorn loggers (`uvicorn`,
+  `uvicorn.error`, `uvicorn.access`) to propagate to the root logger with our
+  JSON formatter. Without this, Starlette's `ServerErrorMiddleware` tracebacks
+  would be silently lost.
+- The `ResponseValidationError` handler was added because this error type
+  bypasses all middleware — it occurs during response body streaming, after
+  `call_next()` has already returned a `Response` object.
+- If you ever see a 500 with `content-type: text/plain` and body
+  "Internal Server Error" but **nothing in the logs**, something has broken
+  the logger pipeline. Check that `_setup_logging()` still clears and
+  re-attaches uvicorn's loggers.
+
+### Application error handling
 
 - **LoW upload errors** are caught and returned as 400 responses.
 - **Index upload errors** are caught and logged; `IndexImportError` → 400,
   other exceptions → 500 with detail logged to stdout.
-- If an upload returns 500 with no log output, check for unhandled exceptions
-  in the route handler — FastAPI's ServerErrorMiddleware swallows these before
-  the logging middleware runs.
+
+### Debugging a silent 500
+
+If an endpoint returns 500 with no log output:
+
+1. Check `docker compose logs app` for **any** recent output
+2. Try exec'ing into the container and calling the function directly:
+   ```bash
+   docker compose exec -T app python3 -c '
+   from backend.app.db import SessionLocal
+   # ... call the function that 500s and print the traceback
+   '
+   ```
+3. Check whether the DB schema matches the model:
+   ```bash
+   docker compose exec db psql -U catalogue -d catalogue -c "
+     SELECT column_name FROM information_schema.columns
+     WHERE table_name = '...' ORDER BY ordinal_position"
+   ```
 
 ---
 
@@ -182,11 +246,13 @@ AWS resources use **per-environment secrets** in AWS Secrets Manager:
 
 ## Common pitfalls
 
-| Mistake                                          | Prevention                                                 |
-| ------------------------------------------------ | ---------------------------------------------------------- |
-| Changed a model but forgot the Alembic migration | Always create a migration when changing model columns      |
-| Ran the app with `python` instead of Docker      | Use `docker compose up -d --build app`                     |
-| Tests fail with `ModuleNotFoundError`            | Run `pip install -r requirements-dev.txt`                  |
-| Upload returns 500 but no logs appear            | Check the route handler has a catch-all `except Exception` |
-| `docker compose down -v` deleted my test data    | Only use `-v` when you want a fresh start                  |
-| Staging not updating after push                  | Check the GitHub Actions run completed successfully        |
+| Mistake                                          | Prevention                                                                                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Changed a model but forgot the Alembic migration | Always create a migration when changing model columns. **Tests won't catch this** — they use SQLite with `create_all()`, not Alembic |
+| Changed one table but forgot a related table     | If you add columns to `index_artists`, check whether `index_artist_overrides` also needs updating (and vice versa)                   |
+| Ran the app with `python` instead of Docker      | Use `docker compose up -d --build app`                                                                                               |
+| Tests fail with `ModuleNotFoundError`            | Run `pip install -r requirements-dev.txt`                                                                                            |
+| Endpoint returns 500 but nothing in logs         | See "Debugging a silent 500" above. Most likely a missing migration or a ResponseValidationError                                     |
+| Tests pass but endpoint 500s on Docker           | The DB schema is out of sync with the model — a migration is missing. Compare `information_schema.columns` with the model            |
+| `docker compose down -v` deleted my test data    | Only use `-v` when you want a fresh start                                                                                            |
+| Staging not updating after push                  | Check the GitHub Actions run completed successfully                                                                                  |
