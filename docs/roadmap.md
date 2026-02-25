@@ -307,6 +307,51 @@
 
 ---
 
+## Phase 20 – Data model symmetry & override form redesign ✅
+
+### Data model symmetry
+
+Known Artists and Overrides now share the same set of overridable fields:
+
+- **`resolved_title`** added to Known Artists (was only on Overrides) — allows
+  pre-baking a title (e.g. "Sir") that applies automatically on import
+- **`notes`** added to Overrides (was only on Known Artists) — human-readable
+  explanation of why an override exists
+- **`resolved_company`** / **`company_override`** — explicit company name text
+  (overrides the auto-derived `company = last_name` fallback)
+- **`resolved_address`** / **`address_override`** — explicit address text
+  (overrides the raw `Address 1` column value)
+
+All four fields participate in the 3-layer resolution pipeline:
+importer → known artist → user override.
+
+### Company text priority fix
+
+When `is_company` is true and no raw company text exists in the spreadsheet,
+the system auto-derives `company = last_name`. This auto-derivation now
+correctly yields to explicit company text from known artist (`resolved_company`)
+or override (`company_override`).
+
+### Override form redesign
+
+The per-artist override form was redesigned to match the Known Artists card
+layout — a 3-column grid with Artist 1 / Artist 2 / Artist 3 sections, each
+containing their relevant fields and an RA styled checkbox. The footer
+contains the Company checkbox, Company Name, Address, Notes, and action buttons.
+
+### Frontend
+
+- Title field added to Known Artists form (Artist 1 section)
+- Company Name and Address fields added to both Known Artists and Override forms
+- Notes field added to Override form footer
+- Detail table address row shows resolved address
+
+### Test count
+
+- 700 tests across 28 test files (11 new: 7 company/address, 4 title resolution)
+
+---
+
 ## Future considerations
 
 - Advanced title casing rules (LPG eccentricities)
@@ -336,7 +381,7 @@
   interactive tooling. Consider gating behind `RUN_MIGRATIONS=true` or moving
   to a startup event.
 
-- **Frontend modularity**: `frontend/app.js` is a single large file (~4200
+- **Frontend modularity**: `frontend/app.js` is a single large file (~4450
   lines). Consider splitting into modules or adding a minimal bundler step.
 
 **Low**

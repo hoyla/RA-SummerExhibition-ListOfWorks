@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (683 tests across 28 test files) |
+| Testing    | pytest (700 tests across 28 test files) |
 
 ---
 
@@ -143,12 +143,26 @@ One catalogue number belonging to an `IndexArtist`.
 
 ### IndexArtistOverride
 
-Optional editorial corrections for a single artist entry.
+Optional editorial corrections for a single artist entry. `None` means
+"use the resolved value" (fall through to known artist or normalised layer).
+`""` (empty string) means "clear this field to None regardless of other layers".
 
-- `display_name_override`, `qualifier_override`, `is_ra_member_override`
-- `sort_key_override`, `second_artist_name_override`
-- `second_artist_qualifier_override`, `second_artist_is_ra_override`
-- `cat_numbers_override` (JSON list)
+Text override fields:
+
+- `first_name_override`, `last_name_override`, `title_override`, `quals_override`
+- `artist2_first_name_override`, `artist2_last_name_override`, `artist2_quals_override`
+- `artist3_first_name_override`, `artist3_last_name_override`, `artist3_quals_override`
+- `company_override`, `address_override`
+
+Boolean override fields:
+
+- `is_company_override`
+- `artist1_ra_styled_override`, `artist2_ra_styled_override`, `artist3_ra_styled_override`
+
+Metadata:
+
+- `notes` — human-readable explanation of why the override exists
+- `updated_at` — auto-set timestamp
 
 ### IndexArtistValidationWarning
 
@@ -291,8 +305,11 @@ Index import to correct names and set RA status without manual overrides.
 | `match_quals`                 | Text    | Match criterion (spreadsheet qualifications) |
 | `resolved_first_name`         | Text    | Output first name                            |
 | `resolved_last_name`          | Text    | Output last name                             |
+| `resolved_title`              | Text    | Output title (e.g. Sir, Dame)                |
 | `resolved_quals`              | Text    | Output qualifications                        |
 | `resolved_is_company`         | Boolean | Override company flag                        |
+| `resolved_company`            | Text    | Explicit company name text                   |
+| `resolved_address`            | Text    | Explicit address text                        |
 | `resolved_artist2_first_name` | Text    | Second artist first name                     |
 | `resolved_artist2_last_name`  | Text    | Second artist last name                      |
 | `resolved_artist2_quals`      | Text    | Second artist qualifications                 |
@@ -370,11 +387,17 @@ Convention: `""` (empty string) means "clear this field to None";
 `None` means "don't override" (fall through to next layer).
 
 `EffectiveIndexArtist` contains: `index_name`, `title`, `first_name`,
-`last_name`, `quals`, `company`, `second_artist`, `is_ra_member`, `is_company`,
-`is_company_auto`, `sort_key`, `include_in_export`.
+`last_name`, `quals`, `company`, `address`, `artist2_first_name`,
+`artist2_last_name`, `artist2_quals`, `artist3_first_name`, `artist3_last_name`,
+`artist3_quals`, `artist1_ra_styled`, `artist2_ra_styled`, `artist3_ra_styled`,
+`is_ra_member`, `is_company`, `is_company_auto`, `sort_key`, `include_in_export`.
 
 Company handling: company flag follows override > known_artist > auto-detected.
-Companies never have a `second_artist` (cleared automatically).
+When a company has no explicit `company` text (from raw data, known artist, or
+override), the `last_name` is auto-derived as the company name. If an explicit
+company text is provided by known artist (`resolved_company`) or override
+(`company_override`), that takes priority over auto-derivation.
+Companies never have additional artists (artist 2/3 fields are cleared).
 Sort key is recomputed from resolved values.
 
 ---

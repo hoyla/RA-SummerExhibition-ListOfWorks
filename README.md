@@ -37,8 +37,9 @@ Supports two data products:
 - Multi-name and multi-artist parsing (e.g. "Boyd & Evans")
 - Company vs individual detection
 - Sort key generation and alphabetical grouping
-- Editorial overrides per artist (name, quals, company, sort key, include)
-- Known Artists lookup, seed data, and matching for RA member detection
+- Editorial overrides per artist (name, title, quals, company, address, RA styling, include)
+- Known Artists lookup with pre-baked title, company, and address fields
+- Seed data for Known Artists (JSON), seeded entries read-only with duplicate-to-edit
 - Export templates with configurable paragraph/character styles
 - Section separator between letter groups (paragraph, column break, etc.)
 - Per-letter collapsible preview with individual letter export
@@ -152,7 +153,7 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (617 tests across 26 test files)
+tests/            # pytest suite (700 tests across 28 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/
