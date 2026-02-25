@@ -308,7 +308,15 @@ class IndexArtistOut(BaseModel):
     last_name: str | None = None
     quals: str | None = None
     company: str | None = None
-    second_artist: str | None = None
+    artist2_first_name: str | None = None
+    artist2_last_name: str | None = None
+    artist2_quals: str | None = None
+    artist3_first_name: str | None = None
+    artist3_last_name: str | None = None
+    artist3_quals: str | None = None
+    artist1_ra_styled: bool = False
+    artist2_ra_styled: bool = False
+    artist3_ra_styled: bool = False
     is_ra_member: bool
     is_company: bool
     is_company_auto: bool = False
@@ -329,7 +337,15 @@ class IndexArtistOverrideIn(BaseModel):
     last_name_override: str | None = None
     title_override: str | None = None
     quals_override: str | None = None
-    second_artist_override: str | None = None
+    artist2_first_name_override: str | None = None
+    artist2_last_name_override: str | None = None
+    artist2_quals_override: str | None = None
+    artist3_first_name_override: str | None = None
+    artist3_last_name_override: str | None = None
+    artist3_quals_override: str | None = None
+    artist1_ra_styled_override: bool | None = None
+    artist2_ra_styled_override: bool | None = None
+    artist3_ra_styled_override: bool | None = None
     is_company_override: bool | None = None
 
 
@@ -339,7 +355,15 @@ class IndexArtistOverrideOut(BaseModel):
     last_name_override: str | None = None
     title_override: str | None = None
     quals_override: str | None = None
-    second_artist_override: str | None = None
+    artist2_first_name_override: str | None = None
+    artist2_last_name_override: str | None = None
+    artist2_quals_override: str | None = None
+    artist3_first_name_override: str | None = None
+    artist3_last_name_override: str | None = None
+    artist3_quals_override: str | None = None
+    artist1_ra_styled_override: bool | None = None
+    artist2_ra_styled_override: bool | None = None
+    artist3_ra_styled_override: bool | None = None
     is_company_override: bool | None = None
 
     model_config = {"from_attributes": True}
@@ -366,11 +390,20 @@ class KnownArtistOut(BaseModel):
     id: str
     match_first_name: str | None = None
     match_last_name: str | None = None
+    match_quals: str | None = None
     resolved_first_name: str | None = None
     resolved_last_name: str | None = None
     resolved_quals: str | None = None
-    resolved_second_artist: str | None = None
     resolved_is_company: bool | None = None
+    resolved_artist2_first_name: str | None = None
+    resolved_artist2_last_name: str | None = None
+    resolved_artist2_quals: str | None = None
+    resolved_artist3_first_name: str | None = None
+    resolved_artist3_last_name: str | None = None
+    resolved_artist3_quals: str | None = None
+    resolved_artist1_ra_styled: bool | None = None
+    resolved_artist2_ra_styled: bool | None = None
+    resolved_artist3_ra_styled: bool | None = None
     notes: str | None = None
 
     model_config = {"from_attributes": True}
@@ -379,20 +412,38 @@ class KnownArtistOut(BaseModel):
 class KnownArtistCreate(BaseModel):
     match_first_name: str | None = None
     match_last_name: str | None = None
+    match_quals: str | None = None
     resolved_first_name: str | None = None
     resolved_last_name: str | None = None
     resolved_quals: str | None = None
-    resolved_second_artist: str | None = None
     resolved_is_company: bool | None = None
+    resolved_artist2_first_name: str | None = None
+    resolved_artist2_last_name: str | None = None
+    resolved_artist2_quals: str | None = None
+    resolved_artist3_first_name: str | None = None
+    resolved_artist3_last_name: str | None = None
+    resolved_artist3_quals: str | None = None
+    resolved_artist1_ra_styled: bool | None = None
+    resolved_artist2_ra_styled: bool | None = None
+    resolved_artist3_ra_styled: bool | None = None
     notes: str | None = None
 
 
 class KnownArtistUpdate(BaseModel):
     match_first_name: str | None = None
     match_last_name: str | None = None
+    match_quals: str | None = None
     resolved_first_name: str | None = None
     resolved_last_name: str | None = None
     resolved_quals: str | None = None
-    resolved_second_artist: str | None = None
     resolved_is_company: bool | None = None
+    resolved_artist2_first_name: str | None = None
+    resolved_artist2_last_name: str | None = None
+    resolved_artist2_quals: str | None = None
+    resolved_artist3_first_name: str | None = None
+    resolved_artist3_last_name: str | None = None
+    resolved_artist3_quals: str | None = None
+    resolved_artist1_ra_styled: bool | None = None
+    resolved_artist2_ra_styled: bool | None = None
+    resolved_artist3_ra_styled: bool | None = None
     notes: str | None = None

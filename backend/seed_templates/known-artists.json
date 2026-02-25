@@ -4,7 +4,6 @@
     "match_last_name": "& Evans",
     "resolved_first_name": "",
     "resolved_last_name": "Boyd & Evans",
-    "resolved_second_artist": "",
     "resolved_is_company": true,
     "notes": "Partnership — sort by first word (Boyd)"
   },
@@ -21,7 +20,8 @@
     "match_last_name": "Adam Caruso and Peter St John",
     "resolved_first_name": "Adam",
     "resolved_last_name": "Caruso",
-    "resolved_second_artist": "and Peter St John",
+    "resolved_artist2_first_name": "Peter",
+    "resolved_artist2_last_name": "St John",
     "notes": "Full multi-artist name placed in Last Name column"
   }
 ]

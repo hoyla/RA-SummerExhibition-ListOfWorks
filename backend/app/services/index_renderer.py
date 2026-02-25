@@ -18,7 +18,7 @@ from backend.app.services.index_override_service import (
     build_known_artist_cache,
     lookup_known_artist,
 )
-from backend.app.services.index_importer import is_ra_member, RA_MEMBER_TOKENS
+from backend.app.services.index_importer import is_ra_member
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,15 @@ class ArtistExportEntry:
     last_name: Optional[str]
     quals: Optional[str]
     company: Optional[str]
-    second_artist: Optional[str]
+    artist2_first_name: Optional[str]
+    artist2_last_name: Optional[str]
+    artist2_quals: Optional[str]
+    artist3_first_name: Optional[str]
+    artist3_last_name: Optional[str]
+    artist3_quals: Optional[str]
+    artist1_ra_styled: bool
+    artist2_ra_styled: bool
+    artist3_ra_styled: bool
     is_ra_member: bool
     is_company: bool
     sort_key: str
@@ -116,7 +124,10 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
     entries: List[ArtistExportEntry] = []
     for artist in artists:
         known = lookup_known_artist(
-            known_cache, artist.raw_first_name, artist.raw_last_name
+            known_cache,
+            artist.raw_first_name,
+            artist.raw_last_name,
+            artist.raw_quals,
         )
         eff = resolve_index_artist(artist, override_map.get(str(artist.id)), known)
         cat_numbers = (
@@ -145,7 +156,15 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
                     last_name=eff.last_name,
                     quals=eff.quals,
                     company=eff.company,
-                    second_artist=eff.second_artist,
+                    artist2_first_name=eff.artist2_first_name,
+                    artist2_last_name=eff.artist2_last_name,
+                    artist2_quals=eff.artist2_quals,
+                    artist3_first_name=eff.artist3_first_name,
+                    artist3_last_name=eff.artist3_last_name,
+                    artist3_quals=eff.artist3_quals,
+                    artist1_ra_styled=eff.artist1_ra_styled,
+                    artist2_ra_styled=eff.artist2_ra_styled,
+                    artist3_ra_styled=eff.artist3_ra_styled,
                     is_ra_member=eff.is_ra_member,
                     is_company=eff.is_company,
                     sort_key=eff.sort_key,
@@ -226,8 +245,8 @@ def _render_name_part(
     surname_sep = " " if (has_quals and not rest_parts) else ", "
     rest_sep = " " if has_quals else ", "
 
-    # Apply RA surname styling
-    if entry.is_ra_member:
+    # Apply RA surname styling (uses per-artist flag, not is_ra_member)
+    if entry.artist1_ra_styled:
         parts.append(_cstyle(cfg.ra_surname_style, surname_display + surname_sep))
     else:
         parts.append(surname_display + surname_sep)
@@ -261,33 +280,42 @@ def _render_courtesy(courtesy: Optional[str], company: Optional[str]) -> str:
     return ""
 
 
-def _split_second_artist_quals(second_artist: str) -> Tuple[str, Optional[str]]:
-    """Split trailing RA-type tokens from a second_artist string.
+def _render_additional_artist(
+    first_name: Optional[str],
+    last_name: Optional[str],
+    quals: Optional[str],
+    ra_styled: bool,
+    cfg: IndexExportConfig,
+) -> str:
+    """Render an additional artist (artist2 or artist3) with styling.
 
-    Returns (name_part, quals_part).  quals_part is None if no RA tokens
-    are found at the end.
-
-    Example:
-        'and Peter St John ra' -> ('and Peter St John', 'ra')
-        'and Matthias Sauerbruch' -> ('and Matthias Sauerbruch', None)
+    Returns formatted string like:
+      'and Peter St John, '
+      'and <cstyle:RA Member Cap Surname>St John, <cstyle:>Peter cbe ra, '
     """
-    import re
+    if not first_name and not last_name:
+        return ""
 
-    # Build a pattern that matches one or more RA tokens at the end
-    token_pattern = "|".join(
-        re.escape(t) for t in sorted(RA_MEMBER_TOKENS, key=len, reverse=True)
-    )
-    # Match trailing quals: one or more RA tokens (space-separated) at end
-    m = re.search(
-        r"\s+((?:(?:" + token_pattern + r")(?:\s+|$))+)$",
-        second_artist,
-        re.IGNORECASE,
-    )
-    if not m:
-        return (second_artist, None)
-    quals = m.group(1).strip()
-    name = second_artist[: m.start()].rstrip()
-    return (name, quals)
+    parts: List[str] = ["and "]
+    if first_name:
+        parts.append(first_name + " ")
+    surname = last_name or ""
+    if ra_styled and surname:
+        parts.append(_cstyle(cfg.ra_surname_style, surname))
+    else:
+        parts.append(surname)
+
+    if quals:
+        display_q = quals.lower() if cfg.quals_lowercase else quals
+        parts.append(" ")
+        if ra_styled:
+            parts.append(_cstyle(cfg.ra_caps_style, display_q + ", "))
+        else:
+            parts.append(_cstyle(cfg.honorifics_style, display_q + ", "))
+    else:
+        parts.append(", ")
+
+    return "".join(parts)
 
 
 def _section_sep(name: str, style: str = "") -> str:
@@ -364,17 +392,26 @@ def render_index_tagged_text(
         # Qualifications
         line_parts.append(_render_quals(entry.quals, entry.is_ra_member, cfg))
 
-        # Second artist suffix (e.g. "and Peter St John ra")
-        # Detect and style any trailing RA tokens
-        if entry.second_artist:
-            sa_name, sa_quals = _split_second_artist_quals(entry.second_artist)
-            line_parts.append(sa_name)
-            if sa_quals:
-                display_q = sa_quals.lower() if cfg.quals_lowercase else sa_quals
-                line_parts.append(" ")
-                line_parts.append(_cstyle(cfg.ra_caps_style, display_q + ", "))
-            else:
-                line_parts.append(", ")
+        # Additional artists (structured, with per-artist RA styling)
+        a2 = _render_additional_artist(
+            entry.artist2_first_name,
+            entry.artist2_last_name,
+            entry.artist2_quals,
+            entry.artist2_ra_styled,
+            cfg,
+        )
+        if a2:
+            line_parts.append(a2)
+
+        a3 = _render_additional_artist(
+            entry.artist3_first_name,
+            entry.artist3_last_name,
+            entry.artist3_quals,
+            entry.artist3_ra_styled,
+            cfg,
+        )
+        if a3:
+            line_parts.append(a3)
 
         # Courtesy / company
         # For company entries that are also RA members (like "Adjaye Associates"),

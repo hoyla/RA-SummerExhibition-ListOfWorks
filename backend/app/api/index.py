@@ -185,7 +185,9 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
 
     result = []
     for a in artists:
-        known = lookup_known_artist(known_cache, a.raw_first_name, a.raw_last_name)
+        known = lookup_known_artist(
+            known_cache, a.raw_first_name, a.raw_last_name, a.raw_quals
+        )
         eff = resolve_index_artist(a, override_map.get(str(a.id)), known)
         result.append(
             IndexArtistOut(
@@ -203,7 +205,15 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
                 last_name=eff.last_name,
                 quals=eff.quals,
                 company=eff.company,
-                second_artist=eff.second_artist,
+                artist2_first_name=eff.artist2_first_name,
+                artist2_last_name=eff.artist2_last_name,
+                artist2_quals=eff.artist2_quals,
+                artist3_first_name=eff.artist3_first_name,
+                artist3_last_name=eff.artist3_last_name,
+                artist3_quals=eff.artist3_quals,
+                artist1_ra_styled=eff.artist1_ra_styled,
+                artist2_ra_styled=eff.artist2_ra_styled,
+                artist3_ra_styled=eff.artist3_ra_styled,
                 is_ra_member=eff.is_ra_member,
                 is_company=eff.is_company,
                 is_company_auto=eff.is_company_auto,
@@ -422,7 +432,12 @@ _OVERRIDE_TEXT_FIELDS = [
     "last_name_override",
     "title_override",
     "quals_override",
-    "second_artist_override",
+    "artist2_first_name_override",
+    "artist2_last_name_override",
+    "artist2_quals_override",
+    "artist3_first_name_override",
+    "artist3_last_name_override",
+    "artist3_quals_override",
 ]
 
 
@@ -433,7 +448,15 @@ def _override_to_out(override: IndexArtistOverride) -> IndexArtistOverrideOut:
         last_name_override=override.last_name_override,
         title_override=override.title_override,
         quals_override=override.quals_override,
-        second_artist_override=override.second_artist_override,
+        artist2_first_name_override=override.artist2_first_name_override,
+        artist2_last_name_override=override.artist2_last_name_override,
+        artist2_quals_override=override.artist2_quals_override,
+        artist3_first_name_override=override.artist3_first_name_override,
+        artist3_last_name_override=override.artist3_last_name_override,
+        artist3_quals_override=override.artist3_quals_override,
+        artist1_ra_styled_override=override.artist1_ra_styled_override,
+        artist2_ra_styled_override=override.artist2_ra_styled_override,
+        artist3_ra_styled_override=override.artist3_ra_styled_override,
         is_company_override=override.is_company_override,
     )
 
@@ -734,7 +757,15 @@ def unmerge_artist(
             last_name=artist.last_name,
             quals=artist.quals,
             company=artist.company,
-            second_artist=artist.second_artist,
+            artist2_first_name=artist.artist2_first_name,
+            artist2_last_name=artist.artist2_last_name,
+            artist2_quals=artist.artist2_quals,
+            artist3_first_name=artist.artist3_first_name,
+            artist3_last_name=artist.artist3_last_name,
+            artist3_quals=artist.artist3_quals,
+            artist1_ra_styled=artist.artist1_ra_styled,
+            artist2_ra_styled=artist.artist2_ra_styled,
+            artist3_ra_styled=artist.artist3_ra_styled,
             is_ra_member=artist.is_ra_member,
             is_company=artist.is_company,
             sort_key=artist.sort_key,

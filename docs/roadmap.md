@@ -194,44 +194,74 @@
 
 ---
 
-## Phase 17 – AWS deployment & cloud infrastructure (planned)
+## Phase 17 – AWS deployment & cloud infrastructure ✅
 
 ### Storage
 
-- Migrate uploaded Excel files from local Docker volume to **Amazon S3**
+- Migrated uploaded Excel files from local Docker volume to **Amazon S3**
 - Presigned URLs for upload/download (avoid passing file bytes through the API)
 - Configurable bucket name via `S3_BUCKET` / `AWS_REGION` env vars
-- Retain local-disk fallback for development (`STORAGE_BACKEND=local|s3`)
+- Local-disk fallback for development (`STORAGE_BACKEND=local|s3`)
 
 ### Compute & networking
 
-- **ECS Fargate** (or App Runner) for the FastAPI container — no EC2 management
-- **RDS PostgreSQL** replacing the Docker Compose Postgres container
-- **ALB** (Application Load Balancer) with TLS termination
-- Health check endpoint (`/health`) already exists for ALB target-group probes
+- **ECS Fargate** for the FastAPI container — no EC2 management
+- **RDS PostgreSQL 16** replacing the Docker Compose Postgres container
+- **ALB** (Application Load Balancer) with TLS termination and host-based routing
+- Health check endpoint (`/health`) used for ALB target-group probes
+- VPC with public/private subnets and security groups
 
-### User authentication
+### HTTPS & domains
 
-- Replace single API key with **Amazon Cognito** user pool
-- OAuth 2.0 / OIDC token flow: frontend redirects to Cognito hosted UI,
-  receives JWT, sends `Authorization: Bearer <token>` header
-- Backend validates JWT signature + claims via `python-jose` / `authlib`
-- Map Cognito groups → application roles (Viewer / Editor / Admin)
-- Existing `require_role()` guard unchanged — role source switches from
-  header to JWT claim
-- Optional: Cognito-backed login page replaces the current API-key prompt
+- ACM certificates for `catalogue.hoy.la` (prod) and `staging-catalogue.hoy.la` (staging)
+- HTTPS on port 443 with HTTP→HTTPS redirect
+- Host-based routing on ALB for prod and staging
+- Staging banner displayed on staging environment
 
-### CI / CD
+### CI/CD
 
-- **GitHub Actions** pipeline: lint → test → Docker build → push to ECR → deploy to ECS
-- Alembic migrations run automatically on container startup (already implemented)
-- Separate staging and production environments via environment variables
+- **GitHub Actions** pipeline: test → Docker build → push to ECR → deploy to ECS
+- Branch-based deployment: non-main branches → staging, main → production
+- OIDC federation for keyless AWS authentication from GitHub Actions
+- Separate staging and production ECS services
+- Alembic migrations run automatically on container startup
 
 ### Secrets & configuration
 
-- **AWS Secrets Manager** for `DATABASE_URL`, Cognito client secret, etc.
-- **Parameter Store** for non-secret config (bucket names, feature flags)
+- **AWS Secrets Manager** for `DATABASE_URL` and other secrets
 - `.env` file used only for local development
+
+---
+
+## Phase 18 – Cognito authentication & user management ✅
+
+### Authentication
+
+- **Amazon Cognito** user pool replacing single shared API key
+- Three-mode auth: Cognito JWT → API key (legacy) → no auth (local dev)
+- JWT validation via `python-jose` (signature, expiry, audience, issuer)
+- Cognito groups mapped to application roles (admin > editor > viewer)
+- `ContextVar`-based request-scoped user context
+- Audit log `user_email` column auto-populated from request context
+- Alembic migration for new column
+
+### Frontend auth
+
+- Cognito login form (email + password) with `USER_PASSWORD_AUTH` flow
+- `NEW_PASSWORD_REQUIRED` challenge handling (force change on first login)
+- Token storage in `sessionStorage` with automatic refresh
+- Role badge in header (admin=red, editor=blue, viewer=grey)
+- Fallback to legacy API key input when Cognito is not configured
+
+### User management (admin panel)
+
+- Backend: `/users` CRUD routes via boto3 Cognito admin APIs
+  (list, create, update role, enable/disable, reset password)
+- Frontend: Users section in Settings page (admin-only, Cognito-only)
+  with user table, create form, role change dropdown, enable/disable toggle,
+  password reset
+- IAM: `catalogue-cognito-admin` inline policy on ECS task role
+- 577 tests total across 24 test files
 
 ---
 
