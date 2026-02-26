@@ -92,9 +92,37 @@ Optional editorial corrections for a single work. `None` means "use Work value".
 
 ### ValidationWarning
 
-Recorded when a raw field cannot be parsed to its expected type.
+Recorded during import when a normalisation event occurs or a data quality
+issue is suspected.
 
-- `import_id`, `work_id`, `field`, `raw_value`, `message`
+- `import_id` (FK), `work_id` (FK, nullable), `warning_type` (Text), `message` (Text)
+- Indexed on `import_id` and `work_id`
+
+#### Index warning types
+
+"Changed" warnings (normalisation engine modified data):
+
+| Type                          | Trigger                                                    |
+| ----------------------------- | ---------------------------------------------------------- |
+| `whitespace_trimmed`          | Leading/trailing whitespace removed from fields            |
+| `multi_artist_name_changed`   | Multi-artist entry split into artist 1 + artist 2          |
+| `quals_extracted`             | Qualifications extracted from name during multi-artist parsing |
+| `ra_member_detected`          | RA membership auto-detected from quals                     |
+| `possible_company`            | Entry treated as company (no first name)                   |
+| `duplicate_name_merged`       | Identical-name rows merged into one entry                  |
+
+"Suspected" warnings (may need human review):
+
+| Type                          | Trigger                                                    |
+| ----------------------------- | ---------------------------------------------------------- |
+| `multi_artist_name_suspected` | Residual `and`/`&`/`with` still detected after parsing     |
+| `ra_styling_ambiguous`        | RA styling defaulted to artist 1 — may be wrong            |
+| `quals_in_name_field`         | Qualification token found in a name field                  |
+| `non_ascii_characters`        | Non-ASCII characters will be unicode-escaped in export     |
+| `missing_cat_nos`             | No catalogue numbers for an entry                          |
+| `duplicate_filename`          | A previous import with the same filename exists            |
+| `empty_spreadsheet`           | Column headers present but no data rows                    |
+| `missing_column`              | An optional column is absent from the spreadsheet          |
 
 ### AuditLog
 
@@ -128,18 +156,25 @@ The JSON field `_config_type` in seed files determines the `config_type`.
 
 One parsed artist entry within an Index import.
 
-- `id`, `import_id`, `sort_key`, `display_name`, `raw_name`
-- `qualifier` — RA/Hon RA/Hon RWS etc.
-- `is_ra_member`, `is_company`, `is_linked`, `is_multi_name`
-- `second_artist_name`, `second_artist_qualifier`, `second_artist_is_ra`
-- `exclude` — omit from export (default `False`)
-- `normalised_name`, `normalised_honorifics`
+Raw (immutable) fields:
+- `raw_title`, `raw_first_name`, `raw_last_name`, `raw_quals`, `raw_company`, `raw_address`
+
+Normalised fields (computed by importer):
+- `title`, `first_name`, `last_name`, `quals`, `company`, `sort_key`
+- `artist2_first_name`, `artist2_last_name`, `artist2_quals` (populated by multi-artist parsing)
+- `artist3_first_name`, `artist3_last_name`, `artist3_quals`
+- `artist1_ra_styled`, `artist2_ra_styled`, `artist3_ra_styled`
+- `is_ra_member`, `is_company`
+- `include_in_export` — omit from export (default `True`)
+
+Metadata:
+- `id` (UUID PK), `import_id` (FK), `row_number`
 
 ### IndexCatNumber
 
 One catalogue number belonging to an `IndexArtist`.
 
-- `id`, `artist_id`, `cat_no`, `expert_no`
+- `id` (UUID PK), `artist_id` (FK), `cat_no` (Integer), `courtesy` (Text, nullable), `source_row` (Integer)
 
 ### IndexArtistOverride
 
@@ -216,8 +251,8 @@ multi-artist entry (e.g. "& Peter St John"):
 #### Multi-name detection
 
 Names containing `"and"`, `"with"`, or `&` (regex `\band\b|\bwith\b|\s&\s`)
-generate a `multi_artist_name` validation warning. Unlike multi-artist parsing,
-this only warns — it does not restructure the row.
+generate a `multi_artist_name_suspected` validation warning. Unlike multi-artist
+parsing, this only warns — it does not restructure the row.
 
 #### Company detection
 

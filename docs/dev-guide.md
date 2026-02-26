@@ -5,6 +5,86 @@ details see [architecture_v1.md](architecture_v1.md).
 
 ---
 
+## Project overview
+
+The **Catalogue Tool** produces InDesign-ready Tagged Text for the Royal
+Academy Summer Exhibition catalogue. It handles two products:
+
+1. **List of Works (LoW)** — artwork entries with artist, title, price, etc.
+2. **Artists' Index** — alphabetical artist listing with catalogue numbers.
+
+### Tech stack
+
+| Layer    | Technology                                      |
+| -------- | ----------------------------------------------- |
+| Backend  | Python 3.12, FastAPI, SQLAlchemy, Alembic       |
+| Database | PostgreSQL 16 (Docker), SQLite (tests)          |
+| Frontend | Vanilla JS SPA (`frontend/app.js`, ~4500 lines) |
+| Infra    | Docker Compose (local), ECS Fargate (staging/prod) |
+
+### Key directories
+
+| Path                          | Purpose                                          |
+| ----------------------------- | ------------------------------------------------ |
+| `backend/app/api/`            | FastAPI route modules and Pydantic schemas        |
+| `backend/app/models/`         | SQLAlchemy ORM models                            |
+| `backend/app/services/`       | Business logic (import, normalise, resolve, export) |
+| `backend/alembic/versions/`   | Database migrations (auto-run on startup)        |
+| `backend/seed_templates/`     | Default templates and known artist seed data     |
+| `frontend/`                   | Single-page app (`app.js`, `style.css`, `index.html`) |
+| `tests/`                      | Pytest suite (~711 tests, SQLite in-memory)      |
+
+### Data flow
+
+```
+Spreadsheet upload → Parse & normalise → Store raw + normalised
+  → Known Artist lookup → User overrides → Resolved output → Export
+```
+
+### Three-layer override resolution (Artists' Index)
+
+Values resolve left-to-right; first non-null wins:
+
+1. **User override** (`IndexArtistOverride`) — highest priority
+2. **Known Artist** (`KnownArtist`) — pre-configured corrections
+3. **Normalised** (from importer heuristics) — lowest priority
+
+Convention: `""` (empty string) = "clear this field to blank";
+`None`/`null` = "no override, fall through to next layer".
+
+### Validation warnings
+
+The importer emits warnings in two categories, shown in the UI with distinct
+badge colours:
+
+**Changed (blue `badge-info`)** — normalisation engine modified data:
+- `whitespace_trimmed`, `multi_artist_name_changed`, `quals_extracted`,
+  `ra_member_detected`, `possible_company`, `duplicate_name_merged`
+
+**Suspected (amber `badge-warning`)** — may need human review:
+- `multi_artist_name_suspected`, `ra_styling_ambiguous`, `quals_in_name_field`,
+  `non_ascii_characters`, `missing_cat_nos`, `duplicate_filename`,
+  `empty_spreadsheet`, `missing_column`
+
+Warning types are free-text strings in the `ValidationWarning` table — no
+enum or migration is needed to add new types.
+
+### Frontend detail table
+
+When clicking an artist entry, the detail table shows the data pipeline:
+
+| Column          | Shows                                                       |
+| --------------- | ----------------------------------------------------------- |
+| Field           | Field name (including derived fields like Artist 2, RA Styled) |
+| Spreadsheet     | Raw value from the Excel file (dash for derived fields)     |
+| Resolved        | After normalisation + known artist lookup                   |
+| Manual Override  | After user overrides (only shown when overrides exist)      |
+
+Values are styled: **grey** = unchanged from previous column,
+**bold black** = changed by this stage.
+
+---
+
 ## Local development
 
 Local development uses **Docker Compose** — the app runs inside a container
@@ -42,6 +122,10 @@ open http://localhost:8000/ui   # UI is served by the app container
 - The local environment has **no authentication** by default (no Cognito, no
   API key). The UI shows an "admin" role with full access.
 
+> **⚠️ `.env` gotcha**: If `.env` has `API_KEY=some-value`, the app enters
+> API-key mode and all requests (including tests) need that key. For local
+> dev you usually want `API_KEY=` (empty) so no-auth mode is active.
+
 ---
 
 ## Running tests
@@ -53,7 +137,7 @@ Tests run against an **in-memory SQLite database** — no Docker required.
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Run all 700 tests
+# Run all tests (~711)
 python -m pytest tests/ -q
 
 # Run a single test file
@@ -269,3 +353,5 @@ If an endpoint returns 500 with no log output:
 | Tests pass but endpoint 500s on Docker           | The DB schema is out of sync with the model — a migration is missing. Compare `information_schema.columns` with the model            |
 | `docker compose down -v` deleted my test data    | Only use `-v` when you want a fresh start                                                                                            |
 | Staging not updating after push                  | Check the GitHub Actions run completed successfully                                                                                  |
+| Tests all fail with 401/403                      | `.env` has `API_KEY=some-value` — clear it to `API_KEY=` for no-auth mode                                                            |
+| Warning type not showing in UI                   | Warning types are free-text — no migration needed. Check the label map `_IDX_WARNING_LABELS` in `app.js` and the `_IDX_CHANGED_TYPES` set |
