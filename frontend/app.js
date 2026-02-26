@@ -1924,7 +1924,7 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Company',
       desc: 'An entry flagged as a company. The company name appears as the surname, with no first name.',
       parts: [
-        plain('AKT II'),  sep(', '),
+        plain('51 Architecture'),  sep(', '),
         styled('33', 'catno', 'Cat no'),
       ],
     },
@@ -1943,7 +1943,7 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Two artists — first is RA member',
       desc: 'A dual-artist entry. Artist 1 has RA styling; Artist 2 does not. They are joined by "and".',
       parts: [
-        styled('Caruso, ', 'ra-surname', 'RA surname'),
+        styled('Smith, ', 'ra-surname', 'RA surname'),
         plain('Adam'),  sep(' '),
         styled('RA, ', 'ra-quals', 'RA quals'),
         plain('and Peter St\u00a0John'),  sep(', '),
