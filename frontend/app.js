@@ -1831,10 +1831,195 @@ async function renderIndexTemplateEdit(id) {
       </div>
     </section>
 
+    <h3 class="settings-group-heading">Entry Layout Examples</h3>
+    <section class="panel" id="idx-tmpl-examples">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
+        These examples show how different types of index entry are assembled.
+        Style names are taken from the settings above. All entries use the
+        <strong>${esc(cfg.entry_style ?? 'Index Text')}</strong> paragraph style.
+      </p>
+      <div id="idx-entry-examples"></div>
+    </section>
+
     <div class="form-actions" style="padding-bottom:20px">
       ${saveBtn}
       <span id="idx-tmpl-status" class="status-msg"></span>
     </div>`;
+
+  // Build the entry layout examples
+  _renderIndexEntryExamples(cfg);
+}
+
+// ---------------------------------------------------------------------------
+// Index template – entry layout examples
+// ---------------------------------------------------------------------------
+
+/**
+ * Render annotated examples showing how different types of index entry are
+ * assembled by the renderer, with style labels beneath each part.
+ *
+ * The examples are purely illustrative — they mirror the hardcoded field
+ * order in index_renderer.py:
+ *   Name → Quals → Artist 2 [→ Artist 3] → Courtesy/Company → Cat Numbers
+ */
+function _renderIndexEntryExamples(cfg) {
+  const container = document.getElementById('idx-entry-examples');
+  if (!container) return;
+
+  const catSep     = cfg.cat_no_separator  ?? ',';
+
+  // Helper: build a styled segment  { text, role?, label? }
+  // role   = visual role: 'ra-surname', 'ra-quals', 'honorifics', 'catno'
+  // label  = the annotation shown beneath (short descriptive role name)
+  // sep    = true means this is a separator (rendered smaller, muted)
+  const seg = (text, opts = {}) => ({ text, ...opts });
+  const plain = (text) => seg(text, { plain: true });
+  const styled = (text, role, label) => seg(text, { role, label });
+  const sep = (text) => seg(text, { sep: true });
+
+  const examples = [
+    // 1. Simple single artist — no RA, no quals
+    {
+      title: 'Single artist',
+      desc: 'An individual artist without RA membership or qualifications.',
+      parts: [
+        plain('Adams'),  sep(', '),  plain('Roger'),  sep(', '),
+        styled('101', 'catno', 'Cat no'),
+      ],
+    },
+    // 2. Single artist with RA styling
+    {
+      title: 'Single artist — RA member',
+      desc: 'An RA member. The surname (and its trailing comma-space) is wrapped in the RA surname style; qualifications in the RA caps style.',
+      parts: [
+        styled('Parker, ', 'ra-surname', 'RA surname'),
+        plain('Cornelia'),  sep(' '),
+        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        styled('42', 'catno', 'Cat no'),
+      ],
+    },
+    // 3. Single artist with non-RA honorifics
+    {
+      title: 'Single artist — non-RA honorifics',
+      desc: 'An artist with qualifications who is not an RA member. Qualifications use the non-RA honorifics style.',
+      parts: [
+        plain('Chen'),  sep(', '),  plain('Wei'),  sep(' '),
+        styled('OBE, ', 'honorifics', 'Honorifics'),
+        styled('88', 'catno', 'Cat no'),
+      ],
+    },
+    // 4. Single artist with title
+    {
+      title: 'Single artist — with title',
+      desc: 'A titled artist. The title appears between surname and first name.',
+      parts: [
+        styled('Rae, ', 'ra-surname', 'RA surname'),
+        plain('Dr Barbara'),  sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('205', 'catno', 'Cat no'),
+      ],
+    },
+    // 5. Company
+    {
+      title: 'Company',
+      desc: 'An entry flagged as a company. The company name appears as the surname, with no first name.',
+      parts: [
+        plain('AKT II'),  sep(', '),
+        styled('33', 'catno', 'Cat no'),
+      ],
+    },
+    // 6. Company with RA styling
+    {
+      title: 'Company — RA member',
+      desc: 'A company entry with RA membership styling and qualifications.',
+      parts: [
+        styled('Adjaye Associates ', 'ra-surname', 'RA surname'),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('77', 'catno', 'Cat no'),
+      ],
+    },
+    // 7. Two artists, first with RA
+    {
+      title: 'Two artists — first is RA member',
+      desc: 'A dual-artist entry. Artist 1 has RA styling; Artist 2 does not. They are joined by "and".',
+      parts: [
+        styled('Caruso, ', 'ra-surname', 'RA surname'),
+        plain('Adam'),  sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        plain('and Peter St\u00a0John'),  sep(', '),
+        styled('150', 'catno', 'Cat no'),
+      ],
+    },
+    // 8. Two artists, both with RA and quals
+    {
+      title: 'Two artists — both RA members',
+      desc: 'Both artists have RA styling and qualifications.',
+      parts: [
+        styled('Boyd, ', 'ra-surname', 'RA surname'),
+        plain('Fiona'),  sep(' '),
+        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        plain('and Arthur '),
+        styled('Evans', 'ra-surname', 'RA surname'),
+        sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('62', 'catno', 'Cat no'),
+      ],
+    },
+    // 9. Artist with address/courtesy
+    {
+      title: 'Artist with address (courtesy)',
+      desc: 'An artist with an address or courtesy value. This appears after qualifications, before catalogue numbers.',
+      parts: [
+        styled('Thompson, ', 'ra-surname', 'RA surname'),
+        plain('Emma'),  sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        plain('courtesy of White Cube'),  sep(', '),
+        styled('310', 'catno', 'Cat no'),
+      ],
+    },
+    // 10. Multiple catalogue numbers
+    {
+      title: 'Multiple catalogue numbers',
+      desc: `An entry with several works. Numbers are separated by "${catSep === ',' ? 'comma' : catSep === ';' ? 'semicolon' : 'space'}".`,
+      parts: [
+        plain('Martinez'),  sep(', '),  plain('Sofia'),  sep(', '),
+        styled('14', 'catno', 'Cat no'),
+        sep(catSep), styled('\u2009215', 'catno', 'Cat no'),
+        sep(catSep), styled('\u2009387', 'catno', 'Cat no'),
+      ],
+    },
+  ];
+
+  const html = examples.map(ex => {
+    const partsHtml = ex.parts.map(p => {
+      if (p.sep) {
+        return `<span class="idx-ex-sep">${esc(p.text)}</span>`;
+      }
+      // Choose visual class based on the role of this segment
+      let vizClass = 'idx-ex-plain';
+      if (p.role === 'ra-surname')  vizClass = 'idx-ex-ra-surname';
+      else if (p.role === 'ra-quals')    vizClass = 'idx-ex-ra-quals';
+      else if (p.role === 'honorifics')  vizClass = 'idx-ex-honorifics';
+      else if (p.role === 'catno')       vizClass = 'idx-ex-catno';
+
+      const label = p.label || '';
+      const labelHtml = label
+        ? `<span class="idx-ex-label">${esc(label)}</span>`
+        : '';
+      return `<span class="${vizClass}">${esc(p.text)}${labelHtml}</span>`;
+    }).join('');
+
+    return `
+      <div class="idx-ex-block">
+        <div class="idx-ex-info">
+          <div class="idx-ex-title">${esc(ex.title)}</div>
+          <div class="idx-ex-desc">${esc(ex.desc)}</div>
+        </div>
+        <div class="idx-ex-line">${partsHtml}</div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = html;
 }
 
 async function saveIndexTemplate(id) {
