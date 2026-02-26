@@ -1882,6 +1882,11 @@ async function renderIndexTemplateEdit(id) {
       </div>
     </section>
 
+    <div class="form-actions" style="padding-bottom:20px">
+      ${saveBtn}
+      <span id="idx-tmpl-status" class="status-msg"></span>
+    </div>
+
     <h3 class="settings-group-heading">Entry Layout Examples</h3>
     <section class="panel" id="idx-tmpl-examples">
       <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
@@ -1890,12 +1895,7 @@ async function renderIndexTemplateEdit(id) {
         <strong>${esc(cfg.entry_style ?? 'Index Text')}</strong> paragraph style.
       </p>
       <div id="idx-entry-examples"></div>
-    </section>
-
-    <div class="form-actions" style="padding-bottom:20px">
-      ${saveBtn}
-      <span id="idx-tmpl-status" class="status-msg"></span>
-    </div>`;
+    </section>`;
 
   // Build the entry layout examples
   _renderIndexEntryExamples(cfg);
