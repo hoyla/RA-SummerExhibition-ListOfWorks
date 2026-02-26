@@ -345,12 +345,14 @@ a:hover { text-decoration: underline; }
 }
 /* Dim fields irrelevant for companies */
 .ka-is-company .ka-a1-first-wrap,
-.ka-is-company .ka-section-a2 {
+.ka-is-company .ka-section-a2,
+.ka-is-company .ka-section-a3 {
   opacity: 0.35;
   pointer-events: none;
   position: relative;
 }
-.ka-is-company .ka-section-a2::after {
+.ka-is-company .ka-section-a2::after,
+.ka-is-company .ka-section-a3::after {
   content: 'Not used for companies';
   position: absolute;
   top: 8px;
@@ -821,18 +823,24 @@ details.section-block[open] > .section-summary::before {
 .warning-filter-btn {
   /* inherits .badge sizing via class; override to behave as a button */
   cursor: pointer;
-  border: 1px solid #f0c040;
-  transition: opacity 0.15s, background 0.15s;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
 }
-.warning-filter-btn:hover { background: #ffe8a0; }
+
+/* Hover: deepen the existing colour */
+.badge-warning.warning-filter-btn:hover { background: #ffe8a0; border-color: #daa800; }
+.badge-info.warning-filter-btn:hover    { background: #a2d4de; border-color: #5fb8ca; }
 
 /* Greyed-out state when a type is hidden */
-.badge-warning.badge-muted {
+.warning-filter-btn.badge-muted {
   background: #f5f5f5;
   color: #aaa;
   border-color: #ccc;
   text-decoration: line-through;
   opacity: 0.6;
+}
+.warning-filter-btn.badge-muted:hover {
+  background: #eaeaea;
+  opacity: 0.8;
 }
 
 /* Clickable work link inside warnings table */
@@ -909,6 +917,7 @@ details.section-block[open] > .section-summary::before {
   white-space: nowrap;
 }
 .badge-warning { background: #fff3cd; color: #8a6000; border: 1px solid #f0c040; }
+.badge-info { background: #d1ecf1; color: #0c5460; border: 1px solid #8dd3df; }
 .badge-audit { background: #e8f0fe; color: #1a56db; border: 1px solid #a4c3f5; }
 
 /* Audit log */

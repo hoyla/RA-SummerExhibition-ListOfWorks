@@ -1081,8 +1081,12 @@ function _kaPreviewIndexName(tr) {
   const a2First = resolve('.ka-res-a2-first', '');
   const a2Last = resolve('.ka-res-a2-last', '');
   const a2Quals = resolve('.ka-res-a2-quals', '');
+  const a3First = resolve('.ka-res-a3-first', '');
+  const a3Last = resolve('.ka-res-a3-last', '');
+  const a3Quals = resolve('.ka-res-a3-quals', '');
   const a1RaStyled = tr.querySelector('.ka-a1-ra')?.checked || false;
   const a2RaStyled = tr.querySelector('.ka-a2-ra')?.checked || false;
+  const a3RaStyled = tr.querySelector('.ka-a3-ra')?.checked || false;
   const surname = lastName || firstName || '';
   if (!surname) return '<span class="muted">&mdash;</span>';
 
@@ -1110,19 +1114,21 @@ function _kaPreviewIndexName(tr) {
 
   // Additional artists from structured fields (suppressed for companies, matching index export)
   const suffixes = [];
-  if (!isCompany && (a2First || a2Last)) {
-    const parts = ['and'];
-    if (a2First) parts.push(esc(a2First));
-    if (a2Last) {
-      if (a2RaStyled) parts.push(`<span class="idx-ra-styled">${esc(a2Last)}</span>`);
-      else parts.push(esc(a2Last));
+  for (const [aFirst, aLast, aQuals, aRaStyled] of [[a2First, a2Last, a2Quals, a2RaStyled], [a3First, a3Last, a3Quals, a3RaStyled]]) {
+    if (!isCompany && (aFirst || aLast)) {
+      const parts = ['and'];
+      if (aFirst) parts.push(esc(aFirst));
+      if (aLast) {
+        if (aRaStyled) parts.push(`<span class="idx-ra-styled">${esc(aLast)}</span>`);
+        else parts.push(esc(aLast));
+      }
+      let suffix = parts.join(' ');
+      if (aQuals) {
+        const pillClass = aRaStyled ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
+        suffix += ` <span class="${pillClass}">${esc(aQuals)}</span>`;
+      }
+      suffixes.push(suffix);
     }
-    let suffix = parts.join(' ');
-    if (a2Quals) {
-      const pillClass = a2RaStyled ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
-      suffix += ` <span class="${pillClass}">${esc(a2Quals)}</span>`;
-    }
-    suffixes.push(suffix);
   }
 
   let result = commaParts.join(', ');
@@ -1311,6 +1317,17 @@ function _knownArtistCard(ka) {
             </div>
           </div>
         </div>
+        <div class="ka-section ka-section-a3">
+          <h5 class="ka-section-heading">Resolved &rarr; Artist 3</h5>
+          <div class="ka-fields">
+            ${_kaResolvedField('First Name', 'ka-res-a3-first', ka.resolved_artist3_first_name, locked)}
+            ${_kaResolvedField('Last Name', 'ka-res-a3-last', ka.resolved_artist3_last_name, locked)}
+            ${_kaResolvedField('Qualifications', 'ka-res-a3-quals', ka.resolved_artist3_quals, locked)}
+            <div class="ka-field ka-field-check">
+              <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="ka-card-footer">
         <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
@@ -1340,7 +1357,10 @@ function addKnownArtistRow() {
     resolved_quals: '',
     resolved_artist2_first_name: '', resolved_artist2_last_name: '',
     resolved_artist2_quals: '',
+    resolved_artist3_first_name: '', resolved_artist3_last_name: '',
+    resolved_artist3_quals: '',
     resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
+    resolved_artist3_ra_styled: false,
     resolved_is_company: false, resolved_company: '', resolved_address: '',
     notes: '',
   }));
@@ -1372,6 +1392,7 @@ function _readKaRow(tr) {
   const val = (cls) => tr.querySelector(cls)?.value?.trim() || null;
   const a1RaEl = tr.querySelector('.ka-a1-ra');
   const a2RaEl = tr.querySelector('.ka-a2-ra');
+  const a3RaEl = tr.querySelector('.ka-a3-ra');
   return {
     match_first_name:              val('.ka-match-first'),
     match_last_name:               val('.ka-match-last'),
@@ -1383,8 +1404,12 @@ function _readKaRow(tr) {
     resolved_artist2_first_name:   resVal('.ka-res-a2-first'),
     resolved_artist2_last_name:    resVal('.ka-res-a2-last'),
     resolved_artist2_quals:        resVal('.ka-res-a2-quals'),
+    resolved_artist3_first_name:   resVal('.ka-res-a3-first'),
+    resolved_artist3_last_name:    resVal('.ka-res-a3-last'),
+    resolved_artist3_quals:        resVal('.ka-res-a3-quals'),
     resolved_artist1_ra_styled:    a1RaEl?.checked || null,
     resolved_artist2_ra_styled:    a2RaEl?.checked || null,
+    resolved_artist3_ra_styled:    a3RaEl?.checked || null,
     resolved_is_company:           isCompany,
     resolved_company:              val('.ka-res-company'),
     resolved_address:              val('.ka-res-address'),
@@ -2478,6 +2503,29 @@ function renderWarningsPanel(warnings) {
   _buildWarningsPanel();
 }
 
+// Human-friendly labels & categories for LoW warning types
+const _LOW_WARNING_LABELS = {
+  // Changed: normalisation engine modified data
+  zero_edition_suppressed: 'Edition suppressed',
+  // Info: data quality issues needing review
+  missing_title:        'Missing title',
+  missing_artist:       'Missing artist',
+  missing_price:        'Missing price',
+  unrecognised_price:   'Unrecognised price',
+  edition_anomaly:      'Edition anomaly',
+  non_ascii_characters: 'Non-ASCII chars',
+  duplicate_filename:   'Duplicate filename',
+  missing_column:       'Missing column',
+  empty_spreadsheet:    'Empty spreadsheet',
+};
+const _LOW_CHANGED_TYPES = new Set([
+  'zero_edition_suppressed',
+]);
+
+function _lowWarnLabel(type) {
+  return _LOW_WARNING_LABELS[type] || type;
+}
+
 function _buildWarningsPanel() {
   const warnings = _warningsAll;
   const panel = document.getElementById('warnings-panel');
@@ -2496,7 +2544,9 @@ function _buildWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
+      const isChanged = _LOW_CHANGED_TYPES.has(type);
+      const badgeClass = isChanged ? 'badge badge-info warning-filter-btn' : 'badge badge-warning warning-filter-btn';
+      return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_lowWarnLabel(type))}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -2507,7 +2557,7 @@ function _buildWarningsPanel() {
       ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(w.work_id)}')">${esc(who)}</button>`
       : (esc(who) || '\u2014');
     return `<tr>
-      <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
+      <td><span class="badge ${_LOW_CHANGED_TYPES.has(w.warning_type) ? 'badge-info' : 'badge-warning'}">${esc(_lowWarnLabel(w.warning_type))}</span></td>
       <td>${esc(w.message)}</td>
       <td class="muted col-work">${workCell}</td>
     </tr>`;
@@ -3467,6 +3517,34 @@ function _renderIndexWarnings(warnings) {
   _buildIndexWarningsPanel();
 }
 
+// Human-friendly labels & categories for index warning types
+const _IDX_WARNING_LABELS = {
+  // Changed: normalisation engine modified data
+  whitespace_trimmed:         'Whitespace trimmed',
+  multi_artist_name_changed:  'Multi-artist split',
+  quals_extracted:            'Quals extracted',
+  ra_member_detected:         'RA member detected',
+  possible_company:           'Company detected',
+  duplicate_name_merged:      'Duplicate merged',
+  // Suspected: may need human review
+  multi_artist_name_suspected:'Multi-artist suspected',
+  ra_styling_ambiguous:       'RA styling ambiguous',
+  quals_in_name_field:        'Quals in name',
+  non_ascii_characters:       'Non-ASCII chars',
+  missing_cat_nos:            'Missing cat nos',
+  duplicate_filename:         'Duplicate filename',
+  empty_spreadsheet:          'Empty spreadsheet',
+  missing_column:             'Missing column',
+};
+const _IDX_CHANGED_TYPES = new Set([
+  'whitespace_trimmed', 'multi_artist_name_changed', 'quals_extracted',
+  'ra_member_detected', 'possible_company', 'duplicate_name_merged',
+]);
+
+function _idxWarnLabel(type) {
+  return _IDX_WARNING_LABELS[type] || type;
+}
+
 function _buildIndexWarningsPanel() {
   const warnings = _indexWarningsAll;
   const panel = document.getElementById('index-warnings-panel');
@@ -3485,7 +3563,9 @@ function _buildIndexWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenIndexWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
+      const isChanged = _IDX_CHANGED_TYPES.has(type);
+      const badgeClass = isChanged ? 'badge badge-info warning-filter-btn' : 'badge badge-warning warning-filter-btn';
+      return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_idxWarnLabel(type))}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -3495,7 +3575,7 @@ function _buildIndexWarningsPanel() {
       ? `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(w.artist_id)}')">${esc('Row ' + w.row_number)}</button>`
       : (w.row_number ? esc('Row ' + w.row_number) : '\u2014');
     return `<tr>
-      <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
+      <td><span class="badge ${_IDX_CHANGED_TYPES.has(w.warning_type) ? 'badge-info' : 'badge-warning'}">${esc(_idxWarnLabel(w.warning_type))}</span></td>
       <td>${esc(w.message)}</td>
       <td class="muted col-work">${rowCell}</td>
     </tr>`;
@@ -3821,8 +3901,13 @@ function _valClass(prev, curr) {
 
 /**
  * Build the detail comparison table rows for the artist detail panel.
- * When the artist has an override, shows 3 columns (Raw | Auto-resolved | Effective).
- * Otherwise shows 2 columns (Raw | Resolved).
+ * When the artist has an override, shows 4 columns (Field | Spreadsheet | Auto-resolved | Effective).
+ * Otherwise shows 3 columns (Field | Spreadsheet | Resolved).
+ *
+ * Spreadsheet fields show the raw value in "Spreadsheet" and the normalised
+ * value in "Resolved".  Normalisation-derived fields (Artist 2/3, RA Styled)
+ * have no raw value — the "Spreadsheet" column is blank and the value appears
+ * only in "Resolved".
  */
 function _buildDetailTable(a) {
   const hasOvr = a.has_override && a.auto_resolved;
@@ -3831,10 +3916,10 @@ function _buildDetailTable(a) {
 
   // Column headers
   const thead = hasOvr
-    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Auto-resolved</th><th>Effective</th></tr></thead>'
+    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Auto-resolved</th><th>Manual Override</th></tr></thead>'
     : '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Resolved</th></tr></thead>';
 
-  // Helper: one comparison row (2-column or 3-column)
+  // Helper: spreadsheet field row (has a raw value)
   function row(label, rawVal, autoVal, effVal) {
     const raw = rawVal ?? '';
     const auto = autoVal ?? '';
@@ -3854,75 +3939,79 @@ function _buildDetailTable(a) {
     </tr>`;
   }
 
-  // Main comparison rows
+  // Helper: normalisation-derived field (no raw spreadsheet value)
+  function derivedRow(label, autoVal, effVal) {
+    const auto = autoVal ?? '';
+    const eff = effVal ?? '';
+    if (hasOvr) {
+      return `<tr>
+        <td>${esc(label)}</td>
+        <td class="muted">\u2014</td>
+        <td>${esc(auto)}</td>
+        <td class="${_valClass(auto, eff)}">${esc(eff)}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td class="muted">\u2014</td>
+      <td>${esc(eff)}</td>
+    </tr>`;
+  }
+
+  // --- Spreadsheet fields ---
   const rows = [
     row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
     row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
     row('Title',      a.raw_title,      hasOvr ? ar.title      : null, a.title),
     row('Quals',      a.raw_quals,      hasOvr ? ar.quals      : null, a.quals),
+    row('Company',    a.raw_company,    hasOvr ? ar.company    : null, a.company),
+    row('Address',    a.raw_address,    hasOvr ? ar.address    : null, a.address),
   ];
 
-  // Company row
-  if (hasOvr) {
-    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
-      <td class="${_valClass(a.raw_company, ar.company)}">${esc(ar.company ?? '')}</td>
-      <td class="${_valClass(ar.company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
-  } else {
-    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
-      <td class="${_valClass(a.raw_company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
+  // --- Normalisation-derived fields ---
+
+  // RA Member (auto-detected, not directly editable)
+  rows.push(derivedRow('RA Member', a.is_ra_member ? 'Yes' : 'No', a.is_ra_member ? 'Yes' : 'No'));
+
+  // Artist 1 RA Styled
+  const a1RaAuto = hasOvr ? (ar.artist1_ra_styled ? 'Yes' : 'No') : null;
+  const a1RaEff = a.artist1_ra_styled ? 'Yes' : 'No';
+  rows.push(derivedRow('Artist 1 RA Styled', a1RaAuto ?? a1RaEff, a1RaEff));
+
+  // Artist 2 fields — only if any artist2 data exists
+  const hasA2 = a.artist2_first_name || a.artist2_last_name || a.artist2_quals || a.artist2_ra_styled
+    || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name || ar.artist2_quals || ar.artist2_ra_styled));
+  if (hasA2) {
+    rows.push(derivedRow('Artist 2 First Name',
+      hasOvr ? ar.artist2_first_name : a.artist2_first_name, a.artist2_first_name));
+    rows.push(derivedRow('Artist 2 Last Name',
+      hasOvr ? ar.artist2_last_name : a.artist2_last_name, a.artist2_last_name));
+    rows.push(derivedRow('Artist 2 Quals',
+      hasOvr ? ar.artist2_quals : a.artist2_quals, a.artist2_quals));
+    rows.push(derivedRow('Artist 2 RA Styled',
+      hasOvr ? (ar.artist2_ra_styled ? 'Yes' : 'No') : (a.artist2_ra_styled ? 'Yes' : 'No'),
+      a.artist2_ra_styled ? 'Yes' : 'No'));
   }
 
-  // Address row
-  if (hasOvr) {
-    rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
-      <td class="${_valClass(a.raw_address, ar.address)}">${esc(ar.address ?? '')}</td>
-      <td class="${_valClass(ar.address, a.address)}">${esc(a.address ?? '')}</td></tr>`);
-  } else {
-    rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
-      <td class="${_valClass(a.raw_address, a.address)}">${esc(a.address ?? '')}</td></tr>`);
+  // Artist 3 fields — only if any artist3 data exists
+  const hasA3 = a.artist3_first_name || a.artist3_last_name || a.artist3_quals || a.artist3_ra_styled
+    || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name || ar.artist3_quals || ar.artist3_ra_styled));
+  if (hasA3) {
+    rows.push(derivedRow('Artist 3 First Name',
+      hasOvr ? ar.artist3_first_name : a.artist3_first_name, a.artist3_first_name));
+    rows.push(derivedRow('Artist 3 Last Name',
+      hasOvr ? ar.artist3_last_name : a.artist3_last_name, a.artist3_last_name));
+    rows.push(derivedRow('Artist 3 Quals',
+      hasOvr ? ar.artist3_quals : a.artist3_quals, a.artist3_quals));
+    rows.push(derivedRow('Artist 3 RA Styled',
+      hasOvr ? (ar.artist3_ra_styled ? 'Yes' : 'No') : (a.artist3_ra_styled ? 'Yes' : 'No'),
+      a.artist3_ra_styled ? 'Yes' : 'No'));
   }
 
-  // RA Styled row
-  const raText = (a1, a2, a3) => {
-    let s = a1 ? 'Yes' : 'No';
-    if (a2) s += ' / A2: Yes';
-    if (a3) s += ' / A3: Yes';
-    return s;
-  };
-  if (hasOvr) {
-    const autoRA = raText(ar.artist1_ra_styled, ar.artist2_ra_styled, ar.artist3_ra_styled);
-    const effRA = raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled);
-    rows.push(`<tr><td>RA Styled</td><td></td>
-      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${autoRA}</td>
-      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${effRA}</td></tr>`);
-  } else {
-    rows.push(`<tr><td>RA Styled</td><td colspan="${colSpan - 1}">${raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled)}</td></tr>`);
-  }
-
-  // Additional artists
-  const fmtArtist = (fn, ln, q) => esc([fn, ln, q].filter(Boolean).join(' '));
-  if (a.artist2_first_name || a.artist2_last_name || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name))) {
-    if (hasOvr) {
-      const autoA2 = [ar.artist2_first_name, ar.artist2_last_name, ar.artist2_quals].filter(Boolean).join(' ');
-      const effA2 = [a.artist2_first_name, a.artist2_last_name, a.artist2_quals].filter(Boolean).join(' ');
-      rows.push(`<tr><td>Artist 2</td><td></td>
-        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(autoA2)}</td>
-        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(effA2)}</td></tr>`);
-    } else {
-      rows.push(`<tr><td>Artist 2</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals)}</td></tr>`);
-    }
-  }
-  if (a.artist3_first_name || a.artist3_last_name || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name))) {
-    if (hasOvr) {
-      const autoA3 = [ar.artist3_first_name, ar.artist3_last_name, ar.artist3_quals].filter(Boolean).join(' ');
-      const effA3 = [a.artist3_first_name, a.artist3_last_name, a.artist3_quals].filter(Boolean).join(' ');
-      rows.push(`<tr><td>Artist 3</td><td></td>
-        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(autoA3)}</td>
-        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(effA3)}</td></tr>`);
-    } else {
-      rows.push(`<tr><td>Artist 3</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals)}</td></tr>`);
-    }
-  }
+  // Company flag (derived)
+  const companyAuto = hasOvr ? (ar.is_company ? 'Yes' : 'No') : (a.is_company ? 'Yes' : 'No');
+  const companyEff = a.is_company ? 'Yes' : 'No';
+  rows.push(derivedRow('Is Company', companyAuto, companyEff));
 
   return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
 }
@@ -4144,15 +4233,28 @@ function showIndexOverrideForm(importId, artistId, existing) {
   const companyChecked = o.is_company_override === true ? ' checked' : '';
   const companyIndeterminate = o.is_company_override === null || o.is_company_override === undefined;
 
-  // Helper: build an override text field (label + optional current-value hint + input)
-  const ovrField = (label, fieldName, placeholder) => `
-    <div class="ka-field">
+  // Helper: build an override text field with clear toggle (three states:
+  //   null → no override, "" → cleared/blanked, "val" → user value)
+  const ovrField = (label, fieldName, placeholder) => {
+    const raw = existing?.[fieldName];
+    const isCleared = raw === '';
+    const hasValue = raw !== null && raw !== undefined && raw !== '';
+    const displayVal = hasValue ? esc(raw) : '';
+    const clearActive = isCleared ? ' ka-clear-active' : '';
+    const stateClass = isCleared ? 'ka-state-cleared' : (hasValue ? 'ka-state-custom' : 'ka-state-pass');
+    const stateText = isCleared ? 'Will be blanked in output' : (hasValue ? '' : 'No override \u2014 uses current value');
+    const inputDis = isCleared ? 'disabled' : '';
+    return `
+    <div class="ka-field ka-res-cell">
       <label>${label}</label>
       <div class="ka-field-input">
         ${hint(fieldName, fieldName)}
-        <input type="text" name="${fieldName}" value="${val(fieldName)}" placeholder="${placeholder}">
+        <input type="text" name="${fieldName}" value="${displayVal}" placeholder="${isCleared ? '(cleared)' : placeholder}" ${inputDis}>
+        <button type="button" class="ka-clear-btn${clearActive}" title="${isCleared ? 'Undo: restore to no override' : 'Explicitly blank this field in output'}" onclick="_toggleIdxOvrClear(this)">${isCleared ? 'Undo' : 'Clear'}</button>
       </div>
+      <span class="ka-field-state ${stateClass}">${stateText}</span>
     </div>`;
+  };
 
   // Helper: RA styled tri-state checkbox
   const raCheck = (name, value) => {
@@ -4166,7 +4268,7 @@ function showIndexOverrideForm(importId, artistId, existing) {
   const cell = document.getElementById(`idx-ovc-${artistId}`);
   cell.innerHTML = `
     <div class="override-form" onclick="event.stopPropagation()">
-      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy</span></h5>
+      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; use Clear to force blank &middot; click current value to copy</span></h5>
       <div class="override-field-form" id="idx-ovf-${esc(artistId)}">
         <div class="ka-artists-grid ovr-grid">
           <div class="ka-section">
@@ -4226,6 +4328,33 @@ function showIndexOverrideForm(importId, artistId, existing) {
     </div>`;
 }
 
+/** Toggle an index override field between "no override" (null) and "cleared" (""). */
+function _toggleIdxOvrClear(btn) {
+  const input = btn.parentElement.querySelector('input[type="text"]');
+  const isActive = btn.classList.toggle('ka-clear-active');
+  const stateEl = input.closest('.ka-res-cell')?.querySelector('.ka-field-state');
+  if (isActive) {
+    input.value = '';
+    input.disabled = true;
+    input.placeholder = '(cleared)';
+    btn.textContent = 'Undo';
+    btn.title = 'Undo: restore to no override';
+    if (stateEl) {
+      stateEl.className = 'ka-field-state ka-state-cleared';
+      stateEl.textContent = 'Will be blanked in output';
+    }
+  } else {
+    input.disabled = false;
+    input.placeholder = 'no override';
+    btn.textContent = 'Clear';
+    btn.title = 'Explicitly blank this field in output';
+    if (stateEl) {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 uses current value';
+    }
+  }
+}
+
 /** Re-render visible index artist row cells after override save/delete. */
 function _refreshIndexArtistRow(importId, artistId) {
   const a = _indexArtistCache[artistId];
@@ -4255,8 +4384,14 @@ async function saveIndexOverride(importId, artistId) {
   const body = {};
   for (const f of textFields) {
     const input = formEl.querySelector(`[name="${f}"]`);
-    const raw = input?.value.trim() ?? '';
-    body[f] = raw === '' ? null : raw;
+    // Check if this field's Clear button is active → send "" to mean "cleared"
+    const clearBtn = input?.parentElement?.querySelector('.ka-clear-btn.ka-clear-active');
+    if (clearBtn) {
+      body[f] = '';  // explicitly cleared
+    } else {
+      const raw = input?.value.trim() ?? '';
+      body[f] = raw === '' ? null : raw;  // empty = no override, otherwise user value
+    }
   }
 
   // Company checkbox: unchecked + was indeterminate = null (no override)

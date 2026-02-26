@@ -401,7 +401,7 @@ class TestMultiNameWarning:
         imp = import_index_excel(path, db_session)
         warnings = (
             db_session.query(ValidationWarning)
-            .filter_by(import_id=imp.id, warning_type="multi_artist_name")
+            .filter_by(import_id=imp.id, warning_type="multi_artist_name_suspected")
             .all()
         )
         assert len(warnings) == 1
@@ -417,7 +417,7 @@ class TestMultiNameWarning:
         imp = import_index_excel(path, db_session)
         warnings = (
             db_session.query(ValidationWarning)
-            .filter_by(import_id=imp.id, warning_type="multi_artist_name")
+            .filter_by(import_id=imp.id, warning_type="multi_artist_name_suspected")
             .all()
         )
         assert len(warnings) == 0
@@ -529,6 +529,175 @@ class TestHeaderValidation:
 # ---------------------------------------------------------------------------
 # Non-ASCII character warnings
 # ---------------------------------------------------------------------------
+
+
+class TestMultiArtistSplitWarning:
+    """multi_artist_name_changed fires when parse_multi_artist splits."""
+
+    def test_split_emits_changed_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [
+                (None, "Louisa Hutton", "& Matthias Sauerbruch", None, None, None, "101"),
+            ],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="multi_artist_name_changed")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "split" in warnings[0].message.lower()
+
+    def test_no_split_no_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Roger", "Adams", None, None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="multi_artist_name_changed")
+            .all()
+        )
+        assert len(warnings) == 0
+
+
+class TestWhitespaceTrimmedWarning:
+    """whitespace_trimmed fires when leading/trailing whitespace removed."""
+
+    def test_trailing_space_emits_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Roger ", "Adams", None, None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="whitespace_trimmed")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "First Name" in warnings[0].message
+
+    def test_leading_space_emits_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Roger", " Adams", None, None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="whitespace_trimmed")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "Last Name" in warnings[0].message
+
+    def test_clean_data_no_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Roger", "Adams", None, None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="whitespace_trimmed")
+            .all()
+        )
+        assert len(warnings) == 0
+
+    def test_multiple_fields_trimmed(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, " Roger ", " Adams ", " RA ", None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="whitespace_trimmed")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "First Name" in warnings[0].message
+        assert "Last Name" in warnings[0].message
+        assert "Quals" in warnings[0].message
+
+
+class TestRaMemberDetectedWarning:
+    """ra_member_detected fires when RA membership auto-detected."""
+
+    def test_ra_member_emits_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Cornelia", "Parker", "CBE RA", None, None, "101")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="ra_member_detected")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "Parker" in warnings[0].message
+
+    def test_non_ra_no_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Roger", "Adams", None, None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="ra_member_detected")
+            .all()
+        )
+        assert len(warnings) == 0
+
+    def test_obe_only_no_ra_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "John", "Smith", "OBE", None, None, "5")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="ra_member_detected")
+            .all()
+        )
+        assert len(warnings) == 0
+
+
+class TestQualsExtractedWarning:
+    """quals_extracted fires when quals move from name to quals field."""
+
+    def test_quals_in_multi_artist_name_emits_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Louisa Hutton OBE", "& Matthias Sauerbruch", None, None, None, "10")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="quals_extracted")
+            .all()
+        )
+        assert len(warnings) == 1
+        assert "OBE" in warnings[0].message
+
+    def test_no_quals_in_name_no_warning(self, db_session, tmp_path):
+        path = _make_workbook(
+            [(None, "Louisa Hutton", "& Matthias Sauerbruch", None, None, None, "10")],
+            tmp_path,
+        )
+        imp = import_index_excel(path, db_session)
+        warnings = (
+            db_session.query(ValidationWarning)
+            .filter_by(import_id=imp.id, warning_type="quals_extracted")
+            .all()
+        )
+        assert len(warnings) == 0
 
 
 class TestNonAsciiWarning:

@@ -637,13 +637,18 @@ def _create_artist_entry(
 
     # Multi-artist parsing: detect "and X" / "& X" in last_name
     multi = parse_multi_artist(first_name, last_name, quals)
+    did_multi_split = False
+    quals_were_extracted = False
     if multi:
+        pre_split_quals = quals
         first_name = multi["first_name"]
         last_name = multi["last_name"]
         quals = multi["quals"]
         artist2_first_name = multi["artist2_first_name"]
         artist2_last_name = multi["artist2_last_name"]
         artist2_quals = multi["artist2_quals"]
+        did_multi_split = True
+        quals_were_extracted = (quals != pre_split_quals)
 
     ra_member = is_ra_member(quals)
 
@@ -707,7 +712,69 @@ def _create_artist_entry(
             )
         )
 
-    # Validation warnings
+    # ----- Normalisation-event warnings (data was changed) -----
+
+    # Whitespace trimming
+    _ws_fields = [
+        ("Title", "raw_title", "title"),
+        ("First Name", "raw_first_name", "first_name"),
+        ("Last Name", "raw_last_name", "last_name"),
+        ("Quals", "raw_quals", "quals"),
+        ("Company", "raw_company", "company"),
+    ]
+    trimmed_fields = []
+    for label, raw_key, norm_key in _ws_fields:
+        rv = row.get(raw_key) or ""
+        nv = row.get(norm_key) or ""
+        if rv != nv and str(rv).strip() == nv:
+            trimmed_fields.append(label)
+    if trimmed_fields:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="whitespace_trimmed",
+                message=f"Row {row['row_number']}: Whitespace trimmed from {', '.join(trimmed_fields)}",
+            )
+        )
+
+    # Multi-artist split
+    if did_multi_split:
+        a1 = f"{first_name or ''} {last_name or ''}".strip()
+        a2 = f"{artist2_first_name or ''} {artist2_last_name or ''}".strip()
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="multi_artist_name_changed",
+                message=f'Row {row["row_number"]}: Multi-artist entry split into "{a1}" and "{a2}"',
+            )
+        )
+
+    # Quals extracted from name during multi-artist parsing
+    if quals_were_extracted:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="quals_extracted",
+                message=f'Row {row["row_number"]}: Qualifications extracted from name field — now "{quals}"',
+            )
+        )
+
+    # RA member detected
+    if ra_member:
+        db.add(
+            ValidationWarning(
+                import_id=import_record.id,
+                work_id=None,
+                warning_type="ra_member_detected",
+                message=f"Row {row['row_number']}: RA membership detected for {first_name or ''} {last_name or ''}".strip(),
+            )
+        )
+
+    # ----- Validation warnings (suspected issues needing review) -----
+
     if not cat_entries:
         db.add(
             ValidationWarning(
@@ -734,7 +801,7 @@ def _create_artist_entry(
             ValidationWarning(
                 import_id=import_record.id,
                 work_id=None,
-                warning_type="multi_artist_name",
+                warning_type="multi_artist_name_suspected",
                 message=f"Row {row['row_number']}: Name may contain multiple artists: {first_name or ''} {last_name or ''}".strip(),
             )
         )
