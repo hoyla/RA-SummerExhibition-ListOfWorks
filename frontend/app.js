@@ -2503,6 +2503,29 @@ function renderWarningsPanel(warnings) {
   _buildWarningsPanel();
 }
 
+// Human-friendly labels & categories for LoW warning types
+const _LOW_WARNING_LABELS = {
+  // Changed: normalisation engine modified data
+  zero_edition_suppressed: 'Edition suppressed',
+  // Info: data quality issues needing review
+  missing_title:        'Missing title',
+  missing_artist:       'Missing artist',
+  missing_price:        'Missing price',
+  unrecognised_price:   'Unrecognised price',
+  edition_anomaly:      'Edition anomaly',
+  non_ascii_characters: 'Non-ASCII chars',
+  duplicate_filename:   'Duplicate filename',
+  missing_column:       'Missing column',
+  empty_spreadsheet:    'Empty spreadsheet',
+};
+const _LOW_CHANGED_TYPES = new Set([
+  'zero_edition_suppressed',
+]);
+
+function _lowWarnLabel(type) {
+  return _LOW_WARNING_LABELS[type] || type;
+}
+
 function _buildWarningsPanel() {
   const warnings = _warningsAll;
   const panel = document.getElementById('warnings-panel');
@@ -2521,7 +2544,9 @@ function _buildWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
+      const isChanged = _LOW_CHANGED_TYPES.has(type);
+      const badgeClass = isChanged ? 'badge badge-info warning-filter-btn' : 'badge badge-warning warning-filter-btn';
+      return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_lowWarnLabel(type))}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -2532,7 +2557,7 @@ function _buildWarningsPanel() {
       ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(w.work_id)}')">${esc(who)}</button>`
       : (esc(who) || '\u2014');
     return `<tr>
-      <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
+      <td><span class="badge ${_LOW_CHANGED_TYPES.has(w.warning_type) ? 'badge-info' : 'badge-warning'}">${esc(_lowWarnLabel(w.warning_type))}</span></td>
       <td>${esc(w.message)}</td>
       <td class="muted col-work">${workCell}</td>
     </tr>`;
