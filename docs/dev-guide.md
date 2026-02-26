@@ -15,24 +15,24 @@ Academy Summer Exhibition catalogue. It handles two products:
 
 ### Tech stack
 
-| Layer    | Technology                                      |
-| -------- | ----------------------------------------------- |
-| Backend  | Python 3.12, FastAPI, SQLAlchemy, Alembic       |
-| Database | PostgreSQL 16 (Docker), SQLite (tests)          |
-| Frontend | Vanilla JS SPA (`frontend/app.js`, ~4500 lines) |
+| Layer    | Technology                                         |
+| -------- | -------------------------------------------------- |
+| Backend  | Python 3.12, FastAPI, SQLAlchemy, Alembic          |
+| Database | PostgreSQL 16 (Docker), SQLite (tests)             |
+| Frontend | Vanilla JS SPA (`frontend/app.js`, ~4850 lines)    |
 | Infra    | Docker Compose (local), ECS Fargate (staging/prod) |
 
 ### Key directories
 
-| Path                          | Purpose                                          |
-| ----------------------------- | ------------------------------------------------ |
-| `backend/app/api/`            | FastAPI route modules and Pydantic schemas        |
-| `backend/app/models/`         | SQLAlchemy ORM models                            |
-| `backend/app/services/`       | Business logic (import, normalise, resolve, export) |
-| `backend/alembic/versions/`   | Database migrations (auto-run on startup)        |
-| `backend/seed_templates/`     | Default templates and known artist seed data     |
-| `frontend/`                   | Single-page app (`app.js`, `style.css`, `index.html`) |
-| `tests/`                      | Pytest suite (~711 tests, SQLite in-memory)      |
+| Path                        | Purpose                                               |
+| --------------------------- | ----------------------------------------------------- |
+| `backend/app/api/`          | FastAPI route modules and Pydantic schemas            |
+| `backend/app/models/`       | SQLAlchemy ORM models                                 |
+| `backend/app/services/`     | Business logic (import, normalise, resolve, export)   |
+| `backend/alembic/versions/` | Database migrations (auto-run on startup)             |
+| `backend/seed_templates/`   | Default templates and known artist seed data          |
+| `frontend/`                 | Single-page app (`app.js`, `style.css`, `index.html`) |
+| `tests/`                    | Pytest suite (~722 tests, SQLite in-memory)           |
 
 ### Data flow
 
@@ -58,10 +58,12 @@ The importer emits warnings in two categories, shown in the UI with distinct
 badge colours:
 
 **Changed (blue `badge-info`)** — normalisation engine modified data:
+
 - `whitespace_trimmed`, `multi_artist_name_changed`, `quals_extracted`,
   `ra_member_detected`, `possible_company`, `duplicate_name_merged`
 
 **Suspected (amber `badge-warning`)** — may need human review:
+
 - `multi_artist_name_suspected`, `ra_styling_ambiguous`, `quals_in_name_field`,
   `non_ascii_characters`, `missing_cat_nos`, `duplicate_filename`,
   `empty_spreadsheet`, `missing_column`
@@ -73,12 +75,12 @@ enum or migration is needed to add new types.
 
 When clicking an artist entry, the detail table shows the data pipeline:
 
-| Column          | Shows                                                       |
-| --------------- | ----------------------------------------------------------- |
+| Column          | Shows                                                          |
+| --------------- | -------------------------------------------------------------- |
 | Field           | Field name (including derived fields like Artist 2, RA Styled) |
-| Spreadsheet     | Raw value from the Excel file (dash for derived fields)     |
-| Resolved        | After normalisation + known artist lookup                   |
-| Manual Override  | After user overrides (only shown when overrides exist)      |
+| Spreadsheet     | Raw value from the Excel file (dash for derived fields)        |
+| Resolved        | After normalisation + known artist lookup                      |
+| Manual Override | After user overrides (only shown when overrides exist)         |
 
 Values are styled: **grey** = unchanged from previous column,
 **bold black** = changed by this stage.
@@ -137,7 +139,7 @@ Tests run against an **in-memory SQLite database** — no Docker required.
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Run all tests (~711)
+# Run all tests (~722)
 python -m pytest tests/ -q
 
 # Run a single test file
@@ -343,15 +345,15 @@ If an endpoint returns 500 with no log output:
 
 ## Common pitfalls
 
-| Mistake                                          | Prevention                                                                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Changed a model but forgot the Alembic migration | Always create a migration when changing model columns. **Tests won't catch this** — they use SQLite with `create_all()`, not Alembic |
-| Changed one table but forgot a related table     | If you add columns to `index_artists`, check whether `index_artist_overrides` also needs updating (and vice versa)                   |
-| Ran the app with `python` instead of Docker      | Use `docker compose up -d --build app`                                                                                               |
-| Tests fail with `ModuleNotFoundError`            | Run `pip install -r requirements-dev.txt`                                                                                            |
-| Endpoint returns 500 but nothing in logs         | See "Debugging a silent 500" above. Most likely a missing migration or a ResponseValidationError                                     |
-| Tests pass but endpoint 500s on Docker           | The DB schema is out of sync with the model — a migration is missing. Compare `information_schema.columns` with the model            |
-| `docker compose down -v` deleted my test data    | Only use `-v` when you want a fresh start                                                                                            |
-| Staging not updating after push                  | Check the GitHub Actions run completed successfully                                                                                  |
-| Tests all fail with 401/403                      | `.env` has `API_KEY=some-value` — clear it to `API_KEY=` for no-auth mode                                                            |
+| Mistake                                          | Prevention                                                                                                                                |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Changed a model but forgot the Alembic migration | Always create a migration when changing model columns. **Tests won't catch this** — they use SQLite with `create_all()`, not Alembic      |
+| Changed one table but forgot a related table     | If you add columns to `index_artists`, check whether `index_artist_overrides` also needs updating (and vice versa)                        |
+| Ran the app with `python` instead of Docker      | Use `docker compose up -d --build app`                                                                                                    |
+| Tests fail with `ModuleNotFoundError`            | Run `pip install -r requirements-dev.txt`                                                                                                 |
+| Endpoint returns 500 but nothing in logs         | See "Debugging a silent 500" above. Most likely a missing migration or a ResponseValidationError                                          |
+| Tests pass but endpoint 500s on Docker           | The DB schema is out of sync with the model — a migration is missing. Compare `information_schema.columns` with the model                 |
+| `docker compose down -v` deleted my test data    | Only use `-v` when you want a fresh start                                                                                                 |
+| Staging not updating after push                  | Check the GitHub Actions run completed successfully                                                                                       |
+| Tests all fail with 401/403                      | `.env` has `API_KEY=some-value` — clear it to `API_KEY=` for no-auth mode                                                                 |
 | Warning type not showing in UI                   | Warning types are free-text — no migration needed. Check the label map `_IDX_WARNING_LABELS` in `app.js` and the `_IDX_CHANGED_TYPES` set |

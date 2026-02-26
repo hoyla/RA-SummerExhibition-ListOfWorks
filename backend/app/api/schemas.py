@@ -2,7 +2,7 @@
 Pydantic request/response schemas shared across API route modules.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List
 
 
@@ -49,6 +49,7 @@ class WorkOverrideOut(BaseModel):
     edition_price_numeric_override: float | None = None
     artwork_override: int | None = None
     medium_override: str | None = None
+    notes: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -166,6 +167,7 @@ class OverrideIn(BaseModel):
     edition_price_numeric_override: float | None = None
     artwork_override: int | None = None
     medium_override: str | None = None
+    notes: str | None = None
 
 
 class OverrideOut(BaseModel):
@@ -179,6 +181,12 @@ class OverrideOut(BaseModel):
     edition_price_numeric_override: float | None
     artwork_override: int | None
     medium_override: str | None
+    notes: str | None
+
+    @field_validator("work_id", mode="before")
+    @classmethod
+    def _stringify_work_id(cls, v):
+        return str(v) if v is not None else v
 
     model_config = {"from_attributes": True}
 

@@ -396,6 +396,19 @@ class TestOverrideCRUD:
         assert r.json()["artist_name_override"] == "Bob"
         assert r.json()["medium_override"] == "Oil on canvas"
         assert r.json()["title_override"] is None
+        assert r.json()["notes"] is None
+
+    def test_put_notes_roundtrip(self, client, db_session):
+        imp, w = self._make_work(db_session)
+        r = client.put(
+            f"/imports/{imp.id}/works/{w.id}/override",
+            json={"notes": "Editorial note"},
+        )
+        assert r.status_code == 200
+        assert r.json()["notes"] == "Editorial note"
+        # GET should also return the note
+        r2 = client.get(f"/imports/{imp.id}/works/{w.id}/override")
+        assert r2.json()["notes"] == "Editorial note"
 
     # --- DELETE override ---
     def test_delete_override(self, client, db_session):

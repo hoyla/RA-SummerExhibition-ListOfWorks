@@ -27,6 +27,8 @@ class WorkOverride(Base):
     artwork_override = Column(Integer, nullable=True)
     medium_override = Column(Text, nullable=True)
 
+    notes = Column(Text, nullable=True)
+
     updated_at = Column(
         TIMESTAMP(timezone=True),
         server_default=func.now(),

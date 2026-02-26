@@ -16,12 +16,29 @@
     "notes": "Uses + instead of &"
   },
   {
-    "match_first_name": null,
     "match_last_name": "Adam Caruso and Peter St John",
+    "match_quals": "RA",
     "resolved_first_name": "Adam",
     "resolved_last_name": "Caruso",
+    "resolved_quals": "",
     "resolved_artist2_first_name": "Peter",
     "resolved_artist2_last_name": "St John",
-    "notes": "Full multi-artist name placed in Last Name column"
+    "resolved_artist2_quals": "RA",
+    "resolved_artist1_ra_styled": true,
+    "notes": "RA styling on first name but quals on second."
+  },
+  {
+    "match_last_name": "Adam Caruso and Peter St John RA",
+    "resolved_first_name": "Adam",
+    "resolved_last_name": "Caruso",
+    "resolved_quals": "",
+    "resolved_artist2_first_name": "Peter",
+    "resolved_artist2_last_name": "St John",
+    "resolved_artist2_quals": "RA",
+    "resolved_artist3_first_name": "",
+    "resolved_artist3_last_name": "",
+    "resolved_artist3_quals": "",
+    "resolved_artist1_ra_styled": true,
+    "notes": "RA qual in surname field. Needs RA styling on first name but actual quals on second."
   }
 ]

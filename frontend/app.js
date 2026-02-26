@@ -1205,6 +1205,7 @@ function _onKaResInput(input) {
     }
   }
   _updateKaPreview(input.closest('.ka-card'));
+  _markKaDirty(input.closest('.ka-card'));
 }
 
 /** When user types in a match field, update the card headline and preview. */
@@ -1215,6 +1216,46 @@ function _onKaFieldChange(input) {
   const titleEl = card.querySelector('.ka-card-title');
   if (titleEl) titleEl.textContent = [first, last].filter(Boolean).join(' ') || 'New Entry';
   _updateKaPreview(card);
+  _markKaDirty(card);
+}
+
+/** Mark a known-artist card as dirty (unsaved changes) and enable the Save button. */
+function _markKaDirty(card) {
+  if (!card || card.dataset.kaSeeded === 'true') return;
+  card.dataset.kaDirty = 'true';
+  const saveBtn = card.querySelector('.ka-save-btn');
+  if (saveBtn) saveBtn.disabled = false;
+}
+
+/** Reset a known-artist card to clean (no unsaved changes) and disable the Save button. */
+function _markKaClean(card) {
+  if (!card) return;
+  card.dataset.kaDirty = '';
+  const saveBtn = card.querySelector('.ka-save-btn');
+  if (saveBtn) saveBtn.disabled = true;
+}
+
+/** Check for duplicate match patterns among user-defined known-artist cards.
+ *  Returns the title of the conflicting card, or null if no conflict. */
+function _findDuplicateKaMatch(card) {
+  const norm = s => (s || '').trim().toLowerCase();
+  const first = norm(card.querySelector('.ka-match-first')?.value);
+  const last  = norm(card.querySelector('.ka-match-last')?.value);
+  const quals = norm(card.querySelector('.ka-match-quals')?.value);
+  const myId  = card.dataset.kaId;
+  const allCards = document.querySelectorAll('.ka-card');
+  for (const other of allCards) {
+    if (other === card) continue;
+    if (other.dataset.kaSeeded === 'true') continue; // only compare user entries
+    if (other.dataset.kaId === myId && myId) continue;
+    const oFirst = norm(other.querySelector('.ka-match-first')?.value);
+    const oLast  = norm(other.querySelector('.ka-match-last')?.value);
+    const oQuals = norm(other.querySelector('.ka-match-quals')?.value);
+    if (first === oFirst && last === oLast && quals === oQuals) {
+      return other.querySelector('.ka-card-title')?.textContent || 'another entry';
+    }
+  }
+  return null;
 }
 
 /** Toggle a resolved field between "no change" (null) and "cleared" (""). */
@@ -1243,6 +1284,7 @@ function _toggleKaClear(btn) {
     }
   }
   _updateKaPreview(input.closest('.ka-card'));
+  _markKaDirty(input.closest('.ka-card'));
 }
 
 function _knownArtistCard(ka) {
@@ -1260,7 +1302,7 @@ function _knownArtistCard(ka) {
     actions = `<span class="badge badge-builtin">built-in</span>
       <button class="btn btn-sm" onclick="duplicateKnownArtist(this)" title="Create an editable copy of this entry">Duplicate</button>`;
   } else if (!seeded) {
-    actions = ifEditor(`<button class="btn btn-sm" onclick="saveKnownArtistRow(this)" title="Save">&#10003; Save</button>
+    actions = ifEditor(`<button class="btn btn-sm ka-save-btn" onclick="saveKnownArtistRow(this)" title="Save" disabled>&#10003; Save</button>
         <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>`);
   }
 
@@ -1302,7 +1344,7 @@ function _knownArtistCard(ka) {
             ${_kaResolvedField('Title', 'ka-res-title', ka.resolved_title, locked)}
             ${_kaResolvedField('Qualifications', 'ka-res-quals', ka.resolved_quals, locked)}
             <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+              <label><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
           </div>
         </div>
@@ -1313,7 +1355,7 @@ function _knownArtistCard(ka) {
             ${_kaResolvedField('Last Name', 'ka-res-a2-last', ka.resolved_artist2_last_name, locked)}
             ${_kaResolvedField('Qualifications', 'ka-res-a2-quals', ka.resolved_artist2_quals, locked)}
             <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+              <label><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
           </div>
         </div>
@@ -1324,24 +1366,24 @@ function _knownArtistCard(ka) {
             ${_kaResolvedField('Last Name', 'ka-res-a3-last', ka.resolved_artist3_last_name, locked)}
             ${_kaResolvedField('Qualifications', 'ka-res-a3-quals', ka.resolved_artist3_quals, locked)}
             <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+              <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
           </div>
         </div>
       </div>
       <div class="ka-card-footer">
-        <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
         <div class="ka-footer-field">
           <label>Company Name</label>
-          <input type="text" class="ka-res-company" value="${esc(ka.resolved_company ?? '')}" placeholder="no override"${ro}>
+          <input type="text" class="ka-res-company" value="${esc(ka.resolved_company ?? '')}" placeholder="no override" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
         </div>
         <div class="ka-footer-field">
           <label>Address</label>
-          <input type="text" class="ka-res-address" value="${esc(ka.resolved_address ?? '')}" placeholder="no override"${ro}>
+          <input type="text" class="ka-res-address" value="${esc(ka.resolved_address ?? '')}" placeholder="no override" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
         </div>
         <div class="ka-footer-notes">
           <label>Notes</label>
-          <input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"${ro}>
+          <input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
         </div>
       </div>
     </div>
@@ -1368,6 +1410,7 @@ function addKnownArtistRow() {
   const cards = list.querySelectorAll('.ka-card');
   const newest = cards[cards.length - 1];
   _updateKaPreview(newest);
+  _markKaDirty(newest);  // new entry is always unsaved
   newest.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -1422,6 +1465,13 @@ async function saveKnownArtistRow(btn) {
   const id = tr.dataset.kaId;
   const body = _readKaRow(tr);
   const statusEl = document.getElementById('known-artists-status');
+
+  // Warn about duplicate match patterns among user-defined entries
+  const dupName = _findDuplicateKaMatch(tr);
+  if (dupName) {
+    if (!confirm(`This match pattern duplicates "${dupName}".\nThe resolution order between duplicates is unpredictable.\n\nSave anyway?`)) return;
+  }
+
   try {
     let result;
     if (id) {
@@ -1430,6 +1480,7 @@ async function saveKnownArtistRow(btn) {
       result = await api('POST', '/known-artists', body);
       tr.dataset.kaId = result.id;
     }
+    _markKaClean(tr);
     if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
@@ -1834,7 +1885,192 @@ async function renderIndexTemplateEdit(id) {
     <div class="form-actions" style="padding-bottom:20px">
       ${saveBtn}
       <span id="idx-tmpl-status" class="status-msg"></span>
-    </div>`;
+    </div>
+
+    <h3 class="settings-group-heading">Entry Layout Examples</h3>
+    <section class="panel" id="idx-tmpl-examples">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
+        These examples show how different types of index entry are assembled.
+        Style names are taken from the settings above. All entries use the
+        <strong>${esc(cfg.entry_style ?? 'Index Text')}</strong> paragraph style.
+      </p>
+      <div id="idx-entry-examples"></div>
+    </section>`;
+
+  // Build the entry layout examples
+  _renderIndexEntryExamples(cfg);
+}
+
+// ---------------------------------------------------------------------------
+// Index template – entry layout examples
+// ---------------------------------------------------------------------------
+
+/**
+ * Render annotated examples showing how different types of index entry are
+ * assembled by the renderer, with style labels beneath each part.
+ *
+ * The examples are purely illustrative — they mirror the hardcoded field
+ * order in index_renderer.py:
+ *   Name → Quals → Artist 2 [→ Artist 3] → Courtesy/Company → Cat Numbers
+ */
+function _renderIndexEntryExamples(cfg) {
+  const container = document.getElementById('idx-entry-examples');
+  if (!container) return;
+
+  const catSep     = cfg.cat_no_separator  ?? ',';
+
+  // Helper: build a styled segment  { text, role?, label? }
+  // role   = visual role: 'ra-surname', 'ra-quals', 'honorifics', 'catno'
+  // label  = the annotation shown beneath (short descriptive role name)
+  // sep    = true means this is a separator (rendered smaller, muted)
+  const seg = (text, opts = {}) => ({ text, ...opts });
+  const plain = (text) => seg(text, { plain: true });
+  const styled = (text, role, label) => seg(text, { role, label });
+  const sep = (text) => seg(text, { sep: true });
+
+  const examples = [
+    // 1. Simple single artist — no RA, no quals
+    {
+      title: 'Single artist',
+      desc: 'An individual artist without RA membership or qualifications.',
+      parts: [
+        plain('Adams'),  sep(', '),  plain('Roger'),  sep(', '),
+        styled('101', 'catno', 'Cat no'),
+      ],
+    },
+    // 2. Single artist with RA styling
+    {
+      title: 'Single artist — RA member',
+      desc: 'An RA member. The surname (and its trailing comma-space) is wrapped in the RA surname style; qualifications in the RA caps style.',
+      parts: [
+        styled('Parker, ', 'ra-surname', 'RA surname'),
+        plain('Cornelia'),  sep(' '),
+        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        styled('42', 'catno', 'Cat no'),
+      ],
+    },
+    // 3. Single artist with non-RA honorifics
+    {
+      title: 'Single artist — non-RA honorifics',
+      desc: 'An artist with qualifications who is not an RA member. Qualifications use the non-RA honorifics style.',
+      parts: [
+        plain('Chen'),  sep(', '),  plain('Wei'),  sep(' '),
+        styled('OBE, ', 'honorifics', 'Honorifics'),
+        styled('88', 'catno', 'Cat no'),
+      ],
+    },
+    // 4. Single artist with title
+    {
+      title: 'Single artist — with title',
+      desc: 'A titled artist. The title appears between surname and first name.',
+      parts: [
+        styled('Rae, ', 'ra-surname', 'RA surname'),
+        plain('Dr Barbara'),  sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('205', 'catno', 'Cat no'),
+      ],
+    },
+    // 5. Company
+    {
+      title: 'Company',
+      desc: 'An entry flagged as a company. The company name appears as the surname, with no first name.',
+      parts: [
+        plain('51 Architecture'),  sep(', '),
+        styled('33', 'catno', 'Cat no'),
+      ],
+    },
+    // 6. Company with RA styling
+    {
+      title: 'Company — RA member',
+      desc: 'A company entry with RA membership styling and qualifications.',
+      parts: [
+        styled('Adjaye Associates ', 'ra-surname', 'RA surname'),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('77', 'catno', 'Cat no'),
+      ],
+    },
+    // 7. Two artists, first with RA
+    {
+      title: 'Two artists — first is RA member',
+      desc: 'A dual-artist entry. Artist 1 has RA styling; Artist 2 does not. They are joined by "and".',
+      parts: [
+        styled('Smith, ', 'ra-surname', 'RA surname'),
+        plain('Adam'),  sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        plain('and Peter St\u00a0John'),  sep(', '),
+        styled('150', 'catno', 'Cat no'),
+      ],
+    },
+    // 8. Two artists, both with RA and quals
+    {
+      title: 'Two artists — both RA members',
+      desc: 'Both artists have RA styling and qualifications.',
+      parts: [
+        styled('Boyd, ', 'ra-surname', 'RA surname'),
+        plain('Fiona'),  sep(' '),
+        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        plain('and Arthur '),
+        styled('Evans', 'ra-surname', 'RA surname'),
+        sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('62', 'catno', 'Cat no'),
+      ],
+    },
+    // 9. Artist with address/courtesy
+    {
+      title: 'Artist with address (courtesy)',
+      desc: 'An artist with an address or courtesy value. This appears after qualifications, before catalogue numbers.',
+      parts: [
+        styled('Thompson, ', 'ra-surname', 'RA surname'),
+        plain('Emma'),  sep(' '),
+        styled('RA, ', 'ra-quals', 'RA quals'),
+        plain('courtesy of White Cube'),  sep(', '),
+        styled('310', 'catno', 'Cat no'),
+      ],
+    },
+    // 10. Multiple catalogue numbers
+    {
+      title: 'Multiple catalogue numbers',
+      desc: `An entry with several works. Numbers are separated by "${catSep === ',' ? 'comma' : catSep === ';' ? 'semicolon' : 'space'}".`,
+      parts: [
+        plain('Martinez'),  sep(', '),  plain('Sofia'),  sep(', '),
+        styled('14', 'catno', 'Cat no'),
+        sep(catSep), styled('\u2009215', 'catno', 'Cat no'),
+        sep(catSep), styled('\u2009387', 'catno', 'Cat no'),
+      ],
+    },
+  ];
+
+  const html = examples.map(ex => {
+    const partsHtml = ex.parts.map(p => {
+      if (p.sep) {
+        return `<span class="idx-ex-sep">${esc(p.text)}</span>`;
+      }
+      // Choose visual class based on the role of this segment
+      let vizClass = 'idx-ex-plain';
+      if (p.role === 'ra-surname')  vizClass = 'idx-ex-ra-surname';
+      else if (p.role === 'ra-quals')    vizClass = 'idx-ex-ra-quals';
+      else if (p.role === 'honorifics')  vizClass = 'idx-ex-honorifics';
+      else if (p.role === 'catno')       vizClass = 'idx-ex-catno';
+
+      const label = p.label || '';
+      const labelHtml = label
+        ? `<span class="idx-ex-label">${esc(label)}</span>`
+        : '';
+      return `<span class="${vizClass}">${esc(p.text)}${labelHtml}</span>`;
+    }).join('');
+
+    return `
+      <div class="idx-ex-block">
+        <div class="idx-ex-info">
+          <div class="idx-ex-title">${esc(ex.title)}</div>
+          <div class="idx-ex-desc">${esc(ex.desc)}</div>
+        </div>
+        <div class="idx-ex-line">${partsHtml}</div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = html;
 }
 
 async function saveIndexTemplate(id) {
@@ -2846,6 +3082,7 @@ function showOverrideForm(importId, workId, existing) {
     edition_price_numeric_override:    o.edition_price_numeric_override    ?? w.edition_price_numeric      ?? '',
     artwork_override:                  o.artwork_override                  ?? w.artwork                    ?? '',
     medium_override:                   o.medium_override                   ?? w.medium                    ?? '',
+    notes:                              o.notes                              ?? '',
   };
 
   // Returns a clickable hint that copies the current value into the named input/textarea
@@ -2865,37 +3102,60 @@ function showOverrideForm(importId, workId, existing) {
     <div class="override-form">
       <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
       <div class="override-field-form" id="ovf-${esc(workId)}">
-        <div class="form-row"><label>Title</label>
-          ${hint('title_override','title_override')}
-          <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
-        <div class="form-row"><label>Artist</label>
-          ${hint('artist_name_override','artist_name_override')}
-          <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
-        <div class="form-row"><label>Honorifics</label>
-          ${hint('artist_honorifics_override','artist_honorifics_override')}
-          <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
-        <div class="form-row"><label>Price text</label>
-          ${hint('price_text_override','price_text_override')}
-          <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
-        <div class="form-row"><label>Price numeric</label>
-          ${hint('price_numeric_override','price_numeric_override')}
-          <input type="number" step="0.01" min="0" name="price_numeric_override" value="${val('price_numeric_override')}" placeholder="e.g. 1500"></div>
-        <div class="form-row"><label>Edition total</label>
-          ${hint('edition_total_override','edition_total_override')}
-          <input type="number" min="0" name="edition_total_override" value="${val('edition_total_override')}" placeholder="e.g. 10"></div>
-        <div class="form-row"><label>Edition price</label>
-          ${hint('edition_price_numeric_override','edition_price_numeric_override')}
-          <input type="number" step="0.01" min="0" name="edition_price_numeric_override" value="${val('edition_price_numeric_override')}" placeholder="e.g. 750"></div>
-        <div class="form-row"><label>Artwork</label>
-          ${hint('artwork_override','artwork_override')}
-          <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
-        <div class="form-row"><label>Medium</label>
-          ${hint('medium_override','medium_override')}
-          <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
-        <div class="form-actions">
-          <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
-          ${existing ? `<button class="btn btn-danger" onclick="deleteOverride('${esc(importId)}','${esc(workId)}')">Delete Override</button>` : ''}
-          <span id="ovs-${esc(workId)}" class="status-msg"></span>
+        <div class="low-ovr-grid ovr-grid">
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Content</h5>
+            <div class="ka-fields">
+              <div class="form-row"><label>Title</label>
+                ${hint('title_override','title_override')}
+                <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
+              <div class="form-row"><label>Medium</label>
+                ${hint('medium_override','medium_override')}
+                <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
+            </div>
+          </div>
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Artist</h5>
+            <div class="ka-fields">
+              <div class="form-row"><label>Artist</label>
+                ${hint('artist_name_override','artist_name_override')}
+                <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
+              <div class="form-row"><label>Honorifics</label>
+                ${hint('artist_honorifics_override','artist_honorifics_override')}
+                <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
+            </div>
+          </div>
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Pricing &amp; Edition</h5>
+            <div class="ka-fields">
+              <div class="form-row"><label>Price text</label>
+                ${hint('price_text_override','price_text_override')}
+                <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
+              <div class="form-row"><label>Price numeric</label>
+                ${hint('price_numeric_override','price_numeric_override')}
+                <input type="number" step="0.01" min="0" name="price_numeric_override" value="${val('price_numeric_override')}" placeholder="e.g. 1500"></div>
+              <div class="form-row"><label>Edition total</label>
+                ${hint('edition_total_override','edition_total_override')}
+                <input type="number" min="0" name="edition_total_override" value="${val('edition_total_override')}" placeholder="e.g. 10"></div>
+              <div class="form-row"><label>Edition price</label>
+                ${hint('edition_price_numeric_override','edition_price_numeric_override')}
+                <input type="number" step="0.01" min="0" name="edition_price_numeric_override" value="${val('edition_price_numeric_override')}" placeholder="e.g. 750"></div>
+              <div class="form-row"><label>Artwork</label>
+                ${hint('artwork_override','artwork_override')}
+                <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
+            </div>
+          </div>
+        </div>
+        <div class="ovr-footer">
+          <div class="ka-footer-notes">
+            <label>Notes</label>
+            <input type="text" name="notes" value="${val('notes')}" placeholder="Why this override exists">
+          </div>
+          <div class="ovr-actions">
+            <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
+            ${existing ? `<button class="btn btn-danger" onclick="deleteOverride('${esc(importId)}','${esc(workId)}')">Delete Override</button>` : ''}
+            <span id="ovs-${esc(workId)}" class="status-msg"></span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -2922,7 +3182,7 @@ async function saveOverride(importId, workId) {
   const numFields = new Set(['price_numeric_override','edition_total_override','edition_price_numeric_override','artwork_override']);
   const allFields = ['title_override','artist_name_override','artist_honorifics_override',
     'price_text_override','price_numeric_override','edition_total_override','edition_price_numeric_override',
-    'artwork_override','medium_override'];
+    'artwork_override','medium_override','notes'];
 
   const body = {};
   for (const f of allFields) {

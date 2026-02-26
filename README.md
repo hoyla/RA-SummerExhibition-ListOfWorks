@@ -22,7 +22,7 @@ Supports two data products:
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
 - Configurable normalisation config (honorific token list)
 - Validation warnings for unparseable values
-- Editorial overrides per work (title, artist, price, edition, medium)
+- Editorial overrides per work (title, artist, price, edition, artwork, medium, notes)
 - Export templates: named, versioned configs stored in the database
 - Configurable export component order, separators, balance-lines, and character styles
 - Per-component include/exclude toggle
@@ -153,7 +153,7 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (700 tests across 28 test files)
+tests/            # pytest suite (722 tests across 29 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/

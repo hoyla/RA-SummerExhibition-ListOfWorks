@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (700 tests across 28 test files) |
+| Testing    | pytest (722 tests across 29 test files) |
 
 ---
 
@@ -88,7 +88,8 @@ Optional editorial corrections for a single work. `None` means "use Work value".
 - `title_override`, `artist_name_override`, `artist_honorifics_override`
 - `price_numeric_override`, `price_text_override`
 - `edition_total_override`, `edition_price_numeric_override`
-- `medium_override`
+- `artwork_override`, `medium_override`
+- `notes` — human-readable explanation of why the override exists
 
 ### ValidationWarning
 
@@ -102,27 +103,27 @@ issue is suspected.
 
 "Changed" warnings (normalisation engine modified data):
 
-| Type                          | Trigger                                                    |
-| ----------------------------- | ---------------------------------------------------------- |
-| `whitespace_trimmed`          | Leading/trailing whitespace removed from fields            |
-| `multi_artist_name_changed`   | Multi-artist entry split into artist 1 + artist 2          |
-| `quals_extracted`             | Qualifications extracted from name during multi-artist parsing |
-| `ra_member_detected`          | RA membership auto-detected from quals                     |
-| `possible_company`            | Entry treated as company (no first name)                   |
-| `duplicate_name_merged`       | Identical-name rows merged into one entry                  |
+| Type                        | Trigger                                                        |
+| --------------------------- | -------------------------------------------------------------- |
+| `whitespace_trimmed`        | Leading/trailing whitespace removed from fields                |
+| `multi_artist_name_changed` | Multi-artist entry split into artist 1 + artist 2              |
+| `quals_extracted`           | Qualifications extracted from name during multi-artist parsing |
+| `ra_member_detected`        | RA membership auto-detected from quals                         |
+| `possible_company`          | Entry treated as company (no first name)                       |
+| `duplicate_name_merged`     | Identical-name rows merged into one entry                      |
 
 "Suspected" warnings (may need human review):
 
-| Type                          | Trigger                                                    |
-| ----------------------------- | ---------------------------------------------------------- |
-| `multi_artist_name_suspected` | Residual `and`/`&`/`with` still detected after parsing     |
-| `ra_styling_ambiguous`        | RA styling defaulted to artist 1 — may be wrong            |
-| `quals_in_name_field`         | Qualification token found in a name field                  |
-| `non_ascii_characters`        | Non-ASCII characters will be unicode-escaped in export     |
-| `missing_cat_nos`             | No catalogue numbers for an entry                          |
-| `duplicate_filename`          | A previous import with the same filename exists            |
-| `empty_spreadsheet`           | Column headers present but no data rows                    |
-| `missing_column`              | An optional column is absent from the spreadsheet          |
+| Type                          | Trigger                                                |
+| ----------------------------- | ------------------------------------------------------ |
+| `multi_artist_name_suspected` | Residual `and`/`&`/`with` still detected after parsing |
+| `ra_styling_ambiguous`        | RA styling defaulted to artist 1 — may be wrong        |
+| `quals_in_name_field`         | Qualification token found in a name field              |
+| `non_ascii_characters`        | Non-ASCII characters will be unicode-escaped in export |
+| `missing_cat_nos`             | No catalogue numbers for an entry                      |
+| `duplicate_filename`          | A previous import with the same filename exists        |
+| `empty_spreadsheet`           | Column headers present but no data rows                |
+| `missing_column`              | An optional column is absent from the spreadsheet      |
 
 ### AuditLog
 
@@ -157,9 +158,11 @@ The JSON field `_config_type` in seed files determines the `config_type`.
 One parsed artist entry within an Index import.
 
 Raw (immutable) fields:
+
 - `raw_title`, `raw_first_name`, `raw_last_name`, `raw_quals`, `raw_company`, `raw_address`
 
 Normalised fields (computed by importer):
+
 - `title`, `first_name`, `last_name`, `quals`, `company`, `sort_key`
 - `artist2_first_name`, `artist2_last_name`, `artist2_quals` (populated by multi-artist parsing)
 - `artist3_first_name`, `artist3_last_name`, `artist3_quals`
@@ -168,6 +171,7 @@ Normalised fields (computed by importer):
 - `include_in_export` — omit from export (default `True`)
 
 Metadata:
+
 - `id` (UUID PK), `import_id` (FK), `row_number`
 
 ### IndexCatNumber
