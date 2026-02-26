@@ -3492,6 +3492,34 @@ function _renderIndexWarnings(warnings) {
   _buildIndexWarningsPanel();
 }
 
+// Human-friendly labels & categories for index warning types
+const _IDX_WARNING_LABELS = {
+  // Changed: normalisation engine modified data
+  whitespace_trimmed:         'Whitespace trimmed',
+  multi_artist_name_changed:  'Multi-artist split',
+  quals_extracted:            'Quals extracted',
+  ra_member_detected:         'RA member detected',
+  possible_company:           'Company detected',
+  duplicate_name_merged:      'Duplicate merged',
+  // Suspected: may need human review
+  multi_artist_name_suspected:'Multi-artist suspected',
+  ra_styling_ambiguous:       'RA styling ambiguous',
+  quals_in_name_field:        'Quals in name',
+  non_ascii_characters:       'Non-ASCII chars',
+  missing_cat_nos:            'Missing cat nos',
+  duplicate_filename:         'Duplicate filename',
+  empty_spreadsheet:          'Empty spreadsheet',
+  missing_column:             'Missing column',
+};
+const _IDX_CHANGED_TYPES = new Set([
+  'whitespace_trimmed', 'multi_artist_name_changed', 'quals_extracted',
+  'ra_member_detected', 'possible_company', 'duplicate_name_merged',
+]);
+
+function _idxWarnLabel(type) {
+  return _IDX_WARNING_LABELS[type] || type;
+}
+
 function _buildIndexWarningsPanel() {
   const warnings = _indexWarningsAll;
   const panel = document.getElementById('index-warnings-panel');
@@ -3510,7 +3538,9 @@ function _buildIndexWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenIndexWarningTypes.has(type);
-      return `<button type="button" class="badge badge-warning warning-filter-btn${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(type)}: ${n}</button>`;
+      const isChanged = _IDX_CHANGED_TYPES.has(type);
+      const badgeClass = isChanged ? 'badge badge-info warning-filter-btn' : 'badge badge-warning warning-filter-btn';
+      return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_idxWarnLabel(type))}: ${n}</button>`;
     }).join('');
 
   // Detailed rows — filtered by hidden types
@@ -3520,7 +3550,7 @@ function _buildIndexWarningsPanel() {
       ? `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(w.artist_id)}')">${esc('Row ' + w.row_number)}</button>`
       : (w.row_number ? esc('Row ' + w.row_number) : '\u2014');
     return `<tr>
-      <td><span class="badge badge-warning">${esc(w.warning_type)}</span></td>
+      <td><span class="badge ${_IDX_CHANGED_TYPES.has(w.warning_type) ? 'badge-info' : 'badge-warning'}">${esc(_idxWarnLabel(w.warning_type))}</span></td>
       <td>${esc(w.message)}</td>
       <td class="muted col-work">${rowCell}</td>
     </tr>`;

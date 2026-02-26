@@ -827,9 +827,11 @@ details.section-block[open] > .section-summary::before {
   transition: opacity 0.15s, background 0.15s;
 }
 .warning-filter-btn:hover { background: #ffe8a0; }
+.badge-info.warning-filter-btn:hover { background: #a8dbe5; }
 
 /* Greyed-out state when a type is hidden */
-.badge-warning.badge-muted {
+.badge-warning.badge-muted,
+.badge-info.badge-muted {
   background: #f5f5f5;
   color: #aaa;
   border-color: #ccc;
@@ -911,6 +913,7 @@ details.section-block[open] > .section-summary::before {
   white-space: nowrap;
 }
 .badge-warning { background: #fff3cd; color: #8a6000; border: 1px solid #f0c040; }
+.badge-info { background: #d1ecf1; color: #0c5460; border: 1px solid #8dd3df; }
 .badge-audit { background: #e8f0fe; color: #1a56db; border: 1px solid #a4c3f5; }
 
 /* Audit log */
