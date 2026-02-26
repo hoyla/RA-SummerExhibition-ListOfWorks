@@ -648,7 +648,7 @@ def _create_artist_entry(
         artist2_last_name = multi["artist2_last_name"]
         artist2_quals = multi["artist2_quals"]
         did_multi_split = True
-        quals_were_extracted = (quals != pre_split_quals)
+        quals_were_extracted = quals != pre_split_quals
 
     ra_member = is_ra_member(quals)
 
@@ -892,6 +892,9 @@ _INDEX_OVERRIDE_FIELDS = [
     "artist1_ra_styled_override",
     "artist2_ra_styled_override",
     "artist3_ra_styled_override",
+    "company_override",
+    "address_override",
+    "notes",
 ]
 
 

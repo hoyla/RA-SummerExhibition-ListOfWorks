@@ -238,6 +238,7 @@ class TestReimportOverridePreservation:
             artist_name_override="Override Artist",
             medium_override="Watercolour",
             edition_total_override=50,
+            notes="Curator requested change",
         )
 
         r = _do_reimport(client, import_id)
@@ -250,6 +251,7 @@ class TestReimportOverridePreservation:
         assert ovr["artist_name_override"] == "Override Artist"
         assert ovr["medium_override"] == "Watercolour"
         assert ovr["edition_total_override"] == 50
+        assert ovr["notes"] == "Curator requested change"
 
     def test_include_in_export_preserved(self, client, db_session):
         import_id = _do_import(client)

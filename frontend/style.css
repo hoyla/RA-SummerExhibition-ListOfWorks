@@ -701,6 +701,19 @@ details.section-block[open] > .section-summary::before {
 .ovr-grid {
   margin-bottom: 14px;
 }
+
+/* LoW override form – 3-column grid */
+.low-ovr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .low-ovr-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .low-ovr-grid { grid-template-columns: 1fr; }
+}
 .ovr-footer {
   display: flex;
   flex-wrap: wrap;

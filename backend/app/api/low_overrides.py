@@ -37,26 +37,7 @@ def get_override(import_id: UUID, work_id: UUID, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No override exists for this work",
         )
-    return OverrideOut(
-        work_id=str(override.work_id),
-        title_override=override.title_override,
-        artist_name_override=override.artist_name_override,
-        artist_honorifics_override=override.artist_honorifics_override,
-        price_numeric_override=(
-            float(override.price_numeric_override)
-            if override.price_numeric_override is not None
-            else None
-        ),
-        price_text_override=override.price_text_override,
-        edition_total_override=override.edition_total_override,
-        edition_price_numeric_override=(
-            float(override.edition_price_numeric_override)
-            if override.edition_price_numeric_override is not None
-            else None
-        ),
-        artwork_override=override.artwork_override,
-        medium_override=override.medium_override,
-    )
+    return OverrideOut.model_validate(override)
 
 
 @router.put(
@@ -115,26 +96,7 @@ def set_override(
     db.commit()
     db.refresh(override)
 
-    return OverrideOut(
-        work_id=str(override.work_id),
-        title_override=override.title_override,
-        artist_name_override=override.artist_name_override,
-        artist_honorifics_override=override.artist_honorifics_override,
-        price_numeric_override=(
-            float(override.price_numeric_override)
-            if override.price_numeric_override is not None
-            else None
-        ),
-        price_text_override=override.price_text_override,
-        edition_total_override=override.edition_total_override,
-        edition_price_numeric_override=(
-            float(override.edition_price_numeric_override)
-            if override.edition_price_numeric_override is not None
-            else None
-        ),
-        artwork_override=override.artwork_override,
-        medium_override=override.medium_override,
-    )
+    return OverrideOut.model_validate(override)
 
 
 @router.delete(

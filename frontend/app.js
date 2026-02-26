@@ -3082,6 +3082,7 @@ function showOverrideForm(importId, workId, existing) {
     edition_price_numeric_override:    o.edition_price_numeric_override    ?? w.edition_price_numeric      ?? '',
     artwork_override:                  o.artwork_override                  ?? w.artwork                    ?? '',
     medium_override:                   o.medium_override                   ?? w.medium                    ?? '',
+    notes:                              o.notes                              ?? '',
   };
 
   // Returns a clickable hint that copies the current value into the named input/textarea
@@ -3101,37 +3102,60 @@ function showOverrideForm(importId, workId, existing) {
     <div class="override-form">
       <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
       <div class="override-field-form" id="ovf-${esc(workId)}">
-        <div class="form-row"><label>Title</label>
-          ${hint('title_override','title_override')}
-          <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
-        <div class="form-row"><label>Artist</label>
-          ${hint('artist_name_override','artist_name_override')}
-          <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
-        <div class="form-row"><label>Honorifics</label>
-          ${hint('artist_honorifics_override','artist_honorifics_override')}
-          <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
-        <div class="form-row"><label>Price text</label>
-          ${hint('price_text_override','price_text_override')}
-          <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
-        <div class="form-row"><label>Price numeric</label>
-          ${hint('price_numeric_override','price_numeric_override')}
-          <input type="number" step="0.01" min="0" name="price_numeric_override" value="${val('price_numeric_override')}" placeholder="e.g. 1500"></div>
-        <div class="form-row"><label>Edition total</label>
-          ${hint('edition_total_override','edition_total_override')}
-          <input type="number" min="0" name="edition_total_override" value="${val('edition_total_override')}" placeholder="e.g. 10"></div>
-        <div class="form-row"><label>Edition price</label>
-          ${hint('edition_price_numeric_override','edition_price_numeric_override')}
-          <input type="number" step="0.01" min="0" name="edition_price_numeric_override" value="${val('edition_price_numeric_override')}" placeholder="e.g. 750"></div>
-        <div class="form-row"><label>Artwork</label>
-          ${hint('artwork_override','artwork_override')}
-          <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
-        <div class="form-row"><label>Medium</label>
-          ${hint('medium_override','medium_override')}
-          <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
-        <div class="form-actions">
-          <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
-          ${existing ? `<button class="btn btn-danger" onclick="deleteOverride('${esc(importId)}','${esc(workId)}')">Delete Override</button>` : ''}
-          <span id="ovs-${esc(workId)}" class="status-msg"></span>
+        <div class="low-ovr-grid ovr-grid">
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Content</h5>
+            <div class="ka-fields">
+              <div class="form-row"><label>Title</label>
+                ${hint('title_override','title_override')}
+                <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
+              <div class="form-row"><label>Medium</label>
+                ${hint('medium_override','medium_override')}
+                <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
+            </div>
+          </div>
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Artist</h5>
+            <div class="ka-fields">
+              <div class="form-row"><label>Artist</label>
+                ${hint('artist_name_override','artist_name_override')}
+                <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
+              <div class="form-row"><label>Honorifics</label>
+                ${hint('artist_honorifics_override','artist_honorifics_override')}
+                <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
+            </div>
+          </div>
+          <div class="ka-section">
+            <h5 class="ka-section-heading">Pricing &amp; Edition</h5>
+            <div class="ka-fields">
+              <div class="form-row"><label>Price text</label>
+                ${hint('price_text_override','price_text_override')}
+                <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
+              <div class="form-row"><label>Price numeric</label>
+                ${hint('price_numeric_override','price_numeric_override')}
+                <input type="number" step="0.01" min="0" name="price_numeric_override" value="${val('price_numeric_override')}" placeholder="e.g. 1500"></div>
+              <div class="form-row"><label>Edition total</label>
+                ${hint('edition_total_override','edition_total_override')}
+                <input type="number" min="0" name="edition_total_override" value="${val('edition_total_override')}" placeholder="e.g. 10"></div>
+              <div class="form-row"><label>Edition price</label>
+                ${hint('edition_price_numeric_override','edition_price_numeric_override')}
+                <input type="number" step="0.01" min="0" name="edition_price_numeric_override" value="${val('edition_price_numeric_override')}" placeholder="e.g. 750"></div>
+              <div class="form-row"><label>Artwork</label>
+                ${hint('artwork_override','artwork_override')}
+                <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
+            </div>
+          </div>
+        </div>
+        <div class="ovr-footer">
+          <div class="ka-footer-notes">
+            <label>Notes</label>
+            <input type="text" name="notes" value="${val('notes')}" placeholder="Why this override exists">
+          </div>
+          <div class="ovr-actions">
+            <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
+            ${existing ? `<button class="btn btn-danger" onclick="deleteOverride('${esc(importId)}','${esc(workId)}')">Delete Override</button>` : ''}
+            <span id="ovs-${esc(workId)}" class="status-msg"></span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -3158,7 +3182,7 @@ async function saveOverride(importId, workId) {
   const numFields = new Set(['price_numeric_override','edition_total_override','edition_price_numeric_override','artwork_override']);
   const allFields = ['title_override','artist_name_override','artist_honorifics_override',
     'price_text_override','price_numeric_override','edition_total_override','edition_price_numeric_override',
-    'artwork_override','medium_override'];
+    'artwork_override','medium_override','notes'];
 
   const body = {};
   for (const f of allFields) {

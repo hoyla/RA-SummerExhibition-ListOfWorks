@@ -316,6 +316,7 @@ def reimport_excel(
         "edition_price_numeric_override",
         "artwork_override",
         "medium_override",
+        "notes",
     ]
 
     preserve: Dict[str, dict] = {}

@@ -230,24 +230,7 @@ def list_sections(import_id: UUID, db: Session = Depends(get_db)):
         def _ovr_out(o) -> WorkOverrideOut | None:
             if o is None:
                 return None
-            return WorkOverrideOut(
-                title_override=o.title_override,
-                artist_name_override=o.artist_name_override,
-                artist_honorifics_override=o.artist_honorifics_override,
-                price_numeric_override=(
-                    float(o.price_numeric_override)
-                    if o.price_numeric_override is not None
-                    else None
-                ),
-                price_text_override=o.price_text_override,
-                edition_total_override=o.edition_total_override,
-                edition_price_numeric_override=(
-                    float(o.edition_price_numeric_override)
-                    if o.edition_price_numeric_override is not None
-                    else None
-                ),
-                medium_override=o.medium_override,
-            )
+            return WorkOverrideOut.model_validate(o)
 
         work_items = [
             WorkOut(
