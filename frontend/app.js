@@ -3876,8 +3876,13 @@ function _valClass(prev, curr) {
 
 /**
  * Build the detail comparison table rows for the artist detail panel.
- * When the artist has an override, shows 3 columns (Raw | Auto-resolved | Effective).
- * Otherwise shows 2 columns (Raw | Resolved).
+ * When the artist has an override, shows 4 columns (Field | Spreadsheet | Auto-resolved | Effective).
+ * Otherwise shows 3 columns (Field | Spreadsheet | Resolved).
+ *
+ * Spreadsheet fields show the raw value in "Spreadsheet" and the normalised
+ * value in "Resolved".  Normalisation-derived fields (Artist 2/3, RA Styled)
+ * have no raw value — the "Spreadsheet" column is blank and the value appears
+ * only in "Resolved".
  */
 function _buildDetailTable(a) {
   const hasOvr = a.has_override && a.auto_resolved;
@@ -3886,10 +3891,10 @@ function _buildDetailTable(a) {
 
   // Column headers
   const thead = hasOvr
-    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Auto-resolved</th><th>Effective</th></tr></thead>'
+    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Auto-resolved</th><th>Manual Override</th></tr></thead>'
     : '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Resolved</th></tr></thead>';
 
-  // Helper: one comparison row (2-column or 3-column)
+  // Helper: spreadsheet field row (has a raw value)
   function row(label, rawVal, autoVal, effVal) {
     const raw = rawVal ?? '';
     const auto = autoVal ?? '';
@@ -3909,75 +3914,79 @@ function _buildDetailTable(a) {
     </tr>`;
   }
 
-  // Main comparison rows
+  // Helper: normalisation-derived field (no raw spreadsheet value)
+  function derivedRow(label, autoVal, effVal) {
+    const auto = autoVal ?? '';
+    const eff = effVal ?? '';
+    if (hasOvr) {
+      return `<tr>
+        <td>${esc(label)}</td>
+        <td class="muted">\u2014</td>
+        <td>${esc(auto)}</td>
+        <td class="${_valClass(auto, eff)}">${esc(eff)}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td class="muted">\u2014</td>
+      <td>${esc(eff)}</td>
+    </tr>`;
+  }
+
+  // --- Spreadsheet fields ---
   const rows = [
     row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
     row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
     row('Title',      a.raw_title,      hasOvr ? ar.title      : null, a.title),
     row('Quals',      a.raw_quals,      hasOvr ? ar.quals      : null, a.quals),
+    row('Company',    a.raw_company,    hasOvr ? ar.company    : null, a.company),
+    row('Address',    a.raw_address,    hasOvr ? ar.address    : null, a.address),
   ];
 
-  // Company row
-  if (hasOvr) {
-    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
-      <td class="${_valClass(a.raw_company, ar.company)}">${esc(ar.company ?? '')}</td>
-      <td class="${_valClass(ar.company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
-  } else {
-    rows.push(`<tr><td>Company</td><td>${esc(a.raw_company ?? '')}</td>
-      <td class="${_valClass(a.raw_company, a.company)}">${esc(a.company ?? '')}</td></tr>`);
+  // --- Normalisation-derived fields ---
+
+  // RA Member (auto-detected, not directly editable)
+  rows.push(derivedRow('RA Member', a.is_ra_member ? 'Yes' : 'No', a.is_ra_member ? 'Yes' : 'No'));
+
+  // Artist 1 RA Styled
+  const a1RaAuto = hasOvr ? (ar.artist1_ra_styled ? 'Yes' : 'No') : null;
+  const a1RaEff = a.artist1_ra_styled ? 'Yes' : 'No';
+  rows.push(derivedRow('Artist 1 RA Styled', a1RaAuto ?? a1RaEff, a1RaEff));
+
+  // Artist 2 fields — only if any artist2 data exists
+  const hasA2 = a.artist2_first_name || a.artist2_last_name || a.artist2_quals || a.artist2_ra_styled
+    || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name || ar.artist2_quals || ar.artist2_ra_styled));
+  if (hasA2) {
+    rows.push(derivedRow('Artist 2 First Name',
+      hasOvr ? ar.artist2_first_name : a.artist2_first_name, a.artist2_first_name));
+    rows.push(derivedRow('Artist 2 Last Name',
+      hasOvr ? ar.artist2_last_name : a.artist2_last_name, a.artist2_last_name));
+    rows.push(derivedRow('Artist 2 Quals',
+      hasOvr ? ar.artist2_quals : a.artist2_quals, a.artist2_quals));
+    rows.push(derivedRow('Artist 2 RA Styled',
+      hasOvr ? (ar.artist2_ra_styled ? 'Yes' : 'No') : (a.artist2_ra_styled ? 'Yes' : 'No'),
+      a.artist2_ra_styled ? 'Yes' : 'No'));
   }
 
-  // Address row
-  if (hasOvr) {
-    rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
-      <td class="${_valClass(a.raw_address, ar.address)}">${esc(ar.address ?? '')}</td>
-      <td class="${_valClass(ar.address, a.address)}">${esc(a.address ?? '')}</td></tr>`);
-  } else {
-    rows.push(`<tr><td>Address</td><td>${esc(a.raw_address ?? '')}</td>
-      <td class="${_valClass(a.raw_address, a.address)}">${esc(a.address ?? '')}</td></tr>`);
+  // Artist 3 fields — only if any artist3 data exists
+  const hasA3 = a.artist3_first_name || a.artist3_last_name || a.artist3_quals || a.artist3_ra_styled
+    || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name || ar.artist3_quals || ar.artist3_ra_styled));
+  if (hasA3) {
+    rows.push(derivedRow('Artist 3 First Name',
+      hasOvr ? ar.artist3_first_name : a.artist3_first_name, a.artist3_first_name));
+    rows.push(derivedRow('Artist 3 Last Name',
+      hasOvr ? ar.artist3_last_name : a.artist3_last_name, a.artist3_last_name));
+    rows.push(derivedRow('Artist 3 Quals',
+      hasOvr ? ar.artist3_quals : a.artist3_quals, a.artist3_quals));
+    rows.push(derivedRow('Artist 3 RA Styled',
+      hasOvr ? (ar.artist3_ra_styled ? 'Yes' : 'No') : (a.artist3_ra_styled ? 'Yes' : 'No'),
+      a.artist3_ra_styled ? 'Yes' : 'No'));
   }
 
-  // RA Styled row
-  const raText = (a1, a2, a3) => {
-    let s = a1 ? 'Yes' : 'No';
-    if (a2) s += ' / A2: Yes';
-    if (a3) s += ' / A3: Yes';
-    return s;
-  };
-  if (hasOvr) {
-    const autoRA = raText(ar.artist1_ra_styled, ar.artist2_ra_styled, ar.artist3_ra_styled);
-    const effRA = raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled);
-    rows.push(`<tr><td>RA Styled</td><td></td>
-      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${autoRA}</td>
-      <td class="${autoRA !== effRA ? 'val-changed' : 'val-unchanged'}">${effRA}</td></tr>`);
-  } else {
-    rows.push(`<tr><td>RA Styled</td><td colspan="${colSpan - 1}">${raText(a.artist1_ra_styled, a.artist2_ra_styled, a.artist3_ra_styled)}</td></tr>`);
-  }
-
-  // Additional artists
-  const fmtArtist = (fn, ln, q) => esc([fn, ln, q].filter(Boolean).join(' '));
-  if (a.artist2_first_name || a.artist2_last_name || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name))) {
-    if (hasOvr) {
-      const autoA2 = [ar.artist2_first_name, ar.artist2_last_name, ar.artist2_quals].filter(Boolean).join(' ');
-      const effA2 = [a.artist2_first_name, a.artist2_last_name, a.artist2_quals].filter(Boolean).join(' ');
-      rows.push(`<tr><td>Artist 2</td><td></td>
-        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(autoA2)}</td>
-        <td class="${autoA2 !== effA2 ? 'val-changed' : 'val-unchanged'}">${esc(effA2)}</td></tr>`);
-    } else {
-      rows.push(`<tr><td>Artist 2</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals)}</td></tr>`);
-    }
-  }
-  if (a.artist3_first_name || a.artist3_last_name || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name))) {
-    if (hasOvr) {
-      const autoA3 = [ar.artist3_first_name, ar.artist3_last_name, ar.artist3_quals].filter(Boolean).join(' ');
-      const effA3 = [a.artist3_first_name, a.artist3_last_name, a.artist3_quals].filter(Boolean).join(' ');
-      rows.push(`<tr><td>Artist 3</td><td></td>
-        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(autoA3)}</td>
-        <td class="${autoA3 !== effA3 ? 'val-changed' : 'val-unchanged'}">${esc(effA3)}</td></tr>`);
-    } else {
-      rows.push(`<tr><td>Artist 3</td><td colspan="${colSpan - 1}">${fmtArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals)}</td></tr>`);
-    }
-  }
+  // Company flag (derived)
+  const companyAuto = hasOvr ? (ar.is_company ? 'Yes' : 'No') : (a.is_company ? 'Yes' : 'No');
+  const companyEff = a.is_company ? 'Yes' : 'No';
+  rows.push(derivedRow('Is Company', companyAuto, companyEff));
 
   return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
 }
