@@ -345,12 +345,14 @@ a:hover { text-decoration: underline; }
 }
 /* Dim fields irrelevant for companies */
 .ka-is-company .ka-a1-first-wrap,
-.ka-is-company .ka-section-a2 {
+.ka-is-company .ka-section-a2,
+.ka-is-company .ka-section-a3 {
   opacity: 0.35;
   pointer-events: none;
   position: relative;
 }
-.ka-is-company .ka-section-a2::after {
+.ka-is-company .ka-section-a2::after,
+.ka-is-company .ka-section-a3::after {
   content: 'Not used for companies';
   position: absolute;
   top: 8px;

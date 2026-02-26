@@ -1081,8 +1081,12 @@ function _kaPreviewIndexName(tr) {
   const a2First = resolve('.ka-res-a2-first', '');
   const a2Last = resolve('.ka-res-a2-last', '');
   const a2Quals = resolve('.ka-res-a2-quals', '');
+  const a3First = resolve('.ka-res-a3-first', '');
+  const a3Last = resolve('.ka-res-a3-last', '');
+  const a3Quals = resolve('.ka-res-a3-quals', '');
   const a1RaStyled = tr.querySelector('.ka-a1-ra')?.checked || false;
   const a2RaStyled = tr.querySelector('.ka-a2-ra')?.checked || false;
+  const a3RaStyled = tr.querySelector('.ka-a3-ra')?.checked || false;
   const surname = lastName || firstName || '';
   if (!surname) return '<span class="muted">&mdash;</span>';
 
@@ -1110,19 +1114,21 @@ function _kaPreviewIndexName(tr) {
 
   // Additional artists from structured fields (suppressed for companies, matching index export)
   const suffixes = [];
-  if (!isCompany && (a2First || a2Last)) {
-    const parts = ['and'];
-    if (a2First) parts.push(esc(a2First));
-    if (a2Last) {
-      if (a2RaStyled) parts.push(`<span class="idx-ra-styled">${esc(a2Last)}</span>`);
-      else parts.push(esc(a2Last));
+  for (const [aFirst, aLast, aQuals, aRaStyled] of [[a2First, a2Last, a2Quals, a2RaStyled], [a3First, a3Last, a3Quals, a3RaStyled]]) {
+    if (!isCompany && (aFirst || aLast)) {
+      const parts = ['and'];
+      if (aFirst) parts.push(esc(aFirst));
+      if (aLast) {
+        if (aRaStyled) parts.push(`<span class="idx-ra-styled">${esc(aLast)}</span>`);
+        else parts.push(esc(aLast));
+      }
+      let suffix = parts.join(' ');
+      if (aQuals) {
+        const pillClass = aRaStyled ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
+        suffix += ` <span class="${pillClass}">${esc(aQuals)}</span>`;
+      }
+      suffixes.push(suffix);
     }
-    let suffix = parts.join(' ');
-    if (a2Quals) {
-      const pillClass = a2RaStyled ? 'honorifics-pill idx-ra-quals' : 'honorifics-pill';
-      suffix += ` <span class="${pillClass}">${esc(a2Quals)}</span>`;
-    }
-    suffixes.push(suffix);
   }
 
   let result = commaParts.join(', ');
@@ -1311,6 +1317,17 @@ function _knownArtistCard(ka) {
             </div>
           </div>
         </div>
+        <div class="ka-section ka-section-a3">
+          <h5 class="ka-section-heading">Resolved &rarr; Artist 3</h5>
+          <div class="ka-fields">
+            ${_kaResolvedField('First Name', 'ka-res-a3-first', ka.resolved_artist3_first_name, locked)}
+            ${_kaResolvedField('Last Name', 'ka-res-a3-last', ka.resolved_artist3_last_name, locked)}
+            ${_kaResolvedField('Qualifications', 'ka-res-a3-quals', ka.resolved_artist3_quals, locked)}
+            <div class="ka-field ka-field-check">
+              <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="ka-card-footer">
         <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
@@ -1340,7 +1357,10 @@ function addKnownArtistRow() {
     resolved_quals: '',
     resolved_artist2_first_name: '', resolved_artist2_last_name: '',
     resolved_artist2_quals: '',
+    resolved_artist3_first_name: '', resolved_artist3_last_name: '',
+    resolved_artist3_quals: '',
     resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
+    resolved_artist3_ra_styled: false,
     resolved_is_company: false, resolved_company: '', resolved_address: '',
     notes: '',
   }));
@@ -1372,6 +1392,7 @@ function _readKaRow(tr) {
   const val = (cls) => tr.querySelector(cls)?.value?.trim() || null;
   const a1RaEl = tr.querySelector('.ka-a1-ra');
   const a2RaEl = tr.querySelector('.ka-a2-ra');
+  const a3RaEl = tr.querySelector('.ka-a3-ra');
   return {
     match_first_name:              val('.ka-match-first'),
     match_last_name:               val('.ka-match-last'),
@@ -1383,8 +1404,12 @@ function _readKaRow(tr) {
     resolved_artist2_first_name:   resVal('.ka-res-a2-first'),
     resolved_artist2_last_name:    resVal('.ka-res-a2-last'),
     resolved_artist2_quals:        resVal('.ka-res-a2-quals'),
+    resolved_artist3_first_name:   resVal('.ka-res-a3-first'),
+    resolved_artist3_last_name:    resVal('.ka-res-a3-last'),
+    resolved_artist3_quals:        resVal('.ka-res-a3-quals'),
     resolved_artist1_ra_styled:    a1RaEl?.checked || null,
     resolved_artist2_ra_styled:    a2RaEl?.checked || null,
+    resolved_artist3_ra_styled:    a3RaEl?.checked || null,
     resolved_is_company:           isCompany,
     resolved_company:              val('.ka-res-company'),
     resolved_address:              val('.ka-res-address'),
@@ -4144,15 +4169,28 @@ function showIndexOverrideForm(importId, artistId, existing) {
   const companyChecked = o.is_company_override === true ? ' checked' : '';
   const companyIndeterminate = o.is_company_override === null || o.is_company_override === undefined;
 
-  // Helper: build an override text field (label + optional current-value hint + input)
-  const ovrField = (label, fieldName, placeholder) => `
-    <div class="ka-field">
+  // Helper: build an override text field with clear toggle (three states:
+  //   null → no override, "" → cleared/blanked, "val" → user value)
+  const ovrField = (label, fieldName, placeholder) => {
+    const raw = existing?.[fieldName];
+    const isCleared = raw === '';
+    const hasValue = raw !== null && raw !== undefined && raw !== '';
+    const displayVal = hasValue ? esc(raw) : '';
+    const clearActive = isCleared ? ' ka-clear-active' : '';
+    const stateClass = isCleared ? 'ka-state-cleared' : (hasValue ? 'ka-state-custom' : 'ka-state-pass');
+    const stateText = isCleared ? 'Will be blanked in output' : (hasValue ? '' : 'No override \u2014 uses current value');
+    const inputDis = isCleared ? 'disabled' : '';
+    return `
+    <div class="ka-field ka-res-cell">
       <label>${label}</label>
       <div class="ka-field-input">
         ${hint(fieldName, fieldName)}
-        <input type="text" name="${fieldName}" value="${val(fieldName)}" placeholder="${placeholder}">
+        <input type="text" name="${fieldName}" value="${displayVal}" placeholder="${isCleared ? '(cleared)' : placeholder}" ${inputDis}>
+        <button type="button" class="ka-clear-btn${clearActive}" title="${isCleared ? 'Undo: restore to no override' : 'Explicitly blank this field in output'}" onclick="_toggleIdxOvrClear(this)">${isCleared ? 'Undo' : 'Clear'}</button>
       </div>
+      <span class="ka-field-state ${stateClass}">${stateText}</span>
     </div>`;
+  };
 
   // Helper: RA styled tri-state checkbox
   const raCheck = (name, value) => {
@@ -4166,7 +4204,7 @@ function showIndexOverrideForm(importId, artistId, existing) {
   const cell = document.getElementById(`idx-ovc-${artistId}`);
   cell.innerHTML = `
     <div class="override-form" onclick="event.stopPropagation()">
-      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy</span></h5>
+      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; use Clear to force blank &middot; click current value to copy</span></h5>
       <div class="override-field-form" id="idx-ovf-${esc(artistId)}">
         <div class="ka-artists-grid ovr-grid">
           <div class="ka-section">
@@ -4226,6 +4264,33 @@ function showIndexOverrideForm(importId, artistId, existing) {
     </div>`;
 }
 
+/** Toggle an index override field between "no override" (null) and "cleared" (""). */
+function _toggleIdxOvrClear(btn) {
+  const input = btn.parentElement.querySelector('input[type="text"]');
+  const isActive = btn.classList.toggle('ka-clear-active');
+  const stateEl = input.closest('.ka-res-cell')?.querySelector('.ka-field-state');
+  if (isActive) {
+    input.value = '';
+    input.disabled = true;
+    input.placeholder = '(cleared)';
+    btn.textContent = 'Undo';
+    btn.title = 'Undo: restore to no override';
+    if (stateEl) {
+      stateEl.className = 'ka-field-state ka-state-cleared';
+      stateEl.textContent = 'Will be blanked in output';
+    }
+  } else {
+    input.disabled = false;
+    input.placeholder = 'no override';
+    btn.textContent = 'Clear';
+    btn.title = 'Explicitly blank this field in output';
+    if (stateEl) {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 uses current value';
+    }
+  }
+}
+
 /** Re-render visible index artist row cells after override save/delete. */
 function _refreshIndexArtistRow(importId, artistId) {
   const a = _indexArtistCache[artistId];
@@ -4255,8 +4320,14 @@ async function saveIndexOverride(importId, artistId) {
   const body = {};
   for (const f of textFields) {
     const input = formEl.querySelector(`[name="${f}"]`);
-    const raw = input?.value.trim() ?? '';
-    body[f] = raw === '' ? null : raw;
+    // Check if this field's Clear button is active → send "" to mean "cleared"
+    const clearBtn = input?.parentElement?.querySelector('.ka-clear-btn.ka-clear-active');
+    if (clearBtn) {
+      body[f] = '';  // explicitly cleared
+    } else {
+      const raw = input?.value.trim() ?? '';
+      body[f] = raw === '' ? null : raw;  // empty = no override, otherwise user value
+    }
   }
 
   // Company checkbox: unchecked + was indeterminate = null (no override)
