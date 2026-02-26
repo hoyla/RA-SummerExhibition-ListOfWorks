@@ -352,6 +352,49 @@ contains the Company checkbox, Company Name, Address, Notes, and action buttons.
 
 ---
 
+## Phase 21 – LoW overrides form & template UX ✅
+
+### LoW overrides form
+
+- **Notes field** added to `WorkOverride` model, schema, and API (`notes` column
+  via Alembic migration `i9a1b3c5d7e8`)
+- **3-column grid layout** for the per-work override form: Content (title,
+  medium), Artist (artist, honorifics), Pricing & Edition (price text/numeric,
+  edition total/price, artwork). Notes field in footer row. Responsive
+  breakpoints at 900px and 600px.
+- `model_validate()` refactor: replaced manual `OverrideOut(...)` and
+  `WorkOverrideOut(...)` construction with Pydantic `model_validate()`, fixing
+  a pre-existing bug where `artwork_override` was missing from section listings.
+- `field_validator` on `OverrideOut.work_id` for UUID-to-str coercion.
+- Notes preserved on reimport (added to `OVERRIDE_FIELDS` in both LoW and
+  Index importers; `company_override` and `address_override` also added to
+  Index importer's preservation list).
+
+### Index template UX
+
+- **Entry Layout Examples** section: static annotated examples showing how
+  index entries are assembled, with visual conventions, labelled character
+  styles, and side-by-side layout.
+- Save button repositioned above the Entry Layout Examples section.
+
+### Known Artists UX
+
+- **Dirty tracking**: Save button only enabled when the form has unsaved changes.
+- **Duplicate pattern warnings**: inline warning when `match_pattern` duplicates
+  an existing known artist.
+- **4-column grid layout** for known artist cards.
+
+### Seed template tests
+
+- 10 new tests validating seed template JSON files against expected schemas
+  (`tests/test_seed_templates.py`).
+
+### Test count
+
+- 722 tests across 29 test files
+
+---
+
 ## Future considerations
 
 - Advanced title casing rules (LPG eccentricities)
@@ -381,7 +424,7 @@ contains the Company checkbox, Company Name, Address, Notes, and action buttons.
   interactive tooling. Consider gating behind `RUN_MIGRATIONS=true` or moving
   to a startup event.
 
-- **Frontend modularity**: `frontend/app.js` is a single large file (~4450
+- **Frontend modularity**: `frontend/app.js` is a single large file (~4850
   lines). Consider splitting into modules or adding a minimal bundler step.
 
 **Low**
