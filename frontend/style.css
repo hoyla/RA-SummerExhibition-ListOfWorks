@@ -344,8 +344,8 @@ a:hover { text-decoration: underline; }
 }
 .ka-artists-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 12px;
 }
 /* Dim fields irrelevant for companies */
 .ka-is-company .ka-a1-first-wrap,
