@@ -289,6 +289,10 @@ a:hover { text-decoration: underline; }
   color: #fff;
   border-color: var(--danger);
 }
+.ka-save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .ka-preview-bar {
   background: #eef3f9;
   border-bottom: 1px solid #d5e0ec;

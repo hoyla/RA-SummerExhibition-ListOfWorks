@@ -1205,6 +1205,7 @@ function _onKaResInput(input) {
     }
   }
   _updateKaPreview(input.closest('.ka-card'));
+  _markKaDirty(input.closest('.ka-card'));
 }
 
 /** When user types in a match field, update the card headline and preview. */
@@ -1215,6 +1216,46 @@ function _onKaFieldChange(input) {
   const titleEl = card.querySelector('.ka-card-title');
   if (titleEl) titleEl.textContent = [first, last].filter(Boolean).join(' ') || 'New Entry';
   _updateKaPreview(card);
+  _markKaDirty(card);
+}
+
+/** Mark a known-artist card as dirty (unsaved changes) and enable the Save button. */
+function _markKaDirty(card) {
+  if (!card || card.dataset.kaSeeded === 'true') return;
+  card.dataset.kaDirty = 'true';
+  const saveBtn = card.querySelector('.ka-save-btn');
+  if (saveBtn) saveBtn.disabled = false;
+}
+
+/** Reset a known-artist card to clean (no unsaved changes) and disable the Save button. */
+function _markKaClean(card) {
+  if (!card) return;
+  card.dataset.kaDirty = '';
+  const saveBtn = card.querySelector('.ka-save-btn');
+  if (saveBtn) saveBtn.disabled = true;
+}
+
+/** Check for duplicate match patterns among user-defined known-artist cards.
+ *  Returns the title of the conflicting card, or null if no conflict. */
+function _findDuplicateKaMatch(card) {
+  const norm = s => (s || '').trim().toLowerCase();
+  const first = norm(card.querySelector('.ka-match-first')?.value);
+  const last  = norm(card.querySelector('.ka-match-last')?.value);
+  const quals = norm(card.querySelector('.ka-match-quals')?.value);
+  const myId  = card.dataset.kaId;
+  const allCards = document.querySelectorAll('.ka-card');
+  for (const other of allCards) {
+    if (other === card) continue;
+    if (other.dataset.kaSeeded === 'true') continue; // only compare user entries
+    if (other.dataset.kaId === myId && myId) continue;
+    const oFirst = norm(other.querySelector('.ka-match-first')?.value);
+    const oLast  = norm(other.querySelector('.ka-match-last')?.value);
+    const oQuals = norm(other.querySelector('.ka-match-quals')?.value);
+    if (first === oFirst && last === oLast && quals === oQuals) {
+      return other.querySelector('.ka-card-title')?.textContent || 'another entry';
+    }
+  }
+  return null;
 }
 
 /** Toggle a resolved field between "no change" (null) and "cleared" (""). */
@@ -1243,6 +1284,7 @@ function _toggleKaClear(btn) {
     }
   }
   _updateKaPreview(input.closest('.ka-card'));
+  _markKaDirty(input.closest('.ka-card'));
 }
 
 function _knownArtistCard(ka) {
@@ -1260,7 +1302,7 @@ function _knownArtistCard(ka) {
     actions = `<span class="badge badge-builtin">built-in</span>
       <button class="btn btn-sm" onclick="duplicateKnownArtist(this)" title="Create an editable copy of this entry">Duplicate</button>`;
   } else if (!seeded) {
-    actions = ifEditor(`<button class="btn btn-sm" onclick="saveKnownArtistRow(this)" title="Save">&#10003; Save</button>
+    actions = ifEditor(`<button class="btn btn-sm ka-save-btn" onclick="saveKnownArtistRow(this)" title="Save" disabled>&#10003; Save</button>
         <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>`);
   }
 
@@ -1302,7 +1344,7 @@ function _knownArtistCard(ka) {
             ${_kaResolvedField('Title', 'ka-res-title', ka.resolved_title, locked)}
             ${_kaResolvedField('Qualifications', 'ka-res-quals', ka.resolved_quals, locked)}
             <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+              <label><input type="checkbox" class="ka-a1-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist1_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
           </div>
         </div>
@@ -1313,7 +1355,7 @@ function _knownArtistCard(ka) {
             ${_kaResolvedField('Last Name', 'ka-res-a2-last', ka.resolved_artist2_last_name, locked)}
             ${_kaResolvedField('Qualifications', 'ka-res-a2-quals', ka.resolved_artist2_quals, locked)}
             <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+              <label><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
           </div>
         </div>
@@ -1324,24 +1366,24 @@ function _knownArtistCard(ka) {
             ${_kaResolvedField('Last Name', 'ka-res-a3-last', ka.resolved_artist3_last_name, locked)}
             ${_kaResolvedField('Qualifications', 'ka-res-a3-quals', ka.resolved_artist3_quals, locked)}
             <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+              <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
           </div>
         </div>
       </div>
       <div class="ka-card-footer">
-        <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
         <div class="ka-footer-field">
           <label>Company Name</label>
-          <input type="text" class="ka-res-company" value="${esc(ka.resolved_company ?? '')}" placeholder="no override"${ro}>
+          <input type="text" class="ka-res-company" value="${esc(ka.resolved_company ?? '')}" placeholder="no override" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
         </div>
         <div class="ka-footer-field">
           <label>Address</label>
-          <input type="text" class="ka-res-address" value="${esc(ka.resolved_address ?? '')}" placeholder="no override"${ro}>
+          <input type="text" class="ka-res-address" value="${esc(ka.resolved_address ?? '')}" placeholder="no override" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
         </div>
         <div class="ka-footer-notes">
           <label>Notes</label>
-          <input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}"${ro}>
+          <input type="text" class="ka-notes" value="${esc(ka.notes ?? '')}" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
         </div>
       </div>
     </div>
@@ -1368,6 +1410,7 @@ function addKnownArtistRow() {
   const cards = list.querySelectorAll('.ka-card');
   const newest = cards[cards.length - 1];
   _updateKaPreview(newest);
+  _markKaDirty(newest);  // new entry is always unsaved
   newest.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -1422,6 +1465,13 @@ async function saveKnownArtistRow(btn) {
   const id = tr.dataset.kaId;
   const body = _readKaRow(tr);
   const statusEl = document.getElementById('known-artists-status');
+
+  // Warn about duplicate match patterns among user-defined entries
+  const dupName = _findDuplicateKaMatch(tr);
+  if (dupName) {
+    if (!confirm(`This match pattern duplicates "${dupName}".\nThe resolution order between duplicates is unpredictable.\n\nSave anyway?`)) return;
+  }
+
   try {
     let result;
     if (id) {
@@ -1430,6 +1480,7 @@ async function saveKnownArtistRow(btn) {
       result = await api('POST', '/known-artists', body);
       tr.dataset.kaId = result.id;
     }
+    _markKaClean(tr);
     if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
