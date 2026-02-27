@@ -646,6 +646,7 @@ def render_import_as_xml(import_id, db: Session) -> str:
           <price_text>...</price_text>
           <edition_total>...</edition_total>
           <edition_price_numeric>...</edition_price_numeric>
+          <artwork>...</artwork>
           <medium>...</medium>
         </work>
       </section>
@@ -685,6 +686,10 @@ def render_import_as_xml(import_id, db: Session) -> str:
                         else None
                     ),
                 ),
+                (
+                    "artwork",
+                    str(w["artwork"]) if w["artwork"] is not None else None,
+                ),
                 ("medium", w["medium"]),
             ]:
                 el = ET.SubElement(work_el, tag)
@@ -708,6 +713,7 @@ CSV_COLUMNS = [
     "price_text",
     "edition_total",
     "edition_price_numeric",
+    "artwork",
     "medium",
 ]
 
@@ -746,6 +752,9 @@ def render_import_as_csv(import_id, db: Session) -> str:
                         w["edition_price_numeric"]
                         if w["edition_price_numeric"] is not None
                         else ""
+                    ),
+                    "artwork": (
+                        w["artwork"] if w["artwork"] is not None else ""
                     ),
                     "medium": w["medium"] or "",
                 }

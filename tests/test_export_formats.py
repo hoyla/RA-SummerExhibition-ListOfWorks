@@ -246,7 +246,7 @@ def test_csv_export_has_header_row():
     db = FakeSession([_section()], [_work()])
     output = render_import_as_csv("imp1", db)
 
-    assert output.startswith("section,number,artist")
+    assert output.startswith("section,number,artist,honorifics,title,")
 
 
 def test_csv_export_correct_columns():
@@ -264,6 +264,7 @@ def test_csv_export_correct_columns():
         "price_text",
         "edition_total",
         "edition_price_numeric",
+        "artwork",
         "medium",
     }
     assert expected_keys == set(row.keys())
@@ -356,3 +357,46 @@ def test_all_formats_include_same_works():
     csv_titles = [r["title"] for r in csv_rows]
 
     assert sorted(json_titles) == sorted(xml_titles) == sorted(csv_titles)
+
+
+# ---------------------------------------------------------------------------
+# Artwork field in all formats
+# ---------------------------------------------------------------------------
+
+
+def test_json_export_artwork_field():
+    w = _work()
+    w.artwork = 3
+    db = FakeSession([_section()], [w])
+    parsed = json.loads(render_import_as_json("imp1", db))
+    assert parsed["sections"][0]["works"][0]["artwork"] == 3
+
+
+def test_xml_export_artwork_element():
+    w = _work()
+    w.artwork = 5
+    db = FakeSession([_section()], [w])
+    root = ET.fromstring(render_import_as_xml("imp1", db))
+    work = root.find("section/work")
+    assert work.find("artwork").text == "5"
+
+
+def test_xml_export_artwork_null():
+    db = FakeSession([_section()], [_work()])
+    root = ET.fromstring(render_import_as_xml("imp1", db))
+    work = root.find("section/work")
+    assert work.find("artwork").text in (None, "")
+
+
+def test_csv_export_artwork_value():
+    w = _work()
+    w.artwork = 2
+    db = FakeSession([_section()], [w])
+    rows = _parse_csv(render_import_as_csv("imp1", db))
+    assert rows[0]["artwork"] == "2"
+
+
+def test_csv_export_artwork_empty_when_none():
+    db = FakeSession([_section()], [_work()])
+    rows = _parse_csv(render_import_as_csv("imp1", db))
+    assert rows[0]["artwork"] == ""
