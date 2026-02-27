@@ -1284,6 +1284,9 @@ function _markKaDirty(card) {
   card.dataset.kaDirty = 'true';
   const saveBtn = card.querySelector('.ka-save-btn');
   if (saveBtn) saveBtn.disabled = false;
+  // Clear any previous saved/error message
+  const statusEl = card.querySelector('.ka-card-status');
+  if (statusEl) { statusEl.textContent = ''; statusEl.className = 'ka-card-status status-msg'; }
 }
 
 /** Reset a known-artist card to clean (no unsaved changes) and disable the Save button. */
@@ -1362,7 +1365,8 @@ function _knownArtistCard(ka) {
       <button class="btn btn-sm" onclick="duplicateKnownArtist(this)" title="Create an editable copy of this entry">Duplicate</button>`;
   } else if (!seeded) {
     actions = ifEditor(`<button class="btn btn-sm ka-save-btn" onclick="saveKnownArtistRow(this)" title="Save" disabled>&#10003; Save</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>`);
+        <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>
+        <span class="ka-card-status status-msg"></span>`);
   }
 
   return `<div class="ka-card${seededCls}" data-ka-id="${esc(id)}" data-ka-seeded="${seeded}">
@@ -1525,7 +1529,7 @@ async function saveKnownArtistRow(btn) {
   const tr = btn.closest('.ka-card');
   const id = tr.dataset.kaId;
   const body = _readKaRow(tr);
-  const statusEl = document.getElementById('known-artists-status');
+  const statusEl = tr.querySelector('.ka-card-status');
 
   // Warn about duplicate match patterns among user-defined entries
   const dupName = _findDuplicateKaMatch(tr);
@@ -1542,31 +1546,29 @@ async function saveKnownArtistRow(btn) {
       tr.dataset.kaId = result.id;
     }
     _markKaClean(tr);
-    if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+    if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'ka-card-status status-msg success'; }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'ka-card-status status-msg error'; }
   }
 }
 
 async function deleteKnownArtist(btn) {
   const tr = btn.closest('.ka-card');
   const id = tr.dataset.kaId;
-  const statusEl = document.getElementById('known-artists-status');
+  const statusEl = tr.querySelector('.ka-card-status');
   if (!id) { tr.remove(); return; }
   if (!confirm('Delete this known artist entry?')) return;
   try {
     await api('DELETE', `/known-artists/${id}`);
     tr.remove();
-    if (statusEl) { statusEl.textContent = '\u2713 Deleted'; statusEl.className = 'status-msg success'; }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'ka-card-status status-msg error'; }
   }
 }
 
 async function duplicateKnownArtist(btn) {
   const card = btn.closest('.ka-card');
   const id = card.dataset.kaId;
-  const statusEl = document.getElementById('known-artists-status');
   if (!id) return;
   try {
     const copy = await api('POST', `/known-artists/${id}/duplicate`);
@@ -1577,9 +1579,11 @@ async function duplicateKnownArtist(btn) {
     _updateKaPreview(newCard);
     _updateKaCompanyState(newCard);
     newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    if (statusEl) { statusEl.textContent = '\u2713 Editable copy created'; statusEl.className = 'status-msg success'; }
+    const newStatusEl = newCard.querySelector('.ka-card-status');
+    if (newStatusEl) { newStatusEl.textContent = '\u2713 Editable copy created'; newStatusEl.className = 'ka-card-status status-msg success'; }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+    const globalStatus = document.getElementById('known-artists-status');
+    if (globalStatus) { globalStatus.textContent = `Error: ${e.message}`; globalStatus.className = 'status-msg error'; }
   }
 }
 
