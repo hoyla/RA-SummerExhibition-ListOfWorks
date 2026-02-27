@@ -4285,11 +4285,11 @@ function _buildDetailTable(a) {
     </tr>`;
   }
 
-  // --- Spreadsheet fields ---
+  // --- Spreadsheet fields (in spreadsheet column order) ---
   const rows = [
-    row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
-    row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
     row('Title',      a.raw_title,      hasOvr ? ar.title      : null, a.title),
+    row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
+    row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
     row('Quals',      a.raw_quals,      hasOvr ? ar.quals      : null, a.quals),
     row('Company',    a.raw_company,    hasOvr ? ar.company    : null, a.company),
     row('Address',    a.raw_address,    hasOvr ? ar.address    : null, a.address),
