@@ -874,6 +874,8 @@ async function renderSettings() {
 
   // Populate Index Name previews now that the DOM is ready
   _refreshAllKaPreviews();
+  // Initialise tri-state checkboxes (must set .indeterminate via JS)
+  _initTriStateCheckboxes(document.getElementById('known-artists-list'));
 
   // Load users table (admin + Cognito only)
   if (canAdmin() && _authMode === 'cognito') _loadUsersTable();
@@ -1064,7 +1066,8 @@ function _kaPreviewIndexName(tr) {
   const v = (cls) => tr.querySelector(cls)?.value?.trim() || '';
   const matchFirst = v('.ka-match-first');
   const matchLast = v('.ka-match-last');
-  const isCompany = tr.querySelector('.ka-company')?.checked || false;
+  const companyCb = tr.querySelector('.ka-company');
+  const isCompany = companyCb ? companyCb.dataset.tristate === 'true' : false;
 
   // Resolve each field: cleared → empty, has value → use it, otherwise → match value
   function resolve(inputCls, matchVal) {
@@ -1151,10 +1154,66 @@ function _refreshAllKaPreviews() {
   });
 }
 
-/** Toggle disabled state on fields irrelevant for companies. */
+/** Toggle disabled state on fields irrelevant for companies and update state text. */
 function _updateKaCompanyState(card) {
-  const isCompany = card.querySelector('.ka-company')?.checked || false;
+  const cb = card.querySelector('.ka-company');
+  const state = cb?.dataset?.tristate || 'null';
+  const isCompany = state === 'true';
   card.classList.toggle('ka-is-company', isCompany);
+  // Update the state hint text next to the checkbox
+  const stateEl = cb?.closest('.ka-card-footer')?.querySelector('.ka-field-state');
+  if (stateEl) {
+    if (state === 'null') {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 preserves normalised value';
+    } else {
+      stateEl.className = 'ka-field-state';
+      stateEl.textContent = '';
+    }
+  }
+}
+
+/**
+ * Cycle a checkbox through three states: indeterminate → checked → unchecked → indeterminate.
+ * Stores the logical state in data-tristate: "null", "true", "false".
+ * Must be called from onclick (prevents default toggle).
+ *
+ * Note: preventDefault() on a checkbox click causes the browser to revert
+ * the visual state after all synchronous handlers complete.  We update the
+ * data attribute synchronously (so downstream handlers in the same onclick
+ * chain read the correct value) and defer the visual apply to a microtask.
+ */
+function _cycleTriState(cb, evt) {
+  if (evt) evt.preventDefault();
+  const cur = cb.dataset.tristate || 'null';
+  let next;
+  if (cur === 'null') next = 'true';
+  else if (cur === 'true') next = 'false';
+  else next = 'null';
+  cb.dataset.tristate = next;
+  setTimeout(() => _applyTriState(cb, next), 0);
+}
+
+/** Apply a tri-state value to a checkbox ("null", "true", or "false"). */
+function _applyTriState(cb, state) {
+  cb.dataset.tristate = state;
+  cb.indeterminate = (state === 'null');
+  cb.checked = (state === 'true');
+}
+
+/** Read tri-state value: true, false, or null. */
+function _readTriState(cb) {
+  const s = cb?.dataset?.tristate;
+  if (s === 'true') return true;
+  if (s === 'false') return false;
+  return null;
+}
+
+/** Initialise all tri-state checkboxes inside a container. */
+function _initTriStateCheckboxes(container) {
+  container.querySelectorAll('[data-tristate]').forEach(cb => {
+    _applyTriState(cb, cb.dataset.tristate);
+  });
 }
 
 /**
@@ -1372,7 +1431,8 @@ function _knownArtistCard(ka) {
         </div>
       </div>
       <div class="ka-card-footer">
-        <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <label class="ka-check-label"><input type="checkbox" class="ka-company" data-tristate="${ka.resolved_is_company === true ? 'true' : (ka.resolved_is_company === false ? 'false' : 'null')}" onclick="_cycleTriState(this, event); _updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_is_company === true ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <span class="ka-field-state ${ka.resolved_is_company == null ? 'ka-state-pass' : ''}">${ka.resolved_is_company == null ? 'No override \u2014 preserves normalised value' : ''}</span>
         <div class="ka-footer-field">
           <label>Company Name</label>
           <input type="text" class="ka-res-company" value="${esc(ka.resolved_company ?? '')}" placeholder="no override" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
@@ -1403,12 +1463,13 @@ function addKnownArtistRow() {
     resolved_artist3_quals: '',
     resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
     resolved_artist3_ra_styled: false,
-    resolved_is_company: false, resolved_company: '', resolved_address: '',
+    resolved_is_company: null, resolved_company: '', resolved_address: '',
     notes: '',
   }));
   // Scroll to and refresh preview for the new card
   const cards = list.querySelectorAll('.ka-card');
   const newest = cards[cards.length - 1];
+  _initTriStateCheckboxes(newest);
   _updateKaPreview(newest);
   _markKaDirty(newest);  // new entry is always unsaved
   newest.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1416,8 +1477,8 @@ function addKnownArtistRow() {
 
 function _readKaRow(tr) {
   const companyEl = tr.querySelector('.ka-company');
-  // Checkbox: checked = true, unchecked = null (don't override).
-  const isCompany = companyEl?.checked ? true : null;
+  // Tri-state: true = is company, false = not company, null = no override.
+  const isCompany = _readTriState(companyEl);
 
   // Resolved fields: three states
   //   clear button active (input disabled) → "" (clear the field)
@@ -1512,6 +1573,7 @@ async function duplicateKnownArtist(btn) {
     // Insert the new editable card right after the seeded one
     card.insertAdjacentHTML('afterend', _knownArtistCard(copy));
     const newCard = card.nextElementSibling;
+    _initTriStateCheckboxes(newCard);
     _updateKaPreview(newCard);
     _updateKaCompanyState(newCard);
     newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1534,6 +1596,7 @@ async function seedKnownArtists() {
     const list = document.getElementById('known-artists-list');
     list.innerHTML = knownArtists.map(ka => _knownArtistCard(ka)).join('');
     _refreshAllKaPreviews();
+    _initTriStateCheckboxes(list);
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }
@@ -4490,8 +4553,11 @@ function showIndexOverrideForm(importId, artistId, existing) {
       ${safe}</button>`;
   };
 
-  const companyChecked = o.is_company_override === true ? ' checked' : '';
-  const companyIndeterminate = o.is_company_override === null || o.is_company_override === undefined;
+  // Company tri-state: null = no override, true = is company, false = not company
+  const companyTriState = o.is_company_override === true ? 'true' : (o.is_company_override === false ? 'false' : 'null');
+  const companyChecked = companyTriState === 'true' ? ' checked' : '';
+  const companyStateClass = companyTriState === 'null' ? 'ka-state-pass' : '';
+  const companyStateText = companyTriState === 'null' ? 'No override \u2014 uses current value' : '';
 
   // Helper: build an override text field with clear toggle (three states:
   //   null → no override, "" → cleared/blanked, "val" → user value)
@@ -4561,11 +4627,15 @@ function showIndexOverrideForm(importId, artistId, existing) {
           </div>
         </div>
         <div class="ka-card-footer ovr-footer">
-          <label class="ka-check-label">
-            <input type="checkbox" name="is_company_override" ${companyChecked}
-              ${companyIndeterminate ? 'data-indeterminate="1"' : ''}>
-            Company / Partnership
-          </label>
+          <div class="ka-field ka-field-check">
+            <label class="ka-check-label">
+              <input type="checkbox" name="is_company_override" ${companyChecked}
+                data-tristate="${companyTriState}"
+                onclick="_cycleTriState(this, event); _updateIdxOvrCompanyState(this)">
+              Company / Partnership
+            </label>
+            <span class="ka-field-state ${companyStateClass}">${companyStateText}</span>
+          </div>
           <div class="ka-footer-field">
             <label>Company Name</label>
             <input type="text" name="company_override" value="${val('company_override')}" placeholder="Override company name">
@@ -4586,6 +4656,24 @@ function showIndexOverrideForm(importId, artistId, existing) {
         </div>
       </div>
     </div>`;
+
+  // Initialise tri-state checkboxes (must set .indeterminate via JS)
+  _initTriStateCheckboxes(cell);
+}
+
+/** Update the state text next to the company checkbox in the override form. */
+function _updateIdxOvrCompanyState(cb) {
+  const state = cb.dataset.tristate;
+  const stateEl = cb.closest('.ka-field-check')?.querySelector('.ka-field-state');
+  if (stateEl) {
+    if (state === 'null') {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 uses current value';
+    } else {
+      stateEl.className = 'ka-field-state';
+      stateEl.textContent = '';
+    }
+  }
 }
 
 /** Toggle an index override field between "no override" (null) and "cleared" (""). */
@@ -4654,17 +4742,10 @@ async function saveIndexOverride(importId, artistId) {
     }
   }
 
-  // Company checkbox: unchecked + was indeterminate = null (no override)
-  // otherwise true/false
+  // Company checkbox: tri-state (null = no override, true/false = explicit override)
   const companyCb = formEl.querySelector('[name="is_company_override"]');
   if (companyCb) {
-    if (companyCb.dataset.indeterminate === '1' && !companyCb.checked) {
-      body.is_company_override = null;
-    } else {
-      body.is_company_override = companyCb.checked;
-    }
-    // Once user interacts, it's no longer indeterminate
-    delete companyCb.dataset.indeterminate;
+    body.is_company_override = _readTriState(companyCb);
   }
 
   // RA styled checkboxes: same indeterminate logic
