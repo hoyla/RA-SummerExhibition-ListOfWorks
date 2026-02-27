@@ -93,8 +93,8 @@ class TestRenderCatNos:
         result = _render_cat_nos([101, 205, 318], CFG)
         assert result == (
             "<cstyle:Index works numbers>101<cstyle:>"
-            ",<cstyle:Index works numbers> 205<cstyle:>"
-            ",<cstyle:Index works numbers> 318<cstyle:>"
+            ", <cstyle:Index works numbers>205<cstyle:>"
+            ", <cstyle:Index works numbers>318<cstyle:>"
         )
 
     def test_separator_style(self):
@@ -103,7 +103,7 @@ class TestRenderCatNos:
         assert result == (
             "<cstyle:Index works numbers>10<cstyle:>"
             "<cstyle:Sep Style>,<cstyle:>"
-            "<cstyle:Index works numbers> 20<cstyle:>"
+            " <cstyle:Index works numbers>20<cstyle:>"
         )
 
     def test_semicolon_separator(self):
@@ -111,7 +111,7 @@ class TestRenderCatNos:
         result = _render_cat_nos([10, 20], cfg)
         assert result == (
             "<cstyle:Index works numbers>10<cstyle:>"
-            ";<cstyle:Index works numbers> 20<cstyle:>"
+            "; <cstyle:Index works numbers>20<cstyle:>"
         )
 
     def test_empty(self):
@@ -121,11 +121,11 @@ class TestRenderCatNos:
 class TestRenderQuals:
     def test_ra_member(self):
         result = _render_quals("CBE RA", True, CFG)
-        assert result == "<cstyle:RA Caps>cbe ra, <cstyle:>"
+        assert result == "<cstyle:RA Caps>cbe ra<cstyle:>, "
 
     def test_non_ra(self):
         result = _render_quals("OBE", False, CFG)
-        assert result == "<cstyle:Small caps>obe, <cstyle:>"
+        assert result == "<cstyle:Small caps>obe<cstyle:>, "
 
     def test_no_quals(self):
         assert _render_quals(None, False, CFG) == ""
@@ -133,7 +133,7 @@ class TestRenderQuals:
     def test_no_lowercase(self):
         cfg = IndexExportConfig(quals_lowercase=False)
         result = _render_quals("CBE RA", True, cfg)
-        assert result == "<cstyle:RA Caps>CBE RA, <cstyle:>"
+        assert result == "<cstyle:RA Caps>CBE RA<cstyle:>, "
 
 
 class TestRenderNamePart:
@@ -144,17 +144,17 @@ class TestRenderNamePart:
     def test_ra_member(self):
         e = _entry(last_name="Parker", first_name="Cornelia", is_ra=True)
         result = _render_name_part(e, CFG)
-        assert result == "<cstyle:RA Member Cap Surname>Parker, <cstyle:>Cornelia, "
+        assert result == "<cstyle:RA Member Cap Surname>Parker<cstyle:>, Cornelia, "
 
     def test_with_title(self):
         e = _entry(last_name="Adjaye", first_name="David", title="Sir", is_ra=True)
         result = _render_name_part(e, CFG)
-        assert result == "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>Sir David, "
+        assert result == "<cstyle:RA Member Cap Surname>Adjaye<cstyle:>, Sir David, "
 
     def test_single_name_ra(self):
         e = _entry(first_name="Assemble", is_ra=True)
         result = _render_name_part(e, CFG)
-        assert result == "<cstyle:RA Member Cap Surname>Assemble, <cstyle:>"
+        assert result == "<cstyle:RA Member Cap Surname>Assemble<cstyle:>, "
 
     def test_company(self):
         e = _entry(last_name="AKT II", is_company=True)
@@ -165,13 +165,13 @@ class TestRenderNamePart:
         """When quals follow, trailing separator after first name is space not comma."""
         e = _entry(last_name="Parker", first_name="Cornelia", is_ra=True)
         result = _render_name_part(e, CFG, has_quals=True)
-        assert result == "<cstyle:RA Member Cap Surname>Parker, <cstyle:>Cornelia "
+        assert result == "<cstyle:RA Member Cap Surname>Parker<cstyle:>, Cornelia "
 
     def test_has_quals_single_name(self):
         """Single-name entry with quals: surname separator is space not comma."""
         e = _entry(first_name="Assemble", is_ra=True)
         result = _render_name_part(e, CFG, has_quals=True)
-        assert result == "<cstyle:RA Member Cap Surname>Assemble <cstyle:>"
+        assert result == "<cstyle:RA Member Cap Surname>Assemble<cstyle:> "
 
     def test_expert_numbers_enabled(self):
         cfg = IndexExportConfig(expert_numbers_enabled=True)
@@ -199,7 +199,7 @@ class TestRenderNamePart:
         result = _render_name_part(e, CFG)
         assert (
             result
-            == "<cstyle:RA Member Cap Surname>Ackroyd, <cstyle:>The late Prof. Norman, "
+            == "<cstyle:RA Member Cap Surname>Ackroyd<cstyle:>, The late Prof. Norman, "
         )
 
 
@@ -229,7 +229,7 @@ class TestFullRender:
         expected_line = (
             "<pstyle:Index Text>Adams, Roger, "
             "<cstyle:Index works numbers>1266<cstyle:>"
-            ",<cstyle:Index works numbers> 1276<cstyle:>"
+            ", <cstyle:Index works numbers>1276<cstyle:>"
         )
         assert expected_line in result
 
@@ -245,8 +245,8 @@ class TestFullRender:
             )
         ]
         result = render_index_tagged_text(entries, CFG)
-        assert "<cstyle:RA Member Cap Surname>Armfield, <cstyle:>" in result
-        assert "<cstyle:RA Caps>ra, <cstyle:>" in result
+        assert "<cstyle:RA Member Cap Surname>Armfield<cstyle:>, " in result
+        assert "<cstyle:RA Caps>ra<cstyle:>, " in result
         assert "courtesy of Browse and Draby, " in result
         assert "<cstyle:Index works numbers>597<cstyle:>" in result
 
@@ -263,8 +263,8 @@ class TestFullRender:
             )
         ]
         result = render_index_tagged_text(entries, CFG)
-        assert "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>Sir David " in result
-        assert "<cstyle:RA Caps>om obe ra, <cstyle:>" in result
+        assert "<cstyle:RA Member Cap Surname>Adjaye<cstyle:>, Sir David " in result
+        assert "<cstyle:RA Caps>om obe ra<cstyle:>, " in result
         assert "Adjaye Associates, " in result
 
     def test_company_entry(self):
@@ -289,8 +289,8 @@ class TestFullRender:
             )
         ]
         result = render_index_tagged_text(entries, CFG)
-        assert "<cstyle:RA Member Cap Surname>Assemble <cstyle:>" in result
-        assert "<cstyle:RA Caps>ra, <cstyle:>" in result
+        assert "<cstyle:RA Member Cap Surname>Assemble<cstyle:> " in result
+        assert "<cstyle:RA Caps>ra<cstyle:>, " in result
 
     def test_header(self):
         entries = [_entry(last_name="Test", first_name="A", cat_nos=[1])]
@@ -376,15 +376,15 @@ class TestFullRender:
         line = result.split("\r")[1]
         expected = (
             "<pstyle:Index Text>"
-            "<cstyle:RA Member Cap Surname>Ackroyd, <cstyle:>"
+            "<cstyle:RA Member Cap Surname>Ackroyd<cstyle:>, "
             "The late Prof. Norman "
-            "<cstyle:RA Caps>cbe ra, <cstyle:>"
+            "<cstyle:RA Caps>cbe ra<cstyle:>, "
             "<cstyle:Index works numbers>57<cstyle:>"
-            ",<cstyle:Index works numbers> 58<cstyle:>"
-            ",<cstyle:Index works numbers> 59<cstyle:>"
-            ",<cstyle:Index works numbers> 61<cstyle:>"
-            ",<cstyle:Index works numbers> 62<cstyle:>"
-            ",<cstyle:Index works numbers> 63<cstyle:>"
+            ", <cstyle:Index works numbers>58<cstyle:>"
+            ", <cstyle:Index works numbers>59<cstyle:>"
+            ", <cstyle:Index works numbers>61<cstyle:>"
+            ", <cstyle:Index works numbers>62<cstyle:>"
+            ", <cstyle:Index works numbers>63<cstyle:>"
         )
         assert line == expected
 
@@ -405,9 +405,9 @@ class TestFullRender:
         line = result.split("\r")[1]
         expected = (
             "<pstyle:Index Text>"
-            "<cstyle:RA Member Cap Surname>Adjaye, <cstyle:>"
+            "<cstyle:RA Member Cap Surname>Adjaye<cstyle:>, "
             "Sir David "
-            "<cstyle:RA Caps>om obe ra, <cstyle:>"
+            "<cstyle:RA Caps>om obe ra<cstyle:>, "
             "Adjaye Associates, "
             "<cstyle:Index works numbers>124<cstyle:>"
         )
@@ -440,7 +440,7 @@ class TestAdditionalArtistRaStyling:
             "Sauerbruch, Matthias, "
             "and Peter "
             "<cstyle:RA Member Cap Surname>St John<cstyle:> "
-            "<cstyle:RA Caps>ra, <cstyle:>"
+            "<cstyle:RA Caps>ra<cstyle:>, "
             "<cstyle:Index works numbers>42<cstyle:>"
         )
         assert line == expected

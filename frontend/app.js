@@ -2008,11 +2008,13 @@ function _renderIndexEntryExamples(cfg) {
     // 2. Single artist with RA styling
     {
       title: 'Single artist — RA member',
-      desc: 'An RA member. The surname (and its trailing comma-space) is wrapped in the RA surname style; qualifications in the RA caps style.',
+      desc: 'An RA member. The surname is wrapped in the RA surname style; qualifications in the RA caps style. Separators stay outside the style.',
       parts: [
-        styled('Parker, ', 'ra-surname', 'RA surname'),
+        styled('Parker', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Cornelia'),  sep(' '),
-        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        styled('CBE RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('42', 'catno', 'Cat no'),
       ],
     },
@@ -2022,7 +2024,8 @@ function _renderIndexEntryExamples(cfg) {
       desc: 'An artist with qualifications who is not an RA member. Qualifications use the non-RA honorifics style.',
       parts: [
         plain('Chen'),  sep(', '),  plain('Wei'),  sep(' '),
-        styled('OBE, ', 'honorifics', 'Honorifics'),
+        styled('OBE', 'honorifics', 'Honorifics'),
+        sep(', '),
         styled('88', 'catno', 'Cat no'),
       ],
     },
@@ -2031,9 +2034,11 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Single artist — with title',
       desc: 'A titled artist. The title appears between surname and first name.',
       parts: [
-        styled('Rae, ', 'ra-surname', 'RA surname'),
+        styled('Rae', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Dr Barbara'),  sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('205', 'catno', 'Cat no'),
       ],
     },
@@ -2051,8 +2056,10 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Company — RA member',
       desc: 'A company entry with RA membership styling and qualifications.',
       parts: [
-        styled('Adjaye Associates ', 'ra-surname', 'RA surname'),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('Adjaye Associates', 'ra-surname', 'RA surname'),
+        sep(' '),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('77', 'catno', 'Cat no'),
       ],
     },
@@ -2061,9 +2068,11 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Two artists — first is RA member',
       desc: 'A dual-artist entry. Artist 1 has RA styling; Artist 2 does not. They are joined by "and".',
       parts: [
-        styled('Smith, ', 'ra-surname', 'RA surname'),
+        styled('Smith', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Adam'),  sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         plain('and Peter St\u00a0John'),  sep(', '),
         styled('150', 'catno', 'Cat no'),
       ],
@@ -2073,13 +2082,16 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Two artists — both RA members',
       desc: 'Both artists have RA styling and qualifications.',
       parts: [
-        styled('Boyd, ', 'ra-surname', 'RA surname'),
+        styled('Boyd', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Fiona'),  sep(' '),
-        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        styled('CBE RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         plain('and Arthur '),
         styled('Evans', 'ra-surname', 'RA surname'),
         sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('62', 'catno', 'Cat no'),
       ],
     },
@@ -2088,9 +2100,11 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Artist with address (courtesy)',
       desc: 'An artist with an address or courtesy value. This appears after qualifications, before catalogue numbers.',
       parts: [
-        styled('Thompson, ', 'ra-surname', 'RA surname'),
+        styled('Thompson', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Emma'),  sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         plain('courtesy of White Cube'),  sep(', '),
         styled('310', 'catno', 'Cat no'),
       ],
@@ -2098,12 +2112,12 @@ function _renderIndexEntryExamples(cfg) {
     // 10. Multiple catalogue numbers
     {
       title: 'Multiple catalogue numbers',
-      desc: `An entry with several works. Numbers are separated by "${catSep === ',' ? 'comma' : catSep === ';' ? 'semicolon' : 'space'}".`,
+      desc: `An entry with several works. Numbers are separated by "${catSep === ',' ? 'comma' : catSep === ';' ? 'semicolon' : 'space'}". Separators and spaces stay outside the cat number style.`,
       parts: [
         plain('Martinez'),  sep(', '),  plain('Sofia'),  sep(', '),
         styled('14', 'catno', 'Cat no'),
-        sep(catSep), styled('\u2009215', 'catno', 'Cat no'),
-        sep(catSep), styled('\u2009387', 'catno', 'Cat no'),
+        sep(catSep + '\u2009'), styled('215', 'catno', 'Cat no'),
+        sep(catSep + '\u2009'), styled('387', 'catno', 'Cat no'),
       ],
     },
   ];
@@ -4253,7 +4267,8 @@ function _buildEntryPreview(a) {
   const restSep = hasQuals ? ' ' : ', ';
 
   if (a.artist1_ra_styled) {
-    parts.push(raSurname(surname + surnameSep));
+    parts.push(raSurname(surname));
+    parts.push(sep(surnameSep));
   } else {
     parts.push(plain(surname));
     parts.push(sep(surnameSep));
@@ -4271,10 +4286,11 @@ function _buildEntryPreview(a) {
   // --- Quals ---
   if (a.quals) {
     if (a.artist1_ra_styled) {
-      parts.push(raQuals(a.quals + ', '));
+      parts.push(raQuals(a.quals));
     } else {
-      parts.push(honQuals(a.quals + ', '));
+      parts.push(honQuals(a.quals));
     }
+    parts.push(sep(', '));
   }
 
   // --- Additional artists ---
@@ -4288,8 +4304,9 @@ function _buildEntryPreview(a) {
     }
     if (quals) {
       parts.push(sep(' '));
-      if (raStyled) parts.push(raQuals(quals + ', '));
-      else parts.push(honQuals(quals + ', '));
+      if (raStyled) parts.push(raQuals(quals));
+      else parts.push(honQuals(quals));
+      parts.push(sep(', '));
     } else {
       parts.push(sep(', '));
     }
@@ -4332,8 +4349,8 @@ function _buildEntryPreview(a) {
       parts.push(plain(key + ', '));
     }
     nums.forEach((num, i) => {
-      if (i > 0) parts.push(sep(','));
-      parts.push(catNo(i > 0 ? '\u2009' + num : String(num)));
+      if (i > 0) parts.push(sep(', '));
+      parts.push(catNo(String(num)));
     });
     firstGroup = false;
   }
