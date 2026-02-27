@@ -4227,6 +4227,121 @@ function _valClass(prev, curr) {
 }
 
 /**
+ * Build a styled preview of the full index entry as it will appear in export.
+ * Uses the idx-ex-* CSS classes from the Entry Layout Examples for visual
+ * consistency. Shows: Name → Quals → Artist 2 → Artist 3 → Courtesy/Company → Cat Numbers.
+ */
+function _buildEntryPreview(a) {
+  const parts = [];
+
+  // Helper: push a styled segment
+  const plain = (text) => `<span class="idx-ep-plain">${esc(text)}</span>`;
+  const sep   = (text) => `<span class="idx-ep-sep">${esc(text)}</span>`;
+  const raSurname = (text) => `<span class="idx-ep-ra-surname" title="RA surname">${esc(text)}</span>`;
+  const raQuals   = (text) => `<span class="idx-ep-ra-quals" title="RA quals">${esc(text)}</span>`;
+  const honQuals  = (text) => `<span class="idx-ep-honorifics" title="Non-RA honorifics">${esc(text)}</span>`;
+  const catNo     = (text) => `<span class="idx-ep-catno" title="Cat number">${esc(text)}</span>`;
+
+  // --- Name ---
+  const surname = a.last_name || a.first_name || a.company || '';
+  if (!surname) return '<div class="idx-entry-preview muted">(no artist data)</div>';
+
+  const hasQuals = !!a.quals;
+  const hasRest = !a.is_company && a.last_name && a.first_name;
+  // Separator after surname: space if quals follow directly, otherwise comma-space
+  const surnameSep = (hasQuals && !hasRest) ? ' ' : ', ';
+  const restSep = hasQuals ? ' ' : ', ';
+
+  if (a.artist1_ra_styled) {
+    parts.push(raSurname(surname + surnameSep));
+  } else {
+    parts.push(plain(surname));
+    parts.push(sep(surnameSep));
+  }
+
+  // Rest (title + first name)
+  if (hasRest) {
+    const rest = [];
+    if (a.title) rest.push(a.title);
+    rest.push(a.first_name);
+    parts.push(plain(rest.join(' ')));
+    parts.push(sep(restSep));
+  }
+
+  // --- Quals ---
+  if (a.quals) {
+    if (a.artist1_ra_styled) {
+      parts.push(raQuals(a.quals + ', '));
+    } else {
+      parts.push(honQuals(a.quals + ', '));
+    }
+  }
+
+  // --- Additional artists ---
+  function addArtist(first, last, quals, raStyled) {
+    if (!first && !last) return;
+    parts.push(plain('and '));
+    if (first) parts.push(plain(first + ' '));
+    if (last) {
+      if (raStyled) parts.push(raSurname(last));
+      else parts.push(plain(last));
+    }
+    if (quals) {
+      parts.push(sep(' '));
+      if (raStyled) parts.push(raQuals(quals + ', '));
+      else parts.push(honQuals(quals + ', '));
+    } else {
+      parts.push(sep(', '));
+    }
+  }
+  if (!a.is_company) {
+    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled);
+    addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled);
+  }
+
+  // --- Courtesy / Company ---
+  // Group cat numbers by courtesy to build courtesy segments
+  const courtesyGroups = {};
+  for (const cn of (a.cat_numbers || [])) {
+    const key = cn.courtesy || '';
+    if (!courtesyGroups[key]) courtesyGroups[key] = [];
+    courtesyGroups[key].push(cn.cat_no);
+  }
+  const courtesyKeys = Object.keys(courtesyGroups).sort((a, b) => {
+    if (a === '' && b !== '') return -1;
+    if (a !== '' && b === '') return 1;
+    return a.localeCompare(b);
+  });
+
+  // For non-company entries: show company or courtesy before cat numbers
+  if (!a.is_company) {
+    if (a.company && !courtesyKeys.some(k => k)) {
+      parts.push(plain(a.company + ', '));
+    }
+  } else {
+    // Company entry — courtesy still applies if present
+  }
+
+  // --- Cat numbers (grouped by courtesy) ---
+  let firstGroup = true;
+  for (const key of courtesyKeys) {
+    const nums = courtesyGroups[key];
+    // If there's a courtesy value, show it before the numbers
+    if (!firstGroup) parts.push(sep('; '));
+    if (key) {
+      parts.push(plain(key + ', '));
+    }
+    nums.forEach((num, i) => {
+      if (i > 0) parts.push(sep(','));
+      parts.push(catNo(i > 0 ? '\u2009' + num : String(num)));
+    });
+    firstGroup = false;
+  }
+
+  return `<div class="idx-entry-preview"><span class="idx-ep-label">Entry preview</span><span class="idx-ep-line">${parts.join('')}</span></div>`;
+}
+
+/**
  * Build the detail comparison table rows for the artist detail panel.
  * When the artist has an override, shows 4 columns (Field | Spreadsheet | Auto-resolved | Effective).
  * Otherwise shows 3 columns (Field | Spreadsheet | Resolved).
@@ -4429,10 +4544,13 @@ function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
         <div class="index-detail">
           ${hasNorm ? `<div class="norm-reasons"><strong>Normalisation:</strong> ${normReasons.map(r => esc(r)).join(' · ')}</div>` : ''}
           ${_buildDetailTable(a)}
-          <div style="margin-top:8px">
+          <div class="idx-detail-actions">
+            ${_buildEntryPreview(a)}
+            <div class="idx-detail-buttons">
             ${ifEditor(`<button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
               onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>`)}
             ${canEdit() && a.merged_from_rows && a.merged_from_rows.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); unmergeArtist('${esc(importId)}','${esc(a.id)}')" title="Split back into ${a.merged_from_rows.length} separate entries (rows ${a.merged_from_rows.join(', ')})">Unmerge (rows ${a.merged_from_rows.join(', ')})</button>` : ''}
+            </div>
           </div>
           <div id="idx-ovc-${esc(a.id)}"></div>
         </div>
