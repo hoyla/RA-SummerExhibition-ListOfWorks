@@ -246,7 +246,7 @@ app = FastAPI(
     openapi_tags=[
         {
             "name": "imports",
-            "description": "List of Works: upload, list, delete, sections, preview, warnings",
+            "description": "List of Works: upload, reimport, list, delete, sections, preview, warnings, cleanup",
         },
         {
             "name": "overrides",
@@ -254,12 +254,12 @@ app = FastAPI(
         },
         {
             "name": "exports",
-            "description": "List of Works: Tagged Text, JSON, XML, CSV exports",
+            "description": "List of Works: Tagged Text, JSON, XML, CSV exports and export diff",
         },
         {"name": "templates", "description": "List of Works: export template CRUD"},
         {
             "name": "index",
-            "description": "Artists' Index: imports, artists, overrides, warnings, export",
+            "description": "Artists' Index: imports, reimport, artists, overrides, warnings, export, diff, unmerge, templates",
         },
         {
             "name": "known-artists",
@@ -267,7 +267,14 @@ app = FastAPI(
         },
         {"name": "config", "description": "Global normalisation configuration"},
         {"name": "audit", "description": "Audit log for all mutating operations"},
-        {"name": "ops", "description": "Health check and system info"},
+        {
+            "name": "users",
+            "description": "User management (Cognito): list, create, update roles, enable/disable",
+        },
+        {
+            "name": "ops",
+            "description": "Health check, version, auth config, and current user info",
+        },
     ],
 )
 
