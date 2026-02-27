@@ -447,7 +447,7 @@ that was saved, rather than in the global status area.
 
 ### Test count
 
-- 725 tests across 31 test files
+- 730 tests across 31 test files
 
 ---
 
@@ -464,29 +464,22 @@ that was saved, rather than in the global status area.
 
 ## Maintenance backlog
 
-**High**
-
-- **S3 temp-file cleanup**: `S3Storage.full_path()` writes a temporary file
-  with `delete=False`. Convert to a context-managed pattern or enforce cleanup
-  by callers to avoid temp-file accumulation.
-
 **Medium**
 
 - **Price parsing precision**: preserve `Decimal` precision through
   `parse_price()`, rendering, and tests so cents/decimals are never silently
   truncated by float conversion.
 
-- **Alembic migration gating**: automatic `upgrade head` on import can surprise
-  interactive tooling. Consider gating behind `RUN_MIGRATIONS=true` or moving
-  to a startup event.
-
 - **Frontend modularity**: `frontend/app.js` is a single large file (~5070
   lines). Consider splitting into modules or adding a minimal bundler step.
 
 **Low**
 
-- **Tagged Text header consistency**: standardise the ASCII-MAC header emission
-  between the LoW and Index renderers.
+- **Alembic migration gating**: migrations run at module import time
+  (`main.py` line 54). Acceptable for all three environments — Docker
+  Compose (local), ECS Fargate (staging/prod) — since the module is only
+  imported by Uvicorn on container startup. Would only matter if interactive
+  tooling or autogenerate workflows imported `main.py` directly.
 
 - **JWKS caching resilience**: add a TTL or refresh-on-failure strategy for
   Cognito JWKS to handle key rotation without a container restart.

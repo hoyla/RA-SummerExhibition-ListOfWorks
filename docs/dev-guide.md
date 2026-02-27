@@ -32,7 +32,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | `backend/alembic/versions/` | Database migrations (auto-run on startup)             |
 | `backend/seed_templates/`   | Default templates and known artist seed data          |
 | `frontend/`                 | Single-page app (`app.js`, `style.css`, `index.html`) |
-| `tests/`                    | Pytest suite (~725 tests, SQLite in-memory)           |
+| `tests/`                    | Pytest suite (~730 tests, SQLite in-memory)           |
 
 ### Data flow
 
@@ -139,7 +139,7 @@ Tests run against an **in-memory SQLite database** — no Docker required.
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Run all tests (~725)
+# Run all tests (~730)
 python -m pytest tests/ -q
 
 # Run a single test file
