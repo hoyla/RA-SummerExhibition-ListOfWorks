@@ -193,11 +193,36 @@ For artists where `is_ra_member` is `True`:
 - Name rendered without character styles
 - Honorifics (if any) rendered in `honorifics_style`
 
-### Second artist
+### Additional artists
 
-Linked entries (`&`) and multi-name entries render a second artist name
-after the primary. The second artist gets independent RA styling when
-`second_artist_is_ra` is set.
+Index entries can have up to three artists. Additional artists (artist 2,
+artist 3) are rendered after the primary artist's qualifications, each with
+independent RA styling when `artistN_ra_styled` is set.
+
+When there are **two** artists, artist 2 is prefixed with "and":
+
+```
+Sauerbruch, Matthias, and Peter St John, 42
+```
+
+When there are **three** artists, only the **last** gets "and" — the middle
+artist is simply comma-separated (Oxford-comma style):
+
+```
+Eggerling, Gabriele, Dhruv Jadhav, and Hannah Puerta-Carlson, 100
+```
+
+## Character style boundaries
+
+Character styles wrap **only the meaningful value**, never surrounding
+separators (commas, spaces). For example:
+
+```
+<cstyle:RA Surname>Ackroyd<cstyle:>, Norman <cstyle:RA Caps>cbe ra<cstyle:>, <cstyle:CatNo>57<cstyle:>, <cstyle:CatNo>58<cstyle:>
+```
+
+Note: the comma-space after `Ackroyd`, after `cbe ra`, and between catalogue
+numbers are all **outside** the `<cstyle:>` tags.
 
 ## Catalogue numbers
 
