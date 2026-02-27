@@ -292,10 +292,14 @@ def _render_additional_artist(
     quals: Optional[str],
     ra_styled: bool,
     cfg: IndexExportConfig,
+    *,
+    include_and: bool = True,
 ) -> str:
     """Render an additional artist (artist2 or artist3) with styling.
 
     Character styles wrap only the value, not surrounding separators.
+    When *include_and* is False the 'and ' prefix is omitted (used for
+    the non-final artist in a 3-artist entry where commas suffice).
 
     Returns formatted string like:
       'and Peter St John, '
@@ -304,7 +308,7 @@ def _render_additional_artist(
     if not first_name and not last_name:
         return ""
 
-    parts: List[str] = ["and "]
+    parts: List[str] = ["and "] if include_and else []
     if first_name:
         parts.append(first_name + " ")
     surname = last_name or ""
@@ -404,12 +408,17 @@ def render_index_tagged_text(
         line_parts.append(_render_quals(entry.quals, entry.is_ra_member, cfg))
 
         # Additional artists (structured, with per-artist RA styling)
+        # When there are 3 artists, omit "and" before artist 2 so we get
+        # "Surname, First, Second Artist, and Third Artist, ..." instead of
+        # "Surname, First, and Second Artist, and Third Artist, ..."
+        has_artist3 = bool(entry.artist3_first_name or entry.artist3_last_name)
         a2 = _render_additional_artist(
             entry.artist2_first_name,
             entry.artist2_last_name,
             entry.artist2_quals,
             entry.artist2_ra_styled,
             cfg,
+            include_and=not has_artist3,
         )
         if a2:
             line_parts.append(a2)

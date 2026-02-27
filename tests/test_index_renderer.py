@@ -466,6 +466,73 @@ class TestAdditionalArtistRaStyling:
         )
         assert line == expected
 
+    def test_three_artists_omits_first_and(self):
+        """With 3 artists only the last gets 'and'; the second is comma-separated."""
+        entries = [
+            _entry(
+                last_name="Eggerling",
+                first_name="Gabriele",
+                artist2_first_name="Dhruv",
+                artist2_last_name="Jadhav",
+                artist3_first_name="Hannah",
+                artist3_last_name="Puerta-Carlson",
+                cat_nos=[100],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "Eggerling, Gabriele, "
+            "Dhruv Jadhav, "
+            "and Hannah Puerta-Carlson, "
+            "<cstyle:Index works numbers>100<cstyle:>"
+        )
+        assert line == expected
+
+    def test_three_artists_with_ra_styling(self):
+        """With 3 artists and RA styling on artist 3."""
+        entries = [
+            _entry(
+                last_name="Eggerling",
+                first_name="Gabriele",
+                artist2_first_name="Dhruv",
+                artist2_last_name="Jadhav",
+                artist3_first_name="Hannah",
+                artist3_last_name="Puerta-Carlson",
+                artist3_quals="RA",
+                artist3_ra_styled=True,
+                cat_nos=[100],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "Eggerling, Gabriele, "
+            "Dhruv Jadhav, "
+            "and Hannah "
+            "<cstyle:RA Member Cap Surname>Puerta-Carlson<cstyle:> "
+            "<cstyle:RA Caps>ra<cstyle:>, "
+            "<cstyle:Index works numbers>100<cstyle:>"
+        )
+        assert line == expected
+
+    def test_two_artists_still_has_and(self):
+        """With only 2 artists, 'and' is still present before artist 2."""
+        entries = [
+            _entry(
+                last_name="Eggerling",
+                first_name="Gabriele",
+                artist2_first_name="Dhruv",
+                artist2_last_name="Jadhav",
+                cat_nos=[100],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        assert "and Dhruv Jadhav" in line
+
 
 # ---------------------------------------------------------------------------
 # Section separator

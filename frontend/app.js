@@ -4124,9 +4124,10 @@ function styledIndexName(a) {
 
   // Additional artists from structured fields (never for companies)
   const suffixes = [];
-  function _addArtist(first, last, quals, raStyled) {
+  const hasArtist3 = !!(a.artist3_first_name || a.artist3_last_name);
+  function _addArtist(first, last, quals, raStyled, includeAnd) {
     if (!first && !last) return;
-    const parts = ['and'];
+    const parts = includeAnd ? ['and'] : [];
     if (first) parts.push(esc(first));
     if (last) {
       if (raStyled) parts.push(`<span class="idx-ra-styled">${esc(last)}</span>`);
@@ -4140,8 +4141,8 @@ function styledIndexName(a) {
     suffixes.push(suffix);
   }
   if (!a.is_company) {
-    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled);
-    _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled);
+    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasArtist3);
+    _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true);
   }
 
   let result = commaParts.join(', ');
@@ -4294,9 +4295,10 @@ function _buildEntryPreview(a) {
   }
 
   // --- Additional artists ---
-  function addArtist(first, last, quals, raStyled) {
+  const hasA3 = !!(a.artist3_first_name || a.artist3_last_name);
+  function addArtist(first, last, quals, raStyled, includeAnd) {
     if (!first && !last) return;
-    parts.push(plain('and '));
+    if (includeAnd) parts.push(plain('and '));
     if (first) parts.push(plain(first + ' '));
     if (last) {
       if (raStyled) parts.push(raSurname(last));
@@ -4312,8 +4314,8 @@ function _buildEntryPreview(a) {
     }
   }
   if (!a.is_company) {
-    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled);
-    addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled);
+    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasA3);
+    addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true);
   }
 
   // --- Courtesy / Company ---
