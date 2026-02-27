@@ -857,12 +857,13 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:12px">
         <h4 class="panel-subheading" style="margin:0">Known Artists</h4>
-        <div>
+        <div style="display:flex;align-items:center;gap:6px">
           ${ifEditor('<button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>')}
-          ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" style="margin-left:6px" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
-          ${ifAdmin(`<button class="btn btn-sm" onclick="exportKnownArtists()" style="margin-left:6px" title="Download all known artists as a seed-format JSON file">Export JSON</button>`)}
+          ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
+          ${ifAdmin(`<button class="btn btn-sm" onclick="exportKnownArtists()" title="Download all known artists as a seed-format JSON file">Export JSON</button>`)}
+          <span id="known-artists-action-status" class="status-msg"></span>
         </div>
       </div>
       <p class="form-hint" style="margin:0 0 16px">Map recurring raw spreadsheet values to corrected output. Matched during import.</p>
@@ -1588,7 +1589,7 @@ async function duplicateKnownArtist(btn) {
 }
 
 async function seedKnownArtists() {
-  const statusEl = document.getElementById('known-artists-status');
+  const statusEl = document.getElementById('known-artists-action-status');
   try {
     const result = await api('POST', '/known-artists/seed');
     if (statusEl) {
@@ -1607,7 +1608,7 @@ async function seedKnownArtists() {
 }
 
 async function exportKnownArtists() {
-  const statusEl = document.getElementById('known-artists-status');
+  const statusEl = document.getElementById('known-artists-action-status');
   try {
     await _ensureFreshToken();
     const resp = await fetch('/known-artists/export', {
