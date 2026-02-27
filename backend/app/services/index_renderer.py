@@ -204,10 +204,12 @@ def _render_name_part(
 ) -> str:
     """Render the name portion of an index entry.
 
+    Character styles wrap only the value, never separators.
+
     Examples:
     - Simple: 'Adams, Roger, '
-    - RA member: '<cstyle:RA Member Cap Surname>Parker, <cstyle:>Cornelia, '
-    - Single name RA: '<cstyle:RA Member Cap Surname>Assemble, <cstyle:>'
+    - RA member: '<cstyle:RA Member Cap Surname>Parker<cstyle:>, Cornelia, '
+    - Single name RA: '<cstyle:RA Member Cap Surname>Assemble<cstyle:>, '
     - Company: 'AKT II, '
     """
     parts: List[str] = []
@@ -245,9 +247,9 @@ def _render_name_part(
     surname_sep = " " if (has_quals and not rest_parts) else ", "
     rest_sep = " " if has_quals else ", "
 
-    # Apply RA surname styling (uses per-artist flag, not is_ra_member)
+    # Apply RA surname styling — style wraps only the name, not the separator
     if entry.artist1_ra_styled:
-        parts.append(_cstyle(cfg.ra_surname_style, surname_display + surname_sep))
+        parts.append(_cstyle(cfg.ra_surname_style, surname_display) + surname_sep)
     else:
         parts.append(surname_display + surname_sep)
 
@@ -259,14 +261,18 @@ def _render_name_part(
 
 
 def _render_quals(quals: Optional[str], is_ra: bool, cfg: IndexExportConfig) -> str:
-    """Render qualifications with appropriate styling."""
+    """Render qualifications with appropriate styling.
+
+    Character style wraps only the quals text; the trailing ', ' separator
+    is outside the style.
+    """
     if not quals:
         return ""
     display = quals.lower() if cfg.quals_lowercase else quals
     if is_ra:
-        return _cstyle(cfg.ra_caps_style, display + ", ")
+        return _cstyle(cfg.ra_caps_style, display) + ", "
     else:
-        return _cstyle(cfg.honorifics_style, display + ", ")
+        return _cstyle(cfg.honorifics_style, display) + ", "
 
 
 def _render_courtesy(courtesy: Optional[str], company: Optional[str]) -> str:
@@ -286,17 +292,23 @@ def _render_additional_artist(
     quals: Optional[str],
     ra_styled: bool,
     cfg: IndexExportConfig,
+    *,
+    include_and: bool = True,
 ) -> str:
     """Render an additional artist (artist2 or artist3) with styling.
 
+    Character styles wrap only the value, not surrounding separators.
+    When *include_and* is False the 'and ' prefix is omitted (used for
+    the non-final artist in a 3-artist entry where commas suffice).
+
     Returns formatted string like:
       'and Peter St John, '
-      'and <cstyle:RA Member Cap Surname>St John, <cstyle:>Peter cbe ra, '
+      'and <cstyle:RA Member Cap Surname>St John<cstyle:> Peter cbe ra, '
     """
     if not first_name and not last_name:
         return ""
 
-    parts: List[str] = ["and "]
+    parts: List[str] = ["and "] if include_and else []
     if first_name:
         parts.append(first_name + " ")
     surname = last_name or ""
@@ -309,9 +321,9 @@ def _render_additional_artist(
         display_q = quals.lower() if cfg.quals_lowercase else quals
         parts.append(" ")
         if ra_styled:
-            parts.append(_cstyle(cfg.ra_caps_style, display_q + ", "))
+            parts.append(_cstyle(cfg.ra_caps_style, display_q) + ", ")
         else:
-            parts.append(_cstyle(cfg.honorifics_style, display_q + ", "))
+            parts.append(_cstyle(cfg.honorifics_style, display_q) + ", ")
     else:
         parts.append(", ")
 
@@ -338,7 +350,10 @@ def _section_sep(name: str, style: str = "") -> str:
 def _render_cat_nos(cat_nos: List[int], cfg: IndexExportConfig) -> str:
     """Render catalogue numbers, each individually styled.
 
-    Output: '<cstyle:X>101<cstyle:>,<cstyle:X> 205<cstyle:>'
+    Character style wraps only the number itself; separators (comma/space)
+    remain outside the style.
+
+    Output: '<cstyle:X>101<cstyle:>, <cstyle:X>205<cstyle:>'
     """
     if not cat_nos:
         return ""
@@ -351,7 +366,7 @@ def _render_cat_nos(cat_nos: List[int], cfg: IndexExportConfig) -> str:
             parts.append(_cstyle(style, str(num)))
         else:
             styled_sep = _cstyle(sep_style, sep)
-            parts.append(f"{styled_sep}{_cstyle(style, ' ' + str(num))}")
+            parts.append(f"{styled_sep} {_cstyle(style, str(num))}")
     return "".join(parts)
 
 
@@ -393,12 +408,17 @@ def render_index_tagged_text(
         line_parts.append(_render_quals(entry.quals, entry.is_ra_member, cfg))
 
         # Additional artists (structured, with per-artist RA styling)
+        # When there are 3 artists, omit "and" before artist 2 so we get
+        # "Surname, First, Second Artist, and Third Artist, ..." instead of
+        # "Surname, First, and Second Artist, and Third Artist, ..."
+        has_artist3 = bool(entry.artist3_first_name or entry.artist3_last_name)
         a2 = _render_additional_artist(
             entry.artist2_first_name,
             entry.artist2_last_name,
             entry.artist2_quals,
             entry.artist2_ra_styled,
             cfg,
+            include_and=not has_artist3,
         )
         if a2:
             line_parts.append(a2)

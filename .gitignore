@@ -19,3 +19,5 @@ test*.txt
 
 # Environment
 .env
+test_sample_files/.~lock.Index_2024.xlsx\#
+test_sample_files/.~lock.Index 2025.xlsx\#

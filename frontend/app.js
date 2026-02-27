@@ -874,6 +874,8 @@ async function renderSettings() {
 
   // Populate Index Name previews now that the DOM is ready
   _refreshAllKaPreviews();
+  // Initialise tri-state checkboxes (must set .indeterminate via JS)
+  _initTriStateCheckboxes(document.getElementById('known-artists-list'));
 
   // Load users table (admin + Cognito only)
   if (canAdmin() && _authMode === 'cognito') _loadUsersTable();
@@ -1064,7 +1066,8 @@ function _kaPreviewIndexName(tr) {
   const v = (cls) => tr.querySelector(cls)?.value?.trim() || '';
   const matchFirst = v('.ka-match-first');
   const matchLast = v('.ka-match-last');
-  const isCompany = tr.querySelector('.ka-company')?.checked || false;
+  const companyCb = tr.querySelector('.ka-company');
+  const isCompany = companyCb ? companyCb.dataset.tristate === 'true' : false;
 
   // Resolve each field: cleared → empty, has value → use it, otherwise → match value
   function resolve(inputCls, matchVal) {
@@ -1151,10 +1154,66 @@ function _refreshAllKaPreviews() {
   });
 }
 
-/** Toggle disabled state on fields irrelevant for companies. */
+/** Toggle disabled state on fields irrelevant for companies and update state text. */
 function _updateKaCompanyState(card) {
-  const isCompany = card.querySelector('.ka-company')?.checked || false;
+  const cb = card.querySelector('.ka-company');
+  const state = cb?.dataset?.tristate || 'null';
+  const isCompany = state === 'true';
   card.classList.toggle('ka-is-company', isCompany);
+  // Update the state hint text next to the checkbox
+  const stateEl = cb?.closest('.ka-card-footer')?.querySelector('.ka-field-state');
+  if (stateEl) {
+    if (state === 'null') {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 preserves normalised value';
+    } else {
+      stateEl.className = 'ka-field-state';
+      stateEl.textContent = '';
+    }
+  }
+}
+
+/**
+ * Cycle a checkbox through three states: indeterminate → checked → unchecked → indeterminate.
+ * Stores the logical state in data-tristate: "null", "true", "false".
+ * Must be called from onclick (prevents default toggle).
+ *
+ * Note: preventDefault() on a checkbox click causes the browser to revert
+ * the visual state after all synchronous handlers complete.  We update the
+ * data attribute synchronously (so downstream handlers in the same onclick
+ * chain read the correct value) and defer the visual apply to a microtask.
+ */
+function _cycleTriState(cb, evt) {
+  if (evt) evt.preventDefault();
+  const cur = cb.dataset.tristate || 'null';
+  let next;
+  if (cur === 'null') next = 'true';
+  else if (cur === 'true') next = 'false';
+  else next = 'null';
+  cb.dataset.tristate = next;
+  setTimeout(() => _applyTriState(cb, next), 0);
+}
+
+/** Apply a tri-state value to a checkbox ("null", "true", or "false"). */
+function _applyTriState(cb, state) {
+  cb.dataset.tristate = state;
+  cb.indeterminate = (state === 'null');
+  cb.checked = (state === 'true');
+}
+
+/** Read tri-state value: true, false, or null. */
+function _readTriState(cb) {
+  const s = cb?.dataset?.tristate;
+  if (s === 'true') return true;
+  if (s === 'false') return false;
+  return null;
+}
+
+/** Initialise all tri-state checkboxes inside a container. */
+function _initTriStateCheckboxes(container) {
+  container.querySelectorAll('[data-tristate]').forEach(cb => {
+    _applyTriState(cb, cb.dataset.tristate);
+  });
 }
 
 /**
@@ -1225,6 +1284,9 @@ function _markKaDirty(card) {
   card.dataset.kaDirty = 'true';
   const saveBtn = card.querySelector('.ka-save-btn');
   if (saveBtn) saveBtn.disabled = false;
+  // Clear any previous saved/error message
+  const statusEl = card.querySelector('.ka-card-status');
+  if (statusEl) { statusEl.textContent = ''; statusEl.className = 'ka-card-status status-msg'; }
 }
 
 /** Reset a known-artist card to clean (no unsaved changes) and disable the Save button. */
@@ -1303,7 +1365,8 @@ function _knownArtistCard(ka) {
       <button class="btn btn-sm" onclick="duplicateKnownArtist(this)" title="Create an editable copy of this entry">Duplicate</button>`;
   } else if (!seeded) {
     actions = ifEditor(`<button class="btn btn-sm ka-save-btn" onclick="saveKnownArtistRow(this)" title="Save" disabled>&#10003; Save</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>`);
+        <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>
+        <span class="ka-card-status status-msg"></span>`);
   }
 
   return `<div class="ka-card${seededCls}" data-ka-id="${esc(id)}" data-ka-seeded="${seeded}">
@@ -1372,7 +1435,8 @@ function _knownArtistCard(ka) {
         </div>
       </div>
       <div class="ka-card-footer">
-        <label class="ka-check-label"><input type="checkbox" class="ka-company" onchange="_updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_is_company ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <label class="ka-check-label"><input type="checkbox" class="ka-company" data-tristate="${ka.resolved_is_company === true ? 'true' : (ka.resolved_is_company === false ? 'false' : 'null')}" onclick="_cycleTriState(this, event); _updateKaCompanyState(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_is_company === true ? ' checked' : ''}${dis}> Company / Partnership</label>
+        <span class="ka-field-state ${ka.resolved_is_company == null ? 'ka-state-pass' : ''}">${ka.resolved_is_company == null ? 'No override \u2014 preserves normalised value' : ''}</span>
         <div class="ka-footer-field">
           <label>Company Name</label>
           <input type="text" class="ka-res-company" value="${esc(ka.resolved_company ?? '')}" placeholder="no override" oninput="_markKaDirty(this.closest('.ka-card'))"${ro}>
@@ -1403,12 +1467,13 @@ function addKnownArtistRow() {
     resolved_artist3_quals: '',
     resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
     resolved_artist3_ra_styled: false,
-    resolved_is_company: false, resolved_company: '', resolved_address: '',
+    resolved_is_company: null, resolved_company: '', resolved_address: '',
     notes: '',
   }));
   // Scroll to and refresh preview for the new card
   const cards = list.querySelectorAll('.ka-card');
   const newest = cards[cards.length - 1];
+  _initTriStateCheckboxes(newest);
   _updateKaPreview(newest);
   _markKaDirty(newest);  // new entry is always unsaved
   newest.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1416,8 +1481,8 @@ function addKnownArtistRow() {
 
 function _readKaRow(tr) {
   const companyEl = tr.querySelector('.ka-company');
-  // Checkbox: checked = true, unchecked = null (don't override).
-  const isCompany = companyEl?.checked ? true : null;
+  // Tri-state: true = is company, false = not company, null = no override.
+  const isCompany = _readTriState(companyEl);
 
   // Resolved fields: three states
   //   clear button active (input disabled) → "" (clear the field)
@@ -1464,7 +1529,7 @@ async function saveKnownArtistRow(btn) {
   const tr = btn.closest('.ka-card');
   const id = tr.dataset.kaId;
   const body = _readKaRow(tr);
-  const statusEl = document.getElementById('known-artists-status');
+  const statusEl = tr.querySelector('.ka-card-status');
 
   // Warn about duplicate match patterns among user-defined entries
   const dupName = _findDuplicateKaMatch(tr);
@@ -1481,43 +1546,44 @@ async function saveKnownArtistRow(btn) {
       tr.dataset.kaId = result.id;
     }
     _markKaClean(tr);
-    if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+    if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'ka-card-status status-msg success'; }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'ka-card-status status-msg error'; }
   }
 }
 
 async function deleteKnownArtist(btn) {
   const tr = btn.closest('.ka-card');
   const id = tr.dataset.kaId;
-  const statusEl = document.getElementById('known-artists-status');
+  const statusEl = tr.querySelector('.ka-card-status');
   if (!id) { tr.remove(); return; }
   if (!confirm('Delete this known artist entry?')) return;
   try {
     await api('DELETE', `/known-artists/${id}`);
     tr.remove();
-    if (statusEl) { statusEl.textContent = '\u2713 Deleted'; statusEl.className = 'status-msg success'; }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'ka-card-status status-msg error'; }
   }
 }
 
 async function duplicateKnownArtist(btn) {
   const card = btn.closest('.ka-card');
   const id = card.dataset.kaId;
-  const statusEl = document.getElementById('known-artists-status');
   if (!id) return;
   try {
     const copy = await api('POST', `/known-artists/${id}/duplicate`);
     // Insert the new editable card right after the seeded one
     card.insertAdjacentHTML('afterend', _knownArtistCard(copy));
     const newCard = card.nextElementSibling;
+    _initTriStateCheckboxes(newCard);
     _updateKaPreview(newCard);
     _updateKaCompanyState(newCard);
     newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    if (statusEl) { statusEl.textContent = '\u2713 Editable copy created'; statusEl.className = 'status-msg success'; }
+    const newStatusEl = newCard.querySelector('.ka-card-status');
+    if (newStatusEl) { newStatusEl.textContent = '\u2713 Editable copy created'; newStatusEl.className = 'ka-card-status status-msg success'; }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
+    const globalStatus = document.getElementById('known-artists-status');
+    if (globalStatus) { globalStatus.textContent = `Error: ${e.message}`; globalStatus.className = 'status-msg error'; }
   }
 }
 
@@ -1534,6 +1600,7 @@ async function seedKnownArtists() {
     const list = document.getElementById('known-artists-list');
     list.innerHTML = knownArtists.map(ka => _knownArtistCard(ka)).join('');
     _refreshAllKaPreviews();
+    _initTriStateCheckboxes(list);
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }
@@ -1941,11 +2008,13 @@ function _renderIndexEntryExamples(cfg) {
     // 2. Single artist with RA styling
     {
       title: 'Single artist — RA member',
-      desc: 'An RA member. The surname (and its trailing comma-space) is wrapped in the RA surname style; qualifications in the RA caps style.',
+      desc: 'An RA member. The surname is wrapped in the RA surname style; qualifications in the RA caps style. Separators stay outside the style.',
       parts: [
-        styled('Parker, ', 'ra-surname', 'RA surname'),
+        styled('Parker', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Cornelia'),  sep(' '),
-        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        styled('CBE RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('42', 'catno', 'Cat no'),
       ],
     },
@@ -1955,7 +2024,8 @@ function _renderIndexEntryExamples(cfg) {
       desc: 'An artist with qualifications who is not an RA member. Qualifications use the non-RA honorifics style.',
       parts: [
         plain('Chen'),  sep(', '),  plain('Wei'),  sep(' '),
-        styled('OBE, ', 'honorifics', 'Honorifics'),
+        styled('OBE', 'honorifics', 'Honorifics'),
+        sep(', '),
         styled('88', 'catno', 'Cat no'),
       ],
     },
@@ -1964,9 +2034,11 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Single artist — with title',
       desc: 'A titled artist. The title appears between surname and first name.',
       parts: [
-        styled('Rae, ', 'ra-surname', 'RA surname'),
+        styled('Rae', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Dr Barbara'),  sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('205', 'catno', 'Cat no'),
       ],
     },
@@ -1984,8 +2056,10 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Company — RA member',
       desc: 'A company entry with RA membership styling and qualifications.',
       parts: [
-        styled('Adjaye Associates ', 'ra-surname', 'RA surname'),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('Adjaye Associates', 'ra-surname', 'RA surname'),
+        sep(' '),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('77', 'catno', 'Cat no'),
       ],
     },
@@ -1994,9 +2068,11 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Two artists — first is RA member',
       desc: 'A dual-artist entry. Artist 1 has RA styling; Artist 2 does not. They are joined by "and".',
       parts: [
-        styled('Smith, ', 'ra-surname', 'RA surname'),
+        styled('Smith', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Adam'),  sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         plain('and Peter St\u00a0John'),  sep(', '),
         styled('150', 'catno', 'Cat no'),
       ],
@@ -2006,13 +2082,16 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Two artists — both RA members',
       desc: 'Both artists have RA styling and qualifications.',
       parts: [
-        styled('Boyd, ', 'ra-surname', 'RA surname'),
+        styled('Boyd', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Fiona'),  sep(' '),
-        styled('CBE RA, ', 'ra-quals', 'RA quals'),
+        styled('CBE RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         plain('and Arthur '),
         styled('Evans', 'ra-surname', 'RA surname'),
         sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         styled('62', 'catno', 'Cat no'),
       ],
     },
@@ -2021,9 +2100,11 @@ function _renderIndexEntryExamples(cfg) {
       title: 'Artist with address (courtesy)',
       desc: 'An artist with an address or courtesy value. This appears after qualifications, before catalogue numbers.',
       parts: [
-        styled('Thompson, ', 'ra-surname', 'RA surname'),
+        styled('Thompson', 'ra-surname', 'RA surname'),
+        sep(', '),
         plain('Emma'),  sep(' '),
-        styled('RA, ', 'ra-quals', 'RA quals'),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
         plain('courtesy of White Cube'),  sep(', '),
         styled('310', 'catno', 'Cat no'),
       ],
@@ -2031,12 +2112,12 @@ function _renderIndexEntryExamples(cfg) {
     // 10. Multiple catalogue numbers
     {
       title: 'Multiple catalogue numbers',
-      desc: `An entry with several works. Numbers are separated by "${catSep === ',' ? 'comma' : catSep === ';' ? 'semicolon' : 'space'}".`,
+      desc: `An entry with several works. Numbers are separated by "${catSep === ',' ? 'comma' : catSep === ';' ? 'semicolon' : 'space'}". Separators and spaces stay outside the cat number style.`,
       parts: [
         plain('Martinez'),  sep(', '),  plain('Sofia'),  sep(', '),
         styled('14', 'catno', 'Cat no'),
-        sep(catSep), styled('\u2009215', 'catno', 'Cat no'),
-        sep(catSep), styled('\u2009387', 'catno', 'Cat no'),
+        sep(catSep + '\u2009'), styled('215', 'catno', 'Cat no'),
+        sep(catSep + '\u2009'), styled('387', 'catno', 'Cat no'),
       ],
     },
   ];
@@ -4043,9 +4124,10 @@ function styledIndexName(a) {
 
   // Additional artists from structured fields (never for companies)
   const suffixes = [];
-  function _addArtist(first, last, quals, raStyled) {
+  const hasArtist3 = !!(a.artist3_first_name || a.artist3_last_name);
+  function _addArtist(first, last, quals, raStyled, includeAnd) {
     if (!first && !last) return;
-    const parts = ['and'];
+    const parts = includeAnd ? ['and'] : [];
     if (first) parts.push(esc(first));
     if (last) {
       if (raStyled) parts.push(`<span class="idx-ra-styled">${esc(last)}</span>`);
@@ -4059,8 +4141,8 @@ function styledIndexName(a) {
     suffixes.push(suffix);
   }
   if (!a.is_company) {
-    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled);
-    _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled);
+    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasArtist3);
+    _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true);
   }
 
   let result = commaParts.join(', ');
@@ -4160,6 +4242,125 @@ function _valClass(prev, curr) {
 }
 
 /**
+ * Build a styled preview of the full index entry as it will appear in export.
+ * Uses the idx-ex-* CSS classes from the Entry Layout Examples for visual
+ * consistency. Shows: Name → Quals → Artist 2 → Artist 3 → Courtesy/Company → Cat Numbers.
+ */
+function _buildEntryPreview(a) {
+  const parts = [];
+
+  // Helper: push a styled segment
+  const plain = (text) => `<span class="idx-ep-plain">${esc(text)}</span>`;
+  const sep   = (text) => `<span class="idx-ep-sep">${esc(text)}</span>`;
+  const raSurname = (text) => `<span class="idx-ep-ra-surname" title="RA surname">${esc(text)}</span>`;
+  const raQuals   = (text) => `<span class="idx-ep-ra-quals" title="RA quals">${esc(text)}</span>`;
+  const honQuals  = (text) => `<span class="idx-ep-honorifics" title="Non-RA honorifics">${esc(text)}</span>`;
+  const catNo     = (text) => `<span class="idx-ep-catno" title="Cat number">${esc(text)}</span>`;
+
+  // --- Name ---
+  const surname = a.last_name || a.first_name || a.company || '';
+  if (!surname) return '<div class="idx-entry-preview muted">(no artist data)</div>';
+
+  const hasQuals = !!a.quals;
+  const hasRest = !a.is_company && a.last_name && a.first_name;
+  // Separator after surname: space if quals follow directly, otherwise comma-space
+  const surnameSep = (hasQuals && !hasRest) ? ' ' : ', ';
+  const restSep = hasQuals ? ' ' : ', ';
+
+  if (a.artist1_ra_styled) {
+    parts.push(raSurname(surname));
+    parts.push(sep(surnameSep));
+  } else {
+    parts.push(plain(surname));
+    parts.push(sep(surnameSep));
+  }
+
+  // Rest (title + first name)
+  if (hasRest) {
+    const rest = [];
+    if (a.title) rest.push(a.title);
+    rest.push(a.first_name);
+    parts.push(plain(rest.join(' ')));
+    parts.push(sep(restSep));
+  }
+
+  // --- Quals ---
+  if (a.quals) {
+    if (a.artist1_ra_styled) {
+      parts.push(raQuals(a.quals));
+    } else {
+      parts.push(honQuals(a.quals));
+    }
+    parts.push(sep(', '));
+  }
+
+  // --- Additional artists ---
+  const hasA3 = !!(a.artist3_first_name || a.artist3_last_name);
+  function addArtist(first, last, quals, raStyled, includeAnd) {
+    if (!first && !last) return;
+    if (includeAnd) parts.push(plain('and '));
+    if (first) parts.push(plain(first + ' '));
+    if (last) {
+      if (raStyled) parts.push(raSurname(last));
+      else parts.push(plain(last));
+    }
+    if (quals) {
+      parts.push(sep(' '));
+      if (raStyled) parts.push(raQuals(quals));
+      else parts.push(honQuals(quals));
+      parts.push(sep(', '));
+    } else {
+      parts.push(sep(', '));
+    }
+  }
+  if (!a.is_company) {
+    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasA3);
+    addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true);
+  }
+
+  // --- Courtesy / Company ---
+  // Group cat numbers by courtesy to build courtesy segments
+  const courtesyGroups = {};
+  for (const cn of (a.cat_numbers || [])) {
+    const key = cn.courtesy || '';
+    if (!courtesyGroups[key]) courtesyGroups[key] = [];
+    courtesyGroups[key].push(cn.cat_no);
+  }
+  const courtesyKeys = Object.keys(courtesyGroups).sort((a, b) => {
+    if (a === '' && b !== '') return -1;
+    if (a !== '' && b === '') return 1;
+    return a.localeCompare(b);
+  });
+
+  // For non-company entries: show company or courtesy before cat numbers
+  if (!a.is_company) {
+    if (a.company && !courtesyKeys.some(k => k)) {
+      parts.push(plain(a.company + ', '));
+    }
+  } else {
+    // Company entry — courtesy still applies if present
+  }
+
+  // --- Cat numbers (grouped by courtesy) ---
+  let firstGroup = true;
+  for (const key of courtesyKeys) {
+    const nums = courtesyGroups[key];
+    // If there's a courtesy value, show it before the numbers
+    if (!firstGroup) parts.push(sep('; '));
+    if (key) {
+      parts.push(plain(key + ', '));
+    }
+    nums.forEach((num, i) => {
+      if (i > 0) parts.push(sep(', '));
+      parts.push(catNo(String(num)));
+    });
+    firstGroup = false;
+  }
+
+  return `<div class="idx-entry-preview"><span class="idx-ep-label">Entry preview</span><span class="idx-ep-line">${parts.join('')}</span></div>`;
+}
+
+/**
  * Build the detail comparison table rows for the artist detail panel.
  * When the artist has an override, shows 4 columns (Field | Spreadsheet | Auto-resolved | Effective).
  * Otherwise shows 3 columns (Field | Spreadsheet | Resolved).
@@ -4218,11 +4419,11 @@ function _buildDetailTable(a) {
     </tr>`;
   }
 
-  // --- Spreadsheet fields ---
+  // --- Spreadsheet fields (in spreadsheet column order) ---
   const rows = [
-    row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
-    row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
     row('Title',      a.raw_title,      hasOvr ? ar.title      : null, a.title),
+    row('First Name', a.raw_first_name, hasOvr ? ar.first_name : null, a.first_name),
+    row('Last Name',  a.raw_last_name,  hasOvr ? ar.last_name  : null, a.last_name),
     row('Quals',      a.raw_quals,      hasOvr ? ar.quals      : null, a.quals),
     row('Company',    a.raw_company,    hasOvr ? ar.company    : null, a.company),
     row('Address',    a.raw_address,    hasOvr ? ar.address    : null, a.address),
@@ -4362,10 +4563,13 @@ function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
         <div class="index-detail">
           ${hasNorm ? `<div class="norm-reasons"><strong>Normalisation:</strong> ${normReasons.map(r => esc(r)).join(' · ')}</div>` : ''}
           ${_buildDetailTable(a)}
-          <div style="margin-top:8px">
+          <div class="idx-detail-actions">
+            ${_buildEntryPreview(a)}
+            <div class="idx-detail-buttons">
             ${ifEditor(`<button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
               onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>`)}
             ${canEdit() && a.merged_from_rows && a.merged_from_rows.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); unmergeArtist('${esc(importId)}','${esc(a.id)}')" title="Split back into ${a.merged_from_rows.length} separate entries (rows ${a.merged_from_rows.join(', ')})">Unmerge (rows ${a.merged_from_rows.join(', ')})</button>` : ''}
+            </div>
           </div>
           <div id="idx-ovc-${esc(a.id)}"></div>
         </div>
@@ -4490,8 +4694,11 @@ function showIndexOverrideForm(importId, artistId, existing) {
       ${safe}</button>`;
   };
 
-  const companyChecked = o.is_company_override === true ? ' checked' : '';
-  const companyIndeterminate = o.is_company_override === null || o.is_company_override === undefined;
+  // Company tri-state: null = no override, true = is company, false = not company
+  const companyTriState = o.is_company_override === true ? 'true' : (o.is_company_override === false ? 'false' : 'null');
+  const companyChecked = companyTriState === 'true' ? ' checked' : '';
+  const companyStateClass = companyTriState === 'null' ? 'ka-state-pass' : '';
+  const companyStateText = companyTriState === 'null' ? 'No override \u2014 uses current value' : '';
 
   // Helper: build an override text field with clear toggle (three states:
   //   null → no override, "" → cleared/blanked, "val" → user value)
@@ -4561,11 +4768,15 @@ function showIndexOverrideForm(importId, artistId, existing) {
           </div>
         </div>
         <div class="ka-card-footer ovr-footer">
-          <label class="ka-check-label">
-            <input type="checkbox" name="is_company_override" ${companyChecked}
-              ${companyIndeterminate ? 'data-indeterminate="1"' : ''}>
-            Company / Partnership
-          </label>
+          <div class="ka-field ka-field-check">
+            <label class="ka-check-label">
+              <input type="checkbox" name="is_company_override" ${companyChecked}
+                data-tristate="${companyTriState}"
+                onclick="_cycleTriState(this, event); _updateIdxOvrCompanyState(this)">
+              Company / Partnership
+            </label>
+            <span class="ka-field-state ${companyStateClass}">${companyStateText}</span>
+          </div>
           <div class="ka-footer-field">
             <label>Company Name</label>
             <input type="text" name="company_override" value="${val('company_override')}" placeholder="Override company name">
@@ -4586,6 +4797,24 @@ function showIndexOverrideForm(importId, artistId, existing) {
         </div>
       </div>
     </div>`;
+
+  // Initialise tri-state checkboxes (must set .indeterminate via JS)
+  _initTriStateCheckboxes(cell);
+}
+
+/** Update the state text next to the company checkbox in the override form. */
+function _updateIdxOvrCompanyState(cb) {
+  const state = cb.dataset.tristate;
+  const stateEl = cb.closest('.ka-field-check')?.querySelector('.ka-field-state');
+  if (stateEl) {
+    if (state === 'null') {
+      stateEl.className = 'ka-field-state ka-state-pass';
+      stateEl.textContent = 'No override \u2014 uses current value';
+    } else {
+      stateEl.className = 'ka-field-state';
+      stateEl.textContent = '';
+    }
+  }
 }
 
 /** Toggle an index override field between "no override" (null) and "cleared" (""). */
@@ -4654,17 +4883,10 @@ async function saveIndexOverride(importId, artistId) {
     }
   }
 
-  // Company checkbox: unchecked + was indeterminate = null (no override)
-  // otherwise true/false
+  // Company checkbox: tri-state (null = no override, true/false = explicit override)
   const companyCb = formEl.querySelector('[name="is_company_override"]');
   if (companyCb) {
-    if (companyCb.dataset.indeterminate === '1' && !companyCb.checked) {
-      body.is_company_override = null;
-    } else {
-      body.is_company_override = companyCb.checked;
-    }
-    // Once user interacts, it's no longer indeterminate
-    delete companyCb.dataset.indeterminate;
+    body.is_company_override = _readTriState(companyCb);
   }
 
   // RA styled checkboxes: same indeterminate logic

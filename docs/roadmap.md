@@ -395,6 +395,62 @@ contains the Company checkbox, Company Name, Address, Notes, and action buttons.
 
 ---
 
+## Phase 22 – Index rendering correctness & preview ✅
+
+### Character style boundary fix
+
+Character styles in the InDesign Tagged Text export now wrap **only the
+meaningful value**, not surrounding separators. Previously, commas and spaces
+between styled components were incorrectly included inside `<cstyle:>` tags.
+
+Affected styles: RA surname, RA qualifications, catalogue numbers.
+
+Before: `<cstyle:RA Surname>Ackroyd, <cstyle:>`
+After:  `<cstyle:RA Surname>Ackroyd<cstyle:>, `
+
+Applied to: backend renderer, frontend entry preview, Entry Layout Examples.
+
+### Three-artist "and" handling
+
+When an index entry has three artists, only the **last** additional artist
+is prefixed with "and". The middle artist is comma-separated:
+
+Before: `Eggerling, Gabriele, and Dhruv Jadhav, and Hannah Puerta-Carlson`
+After:  `Eggerling, Gabriele, Dhruv Jadhav, and Hannah Puerta-Carlson`
+
+Two-artist entries remain unchanged (`..., and Second Artist`).
+
+### Tri-state Company checkbox
+
+The "Is Company" checkbox on Known Artists and Override forms now supports
+tri-state: null (no override / fall through), true (force company), false
+(force non-company). Visual states: empty = null, checked = true,
+dash = false.
+
+### Entry preview
+
+The index detail panel now includes a styled entry preview showing the full
+rendered line as it would appear in export. Styled segments (RA surname,
+quals, honorifics, cat numbers) are colour-coded with tooltips showing the
+InDesign character style name.
+
+### Detail table field reorder
+
+Index detail table spreadsheet columns reordered to match the actual
+spreadsheet column order: Title → First Name → Last Name → Quals →
+Company → Address.
+
+### Per-card save status
+
+Known Artists "Saved" confirmation messages now appear on the specific card
+that was saved, rather than in the global status area.
+
+### Test count
+
+- 730 tests across 31 test files
+
+---
+
 ## Future considerations
 
 - Advanced title casing rules (LPG eccentricities)
@@ -408,29 +464,22 @@ contains the Company checkbox, Company Name, Address, Notes, and action buttons.
 
 ## Maintenance backlog
 
-**High**
-
-- **S3 temp-file cleanup**: `S3Storage.full_path()` writes a temporary file
-  with `delete=False`. Convert to a context-managed pattern or enforce cleanup
-  by callers to avoid temp-file accumulation.
-
 **Medium**
 
 - **Price parsing precision**: preserve `Decimal` precision through
   `parse_price()`, rendering, and tests so cents/decimals are never silently
   truncated by float conversion.
 
-- **Alembic migration gating**: automatic `upgrade head` on import can surprise
-  interactive tooling. Consider gating behind `RUN_MIGRATIONS=true` or moving
-  to a startup event.
-
-- **Frontend modularity**: `frontend/app.js` is a single large file (~4850
+- **Frontend modularity**: `frontend/app.js` is a single large file (~5070
   lines). Consider splitting into modules or adding a minimal bundler step.
 
 **Low**
 
-- **Tagged Text header consistency**: standardise the ASCII-MAC header emission
-  between the LoW and Index renderers.
+- **Alembic migration gating**: migrations run at module import time
+  (`main.py` line 54). Acceptable for all three environments — Docker
+  Compose (local), ECS Fargate (staging/prod) — since the module is only
+  imported by Uvicorn on container startup. Would only matter if interactive
+  tooling or autogenerate workflows imported `main.py` directly.
 
 - **JWKS caching resilience**: add a TTL or refresh-on-failure strategy for
   Cognito JWKS to handle key rotation without a container restart.
