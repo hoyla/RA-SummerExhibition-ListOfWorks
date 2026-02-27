@@ -1204,6 +1204,8 @@ details.section-block[open] > .section-summary::before {
    ----------------------------------------------------------------------- */
 
 .badge-builtin {
+  display: inline-flex;
+  align-items: center;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1214,6 +1216,7 @@ details.section-block[open] > .section-summary::before {
   color: #1a56a0;
   border: 1px solid #bbd0f5;
   vertical-align: middle;
+  line-height: 1;
 }
 
 .table-actions {
