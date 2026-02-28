@@ -3348,14 +3348,14 @@ function _buildWorkDetailTable(w) {
       return `<tr>
         <td>${esc(label)}</td>
         <td>${_normRawCell(raw, norm)}</td>
-        <td class="${_normCellClass(raw, norm)}">${esc(norm)}</td>
+        <td class="${_valClass(raw, norm)}">${esc(norm)}</td>
         <td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>
       </tr>`;
     }
     return `<tr>
       <td>${esc(label)}</td>
       <td>${_normRawCell(raw, norm)}</td>
-      <td class="${_normCellClass(raw, norm)}">${esc(norm)}</td>
+      <td class="${_valClass(raw, norm)}">${esc(norm)}</td>
     </tr>`;
   }
 
