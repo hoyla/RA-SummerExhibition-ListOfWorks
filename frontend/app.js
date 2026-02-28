@@ -4909,16 +4909,11 @@ function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
     ? `Linked entries (same sort position): ${(sortKeyNames[a.sort_key || ''] || []).join(', ')}` : '';
   const badges = [];
   if (a.is_ra_member) badges.push('<span class="badge badge-ra">RA</span>');
-  const isOverridden = a.is_company !== a.is_company_auto;
-  const overrideClass = isOverridden ? ' badge-overridden' : '';
+  const isCompanyOverridden = a.is_company !== a.is_company_auto;
   if (a.is_company) {
-    badges.push(canEdit()
-      ? `<button class="badge badge-company badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as individual'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',false)">Company</button>`
-      : '<span class="badge badge-company">Company</span>');
-  } else {
-    badges.push(canEdit()
-      ? `<button class="badge badge-company-off badge-toggle${overrideClass}" title="${isOverridden ? 'Overridden — click to revert' : 'Click to mark as company'}" onclick="toggleIndexCompany('${esc(importId)}','${esc(a.id)}',true)">Company?</button>`
-      : '');
+    badges.push(`<span class="badge badge-company${isCompanyOverridden ? ' badge-overridden' : ''}" title="${isCompanyOverridden ? 'Company (manual override)' : 'Company'}">Company</span>`);
+  } else if (isCompanyOverridden) {
+    badges.push(`<span class="badge badge-company-off badge-overridden" title="Not company (manual override)">Not Company</span>`);
   }
 
   // Detect normalisation changes and build human-readable reasons
@@ -5021,26 +5016,6 @@ async function toggleIndexInclude(importId, artistId, checkbox) {
     showToast(`Toggle failed: ${err.message}`, 'error');
   } finally {
     checkbox.disabled = false;
-  }
-}
-
-async function toggleIndexCompany(importId, artistId, newValue) {
-  try {
-    const resp = await api('PATCH', `/index/imports/${importId}/artists/${artistId}/company?is_company=${newValue}`);
-    // Update cache and re-render the row
-    const a = _indexArtistCache[artistId];
-    if (a) {
-      a.is_company = resp.is_company;
-      if (resp.is_company_auto !== undefined) a.is_company_auto = resp.is_company_auto;
-      const row = document.getElementById(`idx-${artistId}`);
-      if (row) {
-        const tmp = document.createElement('tbody');
-        tmp.innerHTML = indexArtistRowHTML(importId, a);
-        row.replaceWith(tmp.firstElementChild);
-      }
-    }
-  } catch (err) {
-    showToast(`Toggle failed: ${err.message}`, 'error');
   }
 }
 
