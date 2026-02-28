@@ -58,6 +58,14 @@ class WorkOut(BaseModel):
     id: str
     position_in_section: int
     raw_cat_no: str | None
+    # Raw layer (verbatim from spreadsheet)
+    raw_title: str | None = None
+    raw_artist: str | None = None
+    raw_price: str | None = None
+    raw_edition: str | None = None
+    raw_artwork: str | None = None
+    raw_medium: str | None = None
+    # Normalised layer
     title: str | None
     artist_name: str | None
     artist_honorifics: str | None

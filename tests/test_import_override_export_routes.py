@@ -56,12 +56,24 @@ def _seed_work(
     edition_price_numeric: float | None = None,
     medium: str | None = None,
     artwork: int | None = None,
+    raw_title: str | None = None,
+    raw_artist: str | None = None,
+    raw_price: str | None = None,
+    raw_edition: str | None = None,
+    raw_artwork: str | None = None,
+    raw_medium: str | None = None,
 ) -> Work:
     w = Work(
         import_id=import_rec.id,
         section_id=section.id,
         position_in_section=position,
         raw_cat_no=raw_cat_no,
+        raw_title=raw_title,
+        raw_artist=raw_artist,
+        raw_price=raw_price,
+        raw_edition=raw_edition,
+        raw_artwork=raw_artwork,
+        raw_medium=raw_medium,
         title=title,
         artist_name=artist_name,
         price_numeric=price_numeric,
@@ -209,6 +221,49 @@ class TestListSections:
         r = client.get(f"/imports/{imp.id}/sections")
         work_data = r.json()[0]["works"][0]
         assert work_data["override"] is None
+
+    def test_works_include_raw_fields_when_set(self, client, db_session):
+        """Raw spreadsheet values are returned alongside normalised values."""
+        imp = _seed_import(db_session)
+        sec = _seed_section(db_session, imp)
+        _seed_work(
+            db_session,
+            imp,
+            sec,
+            title="Sunrise",
+            artist_name="John Smith",
+            raw_title="  Sunrise  ",
+            raw_artist="  John Smith  ",
+            raw_price="£1,000",
+            raw_edition="edition of 10",
+            raw_artwork="2",
+            raw_medium="oil on canvas",
+        )
+
+        r = client.get(f"/imports/{imp.id}/sections")
+        assert r.status_code == 200
+        work_data = r.json()[0]["works"][0]
+        assert work_data["raw_title"] == "  Sunrise  "
+        assert work_data["raw_artist"] == "  John Smith  "
+        assert work_data["raw_price"] == "£1,000"
+        assert work_data["raw_edition"] == "edition of 10"
+        assert work_data["raw_artwork"] == "2"
+        assert work_data["raw_medium"] == "oil on canvas"
+
+    def test_works_raw_fields_are_null_when_not_set(self, client, db_session):
+        """Raw fields default to null when not populated."""
+        imp = _seed_import(db_session)
+        sec = _seed_section(db_session, imp)
+        _seed_work(db_session, imp, sec)
+
+        r = client.get(f"/imports/{imp.id}/sections")
+        work_data = r.json()[0]["works"][0]
+        assert work_data["raw_title"] is None
+        assert work_data["raw_artist"] is None
+        assert work_data["raw_price"] is None
+        assert work_data["raw_edition"] is None
+        assert work_data["raw_artwork"] is None
+        assert work_data["raw_medium"] is None
 
 
 # =========================================================================== #

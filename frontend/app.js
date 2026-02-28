@@ -1114,6 +1114,17 @@ async function renderSettings() {
           </label>
         </div>
       </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+      <div class="settings-form">
+        <div class="form-row">
+          <label>Artwork column</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" id="disp-show-artwork"${dispCfg.show_artwork_column ? ' checked' : ''}>
+            Show &ldquo;Artwork&rdquo; column in the List of Works
+          </label>
+          <span class="form-hint">The field remains editable in the override form regardless of this setting.</span>
+        </div>
+      </div>
       <div class="form-actions" style="margin-top:12px">
         <button class="btn btn-primary btn-sm" onclick="savePreviewSettings()">Save Preview Settings</button>
         <span id="preview-settings-status" class="status-msg"></span>
@@ -1176,6 +1187,7 @@ function savePreviewSettings() {
       Number(document.getElementById('disp-decimal-places')?.value ?? '0'),
       (document.getElementById('disp-edition-prefix')?.value ?? '').trim() || 'edition of',
       document.getElementById('disp-edition-brackets')?.checked ?? true,
+      document.getElementById('disp-show-artwork')?.checked ?? true,
     );
     if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
   } catch (e) {
@@ -2949,15 +2961,16 @@ function _getDisplayCfg() {
       decimal_places:      d.decimal_places      ?? 0,
       edition_prefix:      d.edition_prefix      ?? 'edition of',
       edition_brackets:    d.edition_brackets    ?? true,
+      show_artwork_column: d.show_artwork_column  ?? false,
     };
   } catch {
-    return { currency_symbol: '\u00a3', thousands_separator: ',', decimal_places: 0, edition_prefix: 'edition of', edition_brackets: true };
+    return { currency_symbol: '\u00a3', thousands_separator: ',', decimal_places: 0, edition_prefix: 'edition of', edition_brackets: true, show_artwork_column: false };
   }
 }
 
-function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets) {
+function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets, show_artwork_column) {
   localStorage.setItem('ra_display_cfg', JSON.stringify(
-    { currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets }
+    { currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets, show_artwork_column }
   ));
 }
 
@@ -2967,6 +2980,7 @@ function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, e
 
 let _expandedWorkId = null;
 let _workCache = {}; // workId -> work object, populated when sections render
+let _currentLowImportId = null; // set when a LoW detail page is rendered
 
 /** Restore override button text when closing the form. */
 function _restoreOverrideBtn(btn) {
@@ -3093,10 +3107,18 @@ async function renderDetail(importId) {
 // ---------------------------------------------------------------------------
 let _warningsAll = [];
 let _hiddenWarningTypes = new Set();
+let _warningsByWorkId = {}; // workId -> ValidationWarning[]
 
 function renderWarningsPanel(warnings) {
   _warningsAll = warnings;
   _hiddenWarningTypes = new Set();
+  // Build per-work lookup for inline display in the expanded detail panel
+  _warningsByWorkId = {};
+  for (const w of warnings) {
+    if (w.work_id) {
+      (_warningsByWorkId[w.work_id] = _warningsByWorkId[w.work_id] || []).push(w);
+    }
+  }
   _buildWarningsPanel();
 }
 
@@ -3216,6 +3238,10 @@ function scrollToWork(workId) {
   void row.offsetWidth;
   row.classList.add('row-highlight');
   setTimeout(() => row.classList.remove('row-highlight'), 2500);
+  // Auto-open the detail panel if not already expanded for this work
+  if (_currentLowImportId && _expandedWorkId !== workId) {
+    toggleOverrideForm(_currentLowImportId, workId);
+  }
 }
 
 function _applyWorksFilter(query, countEl, totalWorks) {
@@ -3253,6 +3279,7 @@ function _applyWorksFilter(query, countEl, totalWorks) {
 }
 
 function renderSections(importId, sections, cfg) {
+  _currentLowImportId = importId;
   const container = document.getElementById('sections-container');
   if (!sections.length) {
     container.innerHTML = '<p class="muted">No sections found.</p>';
@@ -3290,16 +3317,150 @@ function renderSections(importId, sections, cfg) {
           <th>Title</th>
           <th>Price</th>
           <th>Edition</th>
-          <th>Artwork</th>
+          ${cfg.show_artwork_column ? '<th>Artwork</th>' : ''}
           <th>Medium</th>
           <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
-          <th class="col-actions">Override</th>
         </tr></thead>
         <tbody id="tbody-${esc(section.id)}">
           ${section.works.map(w => workRowHTML(importId, w, cfg)).join('')}
         </tbody>
       </table>
     </details>`).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Work detail panel (raw / normalised / override table)
+// ---------------------------------------------------------------------------
+
+function _buildWorkDetailTable(w) {
+  const hasOvr = !!w.override;
+  const o = w.override || {};
+
+  const thead = hasOvr
+    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th><th>Override</th></tr></thead>'
+    : '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th></tr></thead>';
+
+  function row(label, rawVal, normVal, ovrVal) {
+    const raw  = rawVal  ?? '';
+    const norm = normVal ?? '';
+    const ovr  = ovrVal  ?? '';
+    if (hasOvr) {
+      return `<tr>
+        <td>${esc(label)}</td>
+        <td>${_normRawCell(raw, norm)}</td>
+        <td class="${_normCellClass(raw, norm)}">${esc(norm)}</td>
+        <td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td>${_normRawCell(raw, norm)}</td>
+      <td class="${_normCellClass(raw, norm)}">${esc(norm)}</td>
+    </tr>`;
+  }
+
+  function derivedRow(label, normVal, ovrVal) {
+    const norm = normVal ?? '';
+    const ovr  = ovrVal  ?? '';
+    if (hasOvr) {
+      return `<tr>
+        <td>${esc(label)}</td>
+        <td class="muted">&mdash;</td>
+        <td>${esc(norm)}</td>
+        <td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td class="muted">&mdash;</td>
+      <td>${esc(norm)}</td>
+    </tr>`;
+  }
+
+  // Price: prefer price_text for display; fall back to numeric
+  const normPrice = w.price_text ?? (w.price_numeric != null ? String(w.price_numeric) : '');
+  const ovrPrice  = o.price_text_override ?? (o.price_numeric_override != null ? String(o.price_numeric_override) : '');
+
+  // Edition: combine total + price into one readable string
+  const normEd = [w.edition_total ? String(w.edition_total) : '', w.edition_price_numeric ? `at ${w.edition_price_numeric}` : ''].filter(Boolean).join(' ');
+  const ovrEd  = [o.edition_total_override ? String(o.edition_total_override) : '', o.edition_price_numeric_override ? `at ${o.edition_price_numeric_override}` : ''].filter(Boolean).join(' ');
+
+  const rows = [
+    row('Artist',    w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
+    derivedRow('Honorifics',        w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
+    row('Title',     w.raw_title,   w.title ?? '',        o.title_override ?? ''),
+    row('Price',     w.raw_price,   normPrice,            ovrPrice),
+    row('Edition',   w.raw_edition, normEd,               ovrEd),
+    row('Artwork',   w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
+    row('Medium',    w.raw_medium,  w.medium ?? '',       o.medium_override ?? ''),
+  ];
+
+  // Notes — override-only field; only show when set
+  if (hasOvr && o.notes) {
+    rows.push(`<tr><td>Notes</td><td class="muted">&mdash;</td><td class="muted">&mdash;</td><td>${esc(o.notes)}</td></tr>`);
+  }
+
+  return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
+}
+
+function _workWarningsBadges(workId) {
+  const warns = _warningsByWorkId[workId];
+  if (!warns || !warns.length) return '';
+  const badges = warns.map(w => {
+    const isChanged = _LOW_CHANGED_TYPES.has(w.warning_type);
+    const cls = isChanged ? 'badge badge-info' : 'badge badge-warning';
+    return `<span class="${cls}" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
+  }).join(' ');
+  return `<div class="norm-reasons"><strong>Warnings:</strong> ${badges}</div>`;
+}
+
+function _showWorkDetailPanel(importId, workId) {
+  const w = _workCache[workId];
+  if (!w) return;
+  const cell = document.getElementById(`ovc-${workId}`);
+  if (!cell) return;
+  const hasOvr = !!w.override;
+  cell.innerHTML = `
+    <div class="work-detail">
+      ${_workWarningsBadges(workId)}
+      ${_buildWorkDetailTable(w)}
+      <div class="work-detail-actions">
+        ${ifEditor(`<button class="btn btn-sm ${hasOvr ? 'btn-warning' : ''}" id="wk-ov-btn-${esc(workId)}"
+          onclick="event.stopPropagation(); toggleWorkOverrideForm('${esc(importId)}','${esc(workId)}')">
+          ${hasOvr ? 'Edit Override \u270e' : 'Override\u2026'}</button>`)}
+        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); toggleOverrideForm('${esc(importId)}','${esc(workId)}')">Close &#x2715;</button>
+      </div>
+      <div id="wk-ovc-${esc(workId)}"></div>
+    </div>`;
+}
+
+async function toggleWorkOverrideForm(importId, workId) {
+  const cell = document.getElementById(`wk-ovc-${workId}`);
+  if (!cell) return;
+
+  // Toggle off if already showing
+  if (cell.innerHTML.trim()) {
+    cell.innerHTML = '';
+    const btn = document.getElementById(`wk-ov-btn-${workId}`);
+    if (btn) {
+      const w = _workCache[workId];
+      const hasOvr = !!w?.override;
+      btn.textContent = hasOvr ? 'Edit Override \u270e' : 'Override\u2026';
+      btn.className = `btn btn-sm ${hasOvr ? 'btn-warning' : ''}`;
+    }
+    return;
+  }
+
+  let existing = null;
+  try {
+    existing = await api('GET', `/imports/${importId}/works/${workId}/override`);
+  } catch (err) {
+    if (err.httpStatus !== 404) {
+      cell.innerHTML = `<p class="error" style="padding:12px">${esc(err.message)}</p>`;
+      return;
+    }
+  }
+  showOverrideForm(importId, workId, existing);
 }
 
 function workRowHTML(importId, w, cfg) {
@@ -3336,30 +3497,24 @@ function workRowHTML(importId, w, cfg) {
     editionDisplay = brackets ? `(${inner})` : inner;
   }
 
-  const ovBtnClass = hasOverride ? 'btn-warning' : 'btn-secondary';
-  const ovBtnLabel = hasOverride ? 'Edit \u270e' : 'Edit';
-
   return `
-    <tr id="wr-${esc(w.id)}" class="work-row ${included ? '' : 'row-excluded'}">
+    <tr id="wr-${esc(w.id)}" class="work-row ${included ? '' : 'row-excluded'}" style="cursor:pointer"
+      onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">
       <td class="col-no">${esc(w.raw_cat_no ?? '')}</td>
       <td class="${hasOverride && o?.artist_name_override ? 'cell-overridden' : ''}">${esc(eff.artist_name ?? '')}${honorifics}</td>
       <td class="${hasOverride && o?.title_override ? 'cell-overridden' : ''}">${esc(eff.title ?? '')}</td>
       <td class="${hasOverride && (o?.price_numeric_override || o?.price_text_override) ? 'cell-overridden' : ''}">${esc(priceDisplay)}</td>
       <td class="${hasOverride && (o?.edition_total_override || o?.edition_price_numeric_override) ? 'cell-overridden' : ''}">${esc(editionDisplay)}</td>
-      <td class="${hasOverride && o?.artwork_override ? 'cell-overridden' : ''}">${w.artwork != null ? esc(String(w.artwork)) : ''}</td>
+      ${cfg.show_artwork_column ? `<td class="${hasOverride && o?.artwork_override ? 'cell-overridden' : ''}">${w.artwork != null ? esc(String(w.artwork)) : ''}</td>` : ''}
       <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
-      <td class="col-include">
+      <td class="col-include" onclick="event.stopPropagation()">
         ${canEdit() ? `<input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="incl-${esc(w.id)}"
           ${included ? 'checked' : ''}
           onchange="toggleInclude('${esc(importId)}','${esc(w.id)}',this)">` : (included ? '\u2713' : '\u2717')}
       </td>
-      <td class="col-actions">
-        ${ifEditor(`<button id="ov-btn-${esc(w.id)}" class="btn btn-xs ${ovBtnClass}" data-has-override="${hasOverride ? '1' : ''}"
-          onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">${ovBtnLabel}</button>`)}
-      </td>
     </tr>
     <tr id="ovr-${esc(w.id)}" class="override-form-row" style="display:none">
-      <td colspan="9" id="ovc-${esc(w.id)}"></td>
+      <td colspan="${cfg.show_artwork_column ? 8 : 7}" id="ovc-${esc(w.id)}"></td>
     </tr>`;
 }
 
@@ -3388,43 +3543,28 @@ async function toggleInclude(importId, workId, checkbox) {
 // Override form
 // ---------------------------------------------------------------------------
 
-async function toggleOverrideForm(importId, workId) {
+function toggleOverrideForm(importId, workId) {
   const formRow = document.getElementById(`ovr-${workId}`);
-  const btn     = document.getElementById(`ov-btn-${workId}`);
 
   // If this row is already open, close it
   if (_expandedWorkId === workId) {
     formRow.style.display = 'none';
-    _restoreOverrideBtn(btn);
+    document.getElementById(`ovc-${workId}`).innerHTML = '';
     _expandedWorkId = null;
     return;
   }
 
-  // Close any other open override form
+  // Close any other open panel
   if (_expandedWorkId) {
-    const prev    = document.getElementById(`ovr-${_expandedWorkId}`);
-    const prevBtn = document.getElementById(`ov-btn-${_expandedWorkId}`);
-    if (prev)    prev.style.display = 'none';
-    _restoreOverrideBtn(prevBtn);
+    const prev = document.getElementById(`ovr-${_expandedWorkId}`);
+    if (prev) prev.style.display = 'none';
+    const prevCell = document.getElementById(`ovc-${_expandedWorkId}`);
+    if (prevCell) prevCell.innerHTML = '';
   }
 
   _expandedWorkId = workId;
-  btn.textContent = 'Close';
-  btn.className = 'btn btn-xs btn-secondary';
   formRow.style.display = '';
-  document.getElementById(`ovc-${workId}`).innerHTML = '<p class="loading" style="padding:12px">Loading\u2026</p>';
-
-  let existing = null;
-  try {
-    existing = await api('GET', `/imports/${importId}/works/${workId}/override`);
-  } catch (err) {
-    if (err.httpStatus !== 404) {
-      document.getElementById(`ovc-${workId}`).innerHTML = `<p class="error" style="padding:12px">${esc(err.message)}</p>`;
-      return;
-    }
-    // 404 = no override yet, existing stays null
-  }
-  showOverrideForm(importId, workId, existing);
+  _showWorkDetailPanel(importId, workId);
 }
 
 function showOverrideForm(importId, workId, existing) {
@@ -3458,10 +3598,14 @@ function showOverrideForm(importId, workId, existing) {
       ${safe.replace(/\n/g, ' \u23ce ')}</button>`;
   };
 
-  const cell = document.getElementById(`ovc-${workId}`);
+  const cell = document.getElementById(`wk-ovc-${workId}`);
+  if (!cell) return;
   cell.innerHTML = `
-    <div class="override-form">
-      <h5>Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
+    <div class="override-form" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
+        <h5 style="margin:0">Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
+        <button type="button" class="btn btn-xs btn-secondary" style="flex-shrink:0;margin-left:16px" onclick="event.stopPropagation(); toggleWorkOverrideForm('${esc(importId)}','${esc(workId)}')">Close &#x2715;</button>
+      </div>
       <div class="override-field-form" id="ovf-${esc(workId)}">
         <div class="low-ovr-grid ovr-grid">
           <div class="ka-section">
@@ -3559,12 +3703,10 @@ async function saveOverride(importId, workId) {
     // Update cache so the form re-renders with normalised hints intact
     if (_workCache[workId]) _workCache[workId].override = result;
     _refreshWorkRow(importId, workId);
+    _showWorkDetailPanel(importId, workId);
     showOverrideForm(importId, workId, result);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Saved'; s.className = 'status-msg success'; }
-    // Mark the row button — form stays open so show Close, but flag the override
-    const btn = document.getElementById(`ov-btn-${workId}`);
-    if (btn) { btn.textContent = 'Close'; btn.className = 'btn btn-xs btn-warning'; btn.dataset.hasOverride = '1'; }
   } catch (err) {
     statusEl.textContent = `Error: ${err.message}`;
     statusEl.className = 'status-msg error';
@@ -3579,12 +3721,8 @@ async function deleteOverride(importId, workId) {
     // Remove from cache
     if (_workCache[workId]) _workCache[workId].override = null;
     _refreshWorkRow(importId, workId);
-    showOverrideForm(importId, workId, null);
-    const s = document.getElementById(`ovs-${workId}`);
-    if (s) { s.textContent = '\u2713 Override deleted'; s.className = 'status-msg success'; }
-    // Restore the row button to plain Edit (override removed)
-    const btn = document.getElementById(`ov-btn-${workId}`);
-    if (btn) { btn.textContent = 'Close'; btn.className = 'btn btn-xs btn-secondary'; btn.dataset.hasOverride = ''; }
+    _showWorkDetailPanel(importId, workId);
+    showToast('Override deleted', 'success');
   } catch (err) {
     if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.className = 'status-msg error'; }
   }
@@ -4002,6 +4140,7 @@ async function handleIndexReimport(importId, file) {
 // ---------------------------------------------------------------------------
 
 let _indexArtistCache = {};  // artistId -> artist object
+let _currentIndexImportId = null; // set when an index detail page is rendered
 
 async function renderIndexDetail(importId) {
   _indexArtistCache = {};
@@ -4258,9 +4397,15 @@ function scrollToIndexArtist(artistId) {
   void row.offsetWidth;
   row.classList.add('row-highlight');
   setTimeout(() => row.classList.remove('row-highlight'), 2500);
+  // Auto-open the detail panel if not already expanded
+  const detailRow = document.getElementById(`idx-detail-${artistId}`);
+  if (detailRow && detailRow.style.display === 'none') {
+    toggleIndexDetail(artistId);
+  }
 }
 
 function renderIndexArtists(importId, artists) {
+  _currentIndexImportId = importId;
   const container = document.getElementById('index-artists-container');
   if (!artists.length) {
     container.innerHTML = '<p class="muted">No artists found.</p>';

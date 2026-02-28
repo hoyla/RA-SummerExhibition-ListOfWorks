@@ -679,6 +679,57 @@ details.section-block[open] > .section-summary::before {
 
 .override-form-row td { padding: 0; background: #fafcff; }
 
+/* ------------------------------------------------------------------ */
+/* Work detail panel (raw / normalised / override table)              */
+/* ------------------------------------------------------------------ */
+
+.work-detail {
+  padding: 14px 20px 12px;
+  border-top: 2px solid #c7d8f5;
+  background: #fafcff;
+}
+
+.work-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.detail-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #5070a0;
+  padding: 4px 8px 6px;
+  border-bottom: 2px solid #c7d8f5;
+}
+
+.detail-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #eef0f4;
+  vertical-align: top;
+}
+
+.detail-table tr:last-child td {
+  border-bottom: none;
+}
+
+.detail-table td:first-child {
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+  width: 90px;
+}
+
 .override-form {
   border-top: 2px solid #c7d8f5;
   padding: 16px 20px 12px;
