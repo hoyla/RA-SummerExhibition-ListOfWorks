@@ -18,8 +18,8 @@ products:
 | ---------- | --------------------------------------------------- |
 | Backend    | Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic       |
 | Database   | PostgreSQL 16 (Docker local, RDS in staging/prod)   |
-| Frontend   | Vanilla JS SPA (`frontend/app.js` ~5 500 lines)     |
-| Testing    | pytest (~769 tests), SQLite in-memory                |
+| Frontend   | Vanilla JS SPA (`frontend/app.js` ~5 700 lines)     |
+| Testing    | pytest (~775 tests), SQLite in-memory                |
 | Deployment | Docker Compose (local), ECS Fargate (staging/prod)  |
 | Auth       | AWS Cognito (JWT) / API key; disabled locally        |
 
@@ -108,7 +108,7 @@ PostgreSQL and the container's upload volume.
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q       # full suite (~769 tests)
+python -m pytest tests/ -q       # full suite (~775 tests)
 python -m pytest tests/ -x -q    # stop on first failure
 ```
 
@@ -138,6 +138,7 @@ also needs updating (and vice versa).
 | LoW warning type not showing in UI               | Update `_LOW_WARNING_LABELS` map and `_LOW_CHANGED_TYPES` set in `app.js`                                                 |
 | LoW detail panel shows stale data                | `_workCache` is populated in `renderSections` — always refresh via `_showWorkDetailPanel` after override save/delete       |
 | LoW warning badges missing from detail panel     | `_warningsByWorkId` is populated in `renderWarningsPanel` — must be called before sections render                         |
+| LoW Flags column badge not appearing             | Check `workRowHTML()` flags array — badges come from client-side detection (Trimmed, Norm, RA) and server-side warnings   |
 | `.env` has `API_KEY=value`                       | Clear to `API_KEY=` for no-auth mode locally                                                                              |
 
 ## Validation warnings
@@ -150,7 +151,9 @@ Two categories displayed with distinct badge colours:
   `multi_artist_name_suspected`, `ra_styling_ambiguous`, `non_ascii_characters`)
 
 Warning types are free-text strings in the `ValidationWarning` table — no
-enum or migration needed to add new types.
+enum or migration needed to add new types. Both LoW and Index emit
+`whitespace_trimmed` as a per-work / per-import warning when fields have
+leading/trailing whitespace stripped.
 
 ## Seed templates
 

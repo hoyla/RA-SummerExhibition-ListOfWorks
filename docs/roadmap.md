@@ -471,6 +471,53 @@ response despite the data existing in the database.
 
 ---
 
+## Phase 23 – LoW Flags column, whitespace detection & Compare navigation ✅
+
+### LoW Flags column
+
+Replaced the per-row Include toggle with a **Flags column** showing visual
+badges for each work: Override, RA (honorific detected), Norm (value changes),
+Trimmed (whitespace-only changes), and validation warning badges. Badges come
+from both client-side detection and server-side warnings. The Include/Exclude
+toggle moved into the work detail panel.
+
+Excluded works are now displayed with dimmed styling (reduced opacity,
+line-through text) and a red ✕ marker on the catalogue number.
+
+### Whitespace trimming detection
+
+Fixed whitespace detection in both LoW and Index: the comparison logic was
+trimming both raw and normalised values before comparing, which hid
+whitespace-only differences. Now compares untrimmed values first.
+
+Index `_normReasons()` expanded to check all six spreadsheet fields
+(Title, First Name, Last Name, Quals, Company, Address) — was only checking
+Last Name, First Name, and Quals.
+
+Work detail panel now shows a normalisation explanation listing exactly which
+fields were changed and why (whitespace trimming, value changes, honorific
+extraction).
+
+### LoW `whitespace_trimmed` validation warning
+
+Added `whitespace_trimmed` as a per-work validation warning in
+`collect_work_warnings()`. Checks Title, Artist, and Medium for
+whitespace-only differences between raw and normalised values. This matches
+the existing Index-level `whitespace_trimmed` warning for consistency.
+
+### Compare page navigation
+
+Artist and work names in the Compare table are now clickable navigation links
+that open the corresponding LoW or Index detail page. Links use URL hash
+parameters (`?scrollWork=`, `?scrollArtist=`) so Cmd+click / Ctrl+click
+opens in a new tab.
+
+### Test count
+
+- 775 tests across 31 test files
+
+---
+
 ## Future considerations
 
 - Advanced title casing rules (LPG eccentricities)
@@ -490,7 +537,7 @@ response despite the data existing in the database.
   `parse_price()`, rendering, and tests so cents/decimals are never silently
   truncated by float conversion.
 
-- **Frontend modularity**: `frontend/app.js` is a single large file (~5070
+- **Frontend modularity**: `frontend/app.js` is a single large file (~5700
   lines). Consider splitting into modules or adding a minimal bundler step.
 
 **Low**

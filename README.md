@@ -22,6 +22,7 @@ Supports two data products:
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
 - Configurable normalisation config (honorific token list)
 - Validation warnings for unparseable values
+- Whitespace trimming detection with per-work warnings
 - Editorial overrides per work (title, artist, price, edition, artwork, medium, notes)
 - Export templates: named, versioned configs stored in the database
 - Configurable export component order, separators, balance-lines, and character styles
@@ -44,6 +45,7 @@ Supports two data products:
 - Section separator between letter groups (paragraph, column break, etc.)
 - Per-letter collapsible preview with individual letter export
 - Validation warnings with filterable badge summary
+- Compare page with clickable navigation links to LoW/Index detail pages
 
 ### Shared
 
@@ -153,7 +155,7 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (722 tests across 29 test files)
+tests/            # pytest suite (775 tests across 31 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/

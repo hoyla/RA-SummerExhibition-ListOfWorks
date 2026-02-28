@@ -181,3 +181,53 @@ def test_warning_message_includes_raw_value():
     warnings = collect_work_warnings(work)
     messages = [w[1] for w in warnings]
     assert any("ENQUIRE" in m for m in messages)
+
+
+# ---------------------------------------------------------------------------
+# whitespace_trimmed
+# ---------------------------------------------------------------------------
+
+
+def test_warns_whitespace_trimmed_for_title():
+    work = make_work(raw_title="  Test Title  ", title="Test Title")
+    types = [w[0] for w in collect_work_warnings(work)]
+    assert "whitespace_trimmed" in types
+
+
+def test_warns_whitespace_trimmed_for_artist():
+    work = make_work(raw_artist=" Test Artist ", artist_name="Test Artist")
+    types = [w[0] for w in collect_work_warnings(work)]
+    assert "whitespace_trimmed" in types
+
+
+def test_warns_whitespace_trimmed_for_medium():
+    work = make_work(raw_medium="  Oil on canvas ", medium="Oil on canvas")
+    types = [w[0] for w in collect_work_warnings(work)]
+    assert "whitespace_trimmed" in types
+
+
+def test_no_whitespace_trimmed_when_raw_matches_normalised():
+    work = make_work(raw_title="Test Title", title="Test Title")
+    types = [w[0] for w in collect_work_warnings(work)]
+    assert "whitespace_trimmed" not in types
+
+
+def test_whitespace_trimmed_message_lists_fields():
+    work = make_work(
+        raw_title="  Test Title ",
+        title="Test Title",
+        raw_artist="  Test Artist",
+        artist_name="Test Artist",
+    )
+    warnings = collect_work_warnings(work)
+    msgs = {t: m for t, m in warnings}
+    msg = msgs.get("whitespace_trimmed", "")
+    assert "Title" in msg
+    assert "Artist" in msg
+
+
+def test_no_whitespace_trimmed_when_value_actually_changed():
+    """If raw != norm and it's not just whitespace, should NOT be whitespace_trimmed."""
+    work = make_work(raw_title="Old Title", title="New Title")
+    types = [w[0] for w in collect_work_warnings(work)]
+    assert "whitespace_trimmed" not in types

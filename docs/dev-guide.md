@@ -19,7 +19,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | -------- | -------------------------------------------------- |
 | Backend  | Python 3.12, FastAPI, SQLAlchemy, Alembic          |
 | Database | PostgreSQL 16 (Docker), SQLite (tests)             |
-| Frontend | Vanilla JS SPA (`frontend/app.js`, ~5500 lines)    |
+| Frontend | Vanilla JS SPA (`frontend/app.js`, ~5700 lines)    |
 | Infra    | Docker Compose (local), ECS Fargate (staging/prod) |
 
 ### Key directories
@@ -32,7 +32,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | `backend/alembic/versions/` | Database migrations (auto-run on startup)             |
 | `backend/seed_templates/`   | Default templates and known artist seed data          |
 | `frontend/`                 | Single-page app (`app.js`, `style.css`, `index.html`) |
-| `tests/`                    | Pytest suite (~769 tests, SQLite in-memory)           |
+| `tests/`                    | Pytest suite (~775 tests, SQLite in-memory)           |
 
 ### Data flow
 
@@ -59,8 +59,10 @@ badge colours:
 
 **Changed (blue `badge-info`)** — normalisation engine modified data:
 
-- `whitespace_trimmed`, `multi_artist_name_changed`, `quals_extracted`,
-  `ra_member_detected`, `possible_company`, `duplicate_name_merged`
+- `whitespace_trimmed` (emitted by both LoW and Index importers),
+  `multi_artist_name_changed`, `quals_extracted`,
+  `ra_member_detected`, `possible_company`, `duplicate_name_merged`,
+  `zero_edition_suppressed` (LoW only)
 
 **Suspected (amber `badge-warning`)** — may need human review:
 
@@ -91,6 +93,13 @@ and automatically opens its detail panel.
 | Override    | After manual override (only shown when overrides exist)            |
 
 Per-work validation warning badges (amber/blue) are shown above the table.
+A normalisation explanation lists exactly which fields were changed and why
+(whitespace trimming, value changes, honorific extraction).
+The Include/Exclude toggle is in the detail panel actions row.
+
+The LoW table also has a **Flags column** showing per-work badges:
+Override, RA (honorific detected), Norm (value changes), Trimmed
+(whitespace-only changes), and validation warning badges.
 
 #### Artists Index (artist row)
 
@@ -155,7 +164,7 @@ Tests run against an **in-memory SQLite database** — no Docker required.
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Run all tests (~730)
+# Run all tests (~775)
 python -m pytest tests/ -q
 
 # Run a single test file
@@ -372,4 +381,6 @@ If an endpoint returns 500 with no log output:
 | `docker compose down -v` deleted my test data    | Only use `-v` when you want a fresh start                                                                                                 |
 | Staging not updating after push                  | Check the GitHub Actions run completed successfully                                                                                       |
 | Tests all fail with 401/403                      | `.env` has `API_KEY=some-value` — clear it to `API_KEY=` for no-auth mode                                                                 |
-| Warning type not showing in UI                   | Warning types are free-text — no migration needed. Check the label map `_IDX_WARNING_LABELS` in `app.js` and the `_IDX_CHANGED_TYPES` set |
+| LoW warning type not showing in UI               | Check the label map `_LOW_WARNING_LABELS` and the `_LOW_CHANGED_TYPES` set in `app.js`                                                    |
+| Index warning type not showing in UI             | Check the label map `_IDX_WARNING_LABELS` and the `_IDX_CHANGED_TYPES` set in `app.js`                                                    |
+| LoW Flags column badge not appearing             | Check `workRowHTML()` flags array — badges come from client-side detection (Trimmed, Norm, RA) and server-side warnings                    |

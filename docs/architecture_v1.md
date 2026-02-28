@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (769 tests across 31 test files) |
+| Testing    | pytest (775 tests across 31 test files) |
 
 ---
 
@@ -98,6 +98,29 @@ issue is suspected.
 
 - `import_id` (FK), `work_id` (FK, nullable), `warning_type` (Text), `message` (Text)
 - Indexed on `import_id` and `work_id`
+
+#### LoW warning types
+
+"Changed" warnings (normalisation engine modified data):
+
+| Type                        | Trigger                                                        |
+| --------------------------- | -------------------------------------------------------------- |
+| `whitespace_trimmed`        | Leading/trailing whitespace removed from fields                |
+| `zero_edition_suppressed`   | Edition was explicitly of 0 (suppressed in export)             |
+
+"Suspected" warnings (may need human review):
+
+| Type                        | Trigger                                                        |
+| --------------------------- | -------------------------------------------------------------- |
+| `missing_title`             | Work has no title after normalisation                          |
+| `missing_artist`            | Work has no artist name after normalisation                    |
+| `missing_price`             | Price is blank or placeholder                                  |
+| `unrecognised_price`        | Raw price present but could not be parsed                      |
+| `edition_anomaly`           | Raw edition present but could not be parsed                    |
+| `non_ascii_characters`      | Normalised fields contain chars outside ASCII-128              |
+| `duplicate_filename`        | A previous import with the same filename exists                |
+| `empty_spreadsheet`         | Column headers present but no data rows                        |
+| `missing_column`            | An optional column is absent from the spreadsheet              |
 
 #### Index warning types
 
@@ -685,15 +708,22 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 
 - Import list with upload and delete
 - Section browser with collapsible sections and per-section export
-- Works table (work number, artist, title, price, edition, artwork, medium, include flag)
+- Works table (work number, artist, title, price, edition, artwork, medium, flags)
   - Artwork column hidden by default; toggle via Preview > Settings
+  - **Flags column** shows per-work badges: Override, RA (honorific detected),
+    Norm (value changes), Trimmed (whitespace-only changes), and validation
+    warning badges. Badges wrap when the column is narrow.
   - Click any work row to expand an inline detail panel
 - **Work detail panel** (expanded row):
   - Three-column table: Spreadsheet (raw) | Normalised | Override
   - Grey = value unchanged from previous column; **bold black** = changed
   - Whitespace differences shown with a visible `·` marker in the Spreadsheet column
+  - Normalisation explanation: lists exactly which fields were changed and why
+    (whitespace trimming, value changes, honorific extraction)
   - Per-work validation warning badges (amber/blue) above the table
+  - Include/Exclude toggle button in the actions row
   - Override form revealed as a sub-panel via an "Override…" button
+  - Excluded works: dimmed with line-through and a red ✕ marker on the cat number
 - Validation warnings panel per import (filterable badge summary by warning type)
   - Clicking a warning link scrolls to the row **and** auto-opens its detail panel
 - Export buttons (full import and per-section) with template selector
@@ -707,6 +737,14 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 - Linked / multi-name entry indicators with enriched flag styling
 - Per-letter export buttons on each letter group heading
 - Warning type filter for targeted review
+
+### Compare page
+
+- Side-by-side comparison of LoW and Index imports
+- Artist and work names in the Compare table are clickable navigation links
+  to the corresponding LoW or Index detail page
+- Links use URL hash parameters (`?scrollWork=`, `?scrollArtist=`) so
+  Cmd+click / Ctrl+click opens in a new tab
 
 ### Shared
 
