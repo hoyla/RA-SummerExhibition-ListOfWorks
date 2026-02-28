@@ -94,20 +94,24 @@ def build_index_name(
     artist3_quals: Optional[str],
     is_company: bool,
 ) -> str:
-    """Build the composite index name as it would appear in the printed index.
+    """Build the composite index name from resolved fields.
 
     Quals follow the name with a space (no comma), matching the LoW
     convention for honorifics.  Additional artists are appended with
     ", and ..." connectors.
 
+    Quals are preserved in their original case — lowercasing for export
+    is handled by the renderer (controlled by ``quals_lowercase`` in the
+    index template).
+
     Examples:
       Adams, Roger
-      Parker, Cornelia cbe ra
-      Adjaye, Sir David om obe ra
+      Parker, Cornelia CBE RA
+      Adjaye, Sir David OM OBE RA
       Boyd & Evans
-      Assemble ra
-      Caruso, Adam ra, and Peter St John
-      Caruso, Adam ra, and Peter St John cbe
+      Assemble RA
+      Caruso, Adam RA, and Peter St John
+      Caruso, Adam RA, and Peter St John CBE
     """
     surname = last_name or first_name or ""
     if not surname:
@@ -126,7 +130,7 @@ def build_index_name(
 
     # Quals follow with a space (no comma)
     if quals:
-        name += " " + quals.lower()
+        name += " " + quals
 
     # Second artist suffix (never for companies)
     if not is_company:
@@ -160,7 +164,7 @@ def _format_additional_artist(
         return None
     result = " ".join(parts)
     if quals:
-        result += " " + quals.lower()
+        result += " " + quals
     return result
 
 
