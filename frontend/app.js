@@ -539,7 +539,6 @@ function esc(v) {
 
 const _CMP_ALL_LEVELS = ['exact','equivalent','partial_title','partial_honorific','partial_ra','partial_name','none','missing'];
 let _compareState = { entries: [], hiddenLevels: new Set(), lowImportId: null, idxImportId: null };
-let _pendingScroll = null; // { type: 'work'|'index-artist', id: string }
 
 async function renderCompare() {
   _compareState = { entries: [], hiddenLevels: new Set(), lowImportId: null, idxImportId: null };
@@ -734,7 +733,7 @@ function _renderCompareTable() {
     if (e.low_artist_name != null) {
       const lowText = esc(e.low_artist_name) + (e.low_artist_honorifics ? ` <span class="muted">${esc(e.low_artist_honorifics)}</span>` : '');
       if (e.low_work_id && _compareState.lowImportId) {
-        lowName = `<a href="#/import/${esc(_compareState.lowImportId)}" class="cmp-nav-link" onclick="_navigateToWork(event,'${esc(e.low_work_id)}')" title="View in List of Works">${lowText}</a>`;
+        lowName = `<a href="#/import/${esc(_compareState.lowImportId)}?scrollWork=${encodeURIComponent(e.low_work_id)}" class="cmp-nav-link" title="View in List of Works">${lowText}</a>`;
       } else {
         lowName = lowText;
       }
@@ -762,7 +761,7 @@ function _renderCompareTable() {
         idxText = esc(e.index_name);
       }
       if (e.index_artist_id && _compareState.idxImportId) {
-        idxName = `<a href="#/index/${esc(_compareState.idxImportId)}" class="cmp-nav-link" onclick="_navigateToIndexArtist(event,'${esc(e.index_artist_id)}')" title="View in Artists Index">${idxText}</a>`;
+        idxName = `<a href="#/index/${esc(_compareState.idxImportId)}?scrollArtist=${encodeURIComponent(e.index_artist_id)}" class="cmp-nav-link" title="View in Artists Index">${idxText}</a>`;
       } else {
         idxName = idxText;
       }
@@ -820,16 +819,9 @@ function _formatDifference(diff) {
   return diff.replace(/_/g, ' ');
 }
 
-function _navigateToWork(event, workId) {
-  event.preventDefault();
-  _pendingScroll = { type: 'work', id: workId };
-  location.hash = event.currentTarget.getAttribute('href');
-}
-
-function _navigateToIndexArtist(event, artistId) {
-  event.preventDefault();
-  _pendingScroll = { type: 'index-artist', id: artistId };
-  location.hash = event.currentTarget.getAttribute('href');
+function _hashParam(name) {
+  const m = location.hash.match(new RegExp('[?&]' + name + '=([^&]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
 }
 
 function _matchLevelLabel(level) {
@@ -866,8 +858,8 @@ function router() {
   _syncHeader();
   _highlightNav();
   const hash = location.hash || '#/';
-  const importMatch = hash.match(/^#\/import\/([^/]+)/);
-  const indexDetailMatch = hash.match(/^#\/index\/([^/]+)/);
+  const importMatch = hash.match(/^#\/import\/([^/?]+)/);
+  const indexDetailMatch = hash.match(/^#\/index\/([^/?]+)/);
   const tmplEditMatch = hash.match(/^#\/templates\/([^/]+)\/edit$/);
   const idxTmplEditMatch = hash.match(/^#\/index-templates\/([^/]+)\/edit$/);
   if (importMatch)             renderDetail(importMatch[1]);
@@ -3138,11 +3130,10 @@ async function renderDetail(importId) {
   renderSections(importId, sections, cfg);
   renderAuditPanel(auditLogs);
 
-  // Execute pending scroll from Compare page navigation
-  if (_pendingScroll && _pendingScroll.type === 'work') {
-    const wid = _pendingScroll.id;
-    _pendingScroll = null;
-    requestAnimationFrame(() => scrollToWork(wid));
+  // Scroll to a specific work if requested via hash parameter
+  const scrollWorkId = _hashParam('scrollWork');
+  if (scrollWorkId) {
+    requestAnimationFrame(() => scrollToWork(scrollWorkId));
   }
 }
 
@@ -4292,11 +4283,10 @@ async function renderIndexDetail(importId) {
   renderIndexArtists(importId, artists);
   renderIndexAuditPanel(auditLogs);
 
-  // Execute pending scroll from Compare page navigation
-  if (_pendingScroll && _pendingScroll.type === 'index-artist') {
-    const aid = _pendingScroll.id;
-    _pendingScroll = null;
-    requestAnimationFrame(() => scrollToIndexArtist(aid));
+  // Scroll to a specific artist if requested via hash parameter
+  const scrollArtistId = _hashParam('scrollArtist');
+  if (scrollArtistId) {
+    requestAnimationFrame(() => scrollToIndexArtist(scrollArtistId));
   }
 }
 
