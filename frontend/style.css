@@ -1756,9 +1756,22 @@ details.section-block[open] > .section-summary::before {
   border: 1px solid var(--border);
   background: #f4f4f4;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 }
 .cmp-filter-btn.active { border-color: #333; background: #fff; font-weight: 600; }
+
+/* Greyed-out state when a level is hidden */
+.cmp-filter-btn.badge-muted {
+  background: #f5f5f5 !important;
+  color: #aaa !important;
+  border-color: #ccc !important;
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.cmp-filter-btn.badge-muted:hover {
+  background: #eaeaea !important;
+  opacity: 0.8;
+}
 .cmp-count {
   font-variant-numeric: tabular-nums;
   margin-left: 3px;

@@ -537,10 +537,11 @@ function esc(v) {
 // Compare — cross-dataset comparison
 // ---------------------------------------------------------------------------
 
-let _compareState = { entries: [], filter: 'all' };
+const _CMP_ALL_LEVELS = ['exact','equivalent','partial_title','partial_honorific','partial_ra','partial_name','none','missing'];
+let _compareState = { entries: [], hiddenLevels: new Set() };
 
 async function renderCompare() {
-  _compareState = { entries: [], filter: 'all' };
+  _compareState = { entries: [], hiddenLevels: new Set() };
   document.getElementById('app').innerHTML = `
     <h2 class="page-heading">Compare LoW &harr; Index</h2>
     <section class="panel">
@@ -602,7 +603,7 @@ async function _runComparison() {
   try {
     const result = await api('POST', `/compare?low_import_id=${lowId}&index_import_id=${idxId}`);
     _compareState.entries = result.entries;
-    _compareState.filter = 'all';
+    _compareState.hiddenLevels = new Set();
     _renderCompareResult(result);
   } catch (err) {
     container.innerHTML = `<p class="error">${esc(err.message)}</p>`;
@@ -642,17 +643,7 @@ function _renderCompareResult(result) {
       </div>
       <div class="cmp-match-bar" style="margin-top:12px">
         <h4 style="margin:0 0 6px">Match breakdown (shared cat numbers)</h4>
-        <div class="cmp-filter-btns">
-          <button class="btn btn-sm cmp-filter-btn active" data-filter="all">All <span class="cmp-count">${s.in_both + s.only_in_low + s.only_in_index}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-exact" data-filter="exact">Exact <span class="cmp-count">${s.match_exact}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-equivalent" data-filter="equivalent">Equivalent <span class="cmp-count">${s.match_equivalent}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_title" data-filter="partial_title">Title <span class="cmp-count">${s.match_partial_title}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_honorific" data-filter="partial_honorific">Honorific <span class="cmp-count">${s.match_partial_honorific}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_ra" data-filter="partial_ra">RA <span class="cmp-count">${s.match_partial_ra}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_name" data-filter="partial_name">Name <span class="cmp-count">${s.match_partial_name}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-none" data-filter="none">None <span class="cmp-count">${s.match_none}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-missing" data-filter="missing">Missing <span class="cmp-count">${s.only_in_low + s.only_in_index}</span></button>
-        </div>
+        <div class="cmp-filter-btns">${_cmpFilterChipsHtml(s)}</div>
       </div>
     </section>
     <section class="panel" style="margin-top:16px">
@@ -660,32 +651,73 @@ function _renderCompareResult(result) {
       <div id="cmp-table-wrap"></div>
     </section>`;
 
-  // Wire up filter buttons
+  _wireCompareFilterChips(container);
+  _renderCompareTable();
+}
+
+/* Build filter-chip HTML from summary counts */
+function _cmpFilterChipsHtml(s) {
+  const chips = [
+    ['exact',             'Exact',     s.match_exact],
+    ['equivalent',        'Equivalent',s.match_equivalent],
+    ['partial_title',     'Title',     s.match_partial_title],
+    ['partial_honorific', 'Honorific', s.match_partial_honorific],
+    ['partial_ra',        'RA',        s.match_partial_ra],
+    ['partial_name',      'Name',      s.match_partial_name],
+    ['none',              'None',      s.match_none],
+    ['missing',           'Missing',   s.only_in_low + s.only_in_index],
+  ];
+  return chips.map(([level, label, n]) => {
+    const muted = _compareState.hiddenLevels.has(level);
+    return `<button type="button" class="btn btn-sm cmp-filter-btn cmp-badge-${level}${muted ? ' badge-muted' : ''}" data-level="${level}" title="${muted ? 'Click: show' : 'Click: hide'} \u00b7 Alt+click: show this only">${esc(label)} <span class="cmp-count">${n}</span></button>`;
+  }).join('');
+}
+
+/* Attach toggle / solo handlers to compare filter chips */
+function _wireCompareFilterChips(container) {
   container.querySelectorAll('.cmp-filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      container.querySelectorAll('.cmp-filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      _compareState.filter = btn.dataset.filter;
+    btn.addEventListener('click', (e) => {
+      const level = btn.dataset.level;
+      if (e.altKey) {
+        // Solo / unsolo
+        const visible = _CMP_ALL_LEVELS.filter(l => !_compareState.hiddenLevels.has(l));
+        if (visible.length === 1 && visible[0] === level) {
+          _compareState.hiddenLevels = new Set();          // unsolo — show all
+        } else {
+          _compareState.hiddenLevels = new Set(_CMP_ALL_LEVELS.filter(l => l !== level));
+        }
+      } else {
+        if (_compareState.hiddenLevels.has(level)) {
+          _compareState.hiddenLevels.delete(level);
+        } else {
+          _compareState.hiddenLevels.add(level);
+        }
+      }
+      _refreshCompareChips(container);
       _renderCompareTable();
     });
   });
+}
 
-  _renderCompareTable();
+/* Refresh chip visual state without full re-render */
+function _refreshCompareChips(container) {
+  container.querySelectorAll('.cmp-filter-btn').forEach(btn => {
+    const muted = _compareState.hiddenLevels.has(btn.dataset.level);
+    btn.classList.toggle('badge-muted', muted);
+    btn.title = (muted ? 'Click: show' : 'Click: hide') + ' \u00b7 Alt+click: show this only';
+  });
 }
 
 function _renderCompareTable() {
   const wrap = document.getElementById('cmp-table-wrap');
-  const filter = _compareState.filter;
+  const hidden = _compareState.hiddenLevels;
   let entries = _compareState.entries;
 
-  if (filter === 'missing') {
-    entries = entries.filter(e =>
-      e.low_artist_name == null || e.index_name == null
-    );
-  } else if (filter !== 'all') {
-    entries = entries.filter(e => e.match_level === filter
-      && e.low_artist_name != null && e.index_name != null);
-  }
+  entries = entries.filter(e => {
+    const isMissing = e.low_artist_name == null || e.index_name == null;
+    if (isMissing) return !hidden.has('missing');
+    return !hidden.has(e.match_level);
+  });
 
   if (!entries.length) {
     wrap.innerHTML = '<p class="muted" style="padding:8px 0">No entries match this filter.</p>';
