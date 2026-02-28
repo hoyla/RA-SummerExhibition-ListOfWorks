@@ -538,10 +538,11 @@ function esc(v) {
 // ---------------------------------------------------------------------------
 
 const _CMP_ALL_LEVELS = ['exact','equivalent','partial_title','partial_honorific','partial_ra','partial_name','none','missing'];
-let _compareState = { entries: [], hiddenLevels: new Set() };
+let _compareState = { entries: [], hiddenLevels: new Set(), lowImportId: null, idxImportId: null };
+let _pendingScroll = null; // { type: 'work'|'index-artist', id: string }
 
 async function renderCompare() {
-  _compareState = { entries: [], hiddenLevels: new Set() };
+  _compareState = { entries: [], hiddenLevels: new Set(), lowImportId: null, idxImportId: null };
   document.getElementById('app').innerHTML = `
     <h2 class="page-heading">Compare LoW &harr; Index</h2>
     <section class="panel">
@@ -604,6 +605,8 @@ async function _runComparison() {
     const result = await api('POST', `/compare?low_import_id=${lowId}&index_import_id=${idxId}`);
     _compareState.entries = result.entries;
     _compareState.hiddenLevels = new Set();
+    _compareState.lowImportId = lowId;
+    _compareState.idxImportId = idxId;
     _renderCompareResult(result);
   } catch (err) {
     container.innerHTML = `<p class="error">${esc(err.message)}</p>`;
@@ -727,28 +730,41 @@ function _renderCompareTable() {
   const rows = entries.map(e => {
     const levelClass = `cmp-level-${e.match_level}`;
     const levelLabel = _matchLevelLabel(e.match_level);
-    const lowName = e.low_artist_name != null
-      ? esc(e.low_artist_name) + (e.low_artist_honorifics ? ` <span class="muted">${esc(e.low_artist_honorifics)}</span>` : '')
-      : '<span class="muted">\u2014 not in LoW</span>';
+    let lowName;
+    if (e.low_artist_name != null) {
+      const lowText = esc(e.low_artist_name) + (e.low_artist_honorifics ? ` <span class="muted">${esc(e.low_artist_honorifics)}</span>` : '');
+      if (e.low_work_id && _compareState.lowImportId) {
+        lowName = `<a href="#/import/${esc(_compareState.lowImportId)}" class="cmp-nav-link" onclick="_navigateToWork(event,'${esc(e.low_work_id)}')" title="View in List of Works">${lowText}</a>`;
+      } else {
+        lowName = lowText;
+      }
+    } else {
+      lowName = '<span class="muted">\u2014 not in LoW</span>';
+    }
 
     let idxName;
     if (e.index_name != null) {
       // index_name is the full composite: "Last, First Quals, and Artist2..."
       // Show the full name; style quals portion if present
+      let idxText;
       if (e.index_quals) {
-        // Highlight quals within the composite name as muted
         const qualsEsc = esc(e.index_quals);
         const nameEsc = esc(e.index_name);
         const qIdx = nameEsc.indexOf(qualsEsc);
         if (qIdx > -1) {
-          idxName = nameEsc.slice(0, qIdx)
+          idxText = nameEsc.slice(0, qIdx)
             + `<span class="muted">${qualsEsc}</span>`
             + nameEsc.slice(qIdx + qualsEsc.length);
         } else {
-          idxName = nameEsc;
+          idxText = nameEsc;
         }
       } else {
-        idxName = esc(e.index_name);
+        idxText = esc(e.index_name);
+      }
+      if (e.index_artist_id && _compareState.idxImportId) {
+        idxName = `<a href="#/index/${esc(_compareState.idxImportId)}" class="cmp-nav-link" onclick="_navigateToIndexArtist(event,'${esc(e.index_artist_id)}')" title="View in Artists Index">${idxText}</a>`;
+      } else {
+        idxName = idxText;
       }
     } else {
       idxName = '<span class="muted">\u2014 not in Index</span>';
@@ -802,6 +818,18 @@ function _formatDifference(diff) {
   const m = diff.match(/^extra_quals_in_(index|low):(.+)$/);
   if (m) return `+${m[2].toUpperCase()} in ${m[1] === 'index' ? 'Index' : 'LoW'}`;
   return diff.replace(/_/g, ' ');
+}
+
+function _navigateToWork(event, workId) {
+  event.preventDefault();
+  _pendingScroll = { type: 'work', id: workId };
+  location.hash = event.currentTarget.getAttribute('href');
+}
+
+function _navigateToIndexArtist(event, artistId) {
+  event.preventDefault();
+  _pendingScroll = { type: 'index-artist', id: artistId };
+  location.hash = event.currentTarget.getAttribute('href');
 }
 
 function _matchLevelLabel(level) {
@@ -3109,6 +3137,13 @@ async function renderDetail(importId) {
   }
   renderSections(importId, sections, cfg);
   renderAuditPanel(auditLogs);
+
+  // Execute pending scroll from Compare page navigation
+  if (_pendingScroll && _pendingScroll.type === 'work') {
+    const wid = _pendingScroll.id;
+    _pendingScroll = null;
+    requestAnimationFrame(() => scrollToWork(wid));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -4256,6 +4291,13 @@ async function renderIndexDetail(importId) {
 
   renderIndexArtists(importId, artists);
   renderIndexAuditPanel(auditLogs);
+
+  // Execute pending scroll from Compare page navigation
+  if (_pendingScroll && _pendingScroll.type === 'index-artist') {
+    const aid = _pendingScroll.id;
+    _pendingScroll = null;
+    requestAnimationFrame(() => scrollToIndexArtist(aid));
+  }
 }
 
 function renderIndexAuditPanel(logs) {

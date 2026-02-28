@@ -1890,5 +1890,7 @@ details.section-block[open] > .section-summary::before {
 .cmp-table tr.cmp-level-none td            { background: #fff8f8; }
 
 .cmp-table tr:hover td { background: #f0f0f0 !important; }
+.cmp-nav-link { color: inherit; text-decoration: none; border-bottom: 1px dashed #999; }
+.cmp-nav-link:hover { color: #1a73e8; border-bottom-color: #1a73e8; }
 .cmp-diffs-cell { max-width: 260px; }
 .cmp-diffs-cell .badge { margin: 1px 2px; }
