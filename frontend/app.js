@@ -3160,6 +3160,7 @@ function renderWarningsPanel(warnings) {
 // Human-friendly labels & categories for LoW warning types
 const _LOW_WARNING_LABELS = {
   // Changed: normalisation engine modified data
+  whitespace_trimmed:     'Whitespace trimmed',
   zero_edition_suppressed: 'Edition stripped',
   // Info: data quality issues needing review
   missing_title:        'Missing title',
@@ -3173,7 +3174,7 @@ const _LOW_WARNING_LABELS = {
   empty_spreadsheet:    'Empty spreadsheet',
 };
 const _LOW_CHANGED_TYPES = new Set([
-  'zero_edition_suppressed',
+  'whitespace_trimmed', 'zero_edition_suppressed',
 ]);
 
 function _lowWarnLabel(type) {

@@ -150,6 +150,7 @@ def collect_work_warnings(work) -> List[Tuple[str, str]]:
     Must be called after normalise_work().
 
     Warning types:
+      whitespace_trimmed     – leading/trailing whitespace removed from fields
       missing_title          – no title after normalisation
       missing_artist         – no artist name after normalisation
       missing_price          – price is blank/placeholder (*)
@@ -159,6 +160,26 @@ def collect_work_warnings(work) -> List[Tuple[str, str]]:
       non_ascii_characters    – normalised fields contain chars outside ASCII-128
     """
     warnings: List[Tuple[str, str]] = []
+
+    # Whitespace trimming — flag fields where raw != normalised only due to whitespace
+    _ws_fields = [
+        ("Title", getattr(work, "raw_title", None), getattr(work, "title", None)),
+        ("Artist", getattr(work, "raw_artist", None), getattr(work, "artist_name", None)),
+        ("Medium", getattr(work, "raw_medium", None), getattr(work, "medium", None)),
+    ]
+    trimmed_fields = []
+    for label, raw_val, norm_val in _ws_fields:
+        rv = str(raw_val) if raw_val is not None else ""
+        nv = str(norm_val) if norm_val is not None else ""
+        if rv != nv and rv.strip() == nv:
+            trimmed_fields.append(label)
+    if trimmed_fields:
+        warnings.append(
+            (
+                "whitespace_trimmed",
+                f"Whitespace trimmed from {', '.join(trimmed_fields)}",
+            )
+        )
 
     # Missing title
     if not work.title:
