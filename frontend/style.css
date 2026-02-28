@@ -658,20 +658,14 @@ details.section-block[open] > .section-summary::before {
 }
 
 .works-table .col-no      { width: 50px; white-space: nowrap; }
-.works-table .col-include { width: 40px; text-align: center; vertical-align: middle; }
-.works-table .col-include abbr { text-decoration: none; cursor: help; }
+.works-table td:nth-child(2) { min-width: 180px; } /* Artist column */
 .works-table .col-actions { width: 70px; text-align: center; }
 
-.include-cb { width: 16px; height: 16px; cursor: pointer; vertical-align: middle; }
-.include-cb.excluded {
-  accent-color: #c0392b;
-  outline: 2px solid #c0392b;
-  outline-offset: 1px;
-}
-
-.work-row.row-excluded td { opacity: 0.45; }
-.work-row.row-excluded td.col-include,
-.work-row.row-excluded td.col-actions { opacity: 1; }
+.work-row.row-excluded td { opacity: 0.45; text-decoration: line-through; text-decoration-color: #999; }
+.work-row.row-excluded td.col-flags { text-decoration: none; }
+.works-table .col-flags { text-align: right; max-width: 160px; white-space: normal; line-height: 1.8; }
+.works-table .col-flags .badge { white-space: nowrap; }
+.work-row.row-excluded td.col-no::after { content: ' ✕'; color: #c0392b; font-size: 0.85em; text-decoration: none; }
 
 /* ------------------------------------------------------------------ */
 /* Override form                                                       */

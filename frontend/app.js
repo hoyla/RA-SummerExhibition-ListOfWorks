@@ -3160,7 +3160,7 @@ function renderWarningsPanel(warnings) {
 // Human-friendly labels & categories for LoW warning types
 const _LOW_WARNING_LABELS = {
   // Changed: normalisation engine modified data
-  zero_edition_suppressed: 'Edition suppressed',
+  zero_edition_suppressed: 'Edition stripped',
   // Info: data quality issues needing review
   missing_title:        'Missing title',
   missing_artist:       'Missing artist',
@@ -3354,7 +3354,7 @@ function renderSections(importId, sections, cfg) {
           <th>Edition</th>
           ${cfg.show_artwork_column ? '<th>Artwork</th>' : ''}
           <th>Medium</th>
-          <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
+          <th class="col-flags">Flags</th>
         </tr></thead>
         <tbody id="tbody-${esc(section.id)}">
           ${section.works.map(w => workRowHTML(importId, w, cfg)).join('')}
@@ -3438,6 +3438,60 @@ function _buildWorkDetailTable(w) {
   return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
 }
 
+function _workNormReasons(w) {
+  const reasons = [];
+  const fields = [
+    ['Title', w.raw_title, w.title],
+    ['Price', w.raw_price, w.price_text ?? (w.price_numeric != null ? String(w.price_numeric) : null)],
+    ['Medium', w.raw_medium, w.medium],
+  ];
+  const trimmed = [];
+  const changed = [];
+  for (const [label, raw, norm] of fields) {
+    const r = (raw ?? '').trim();
+    const n = (norm ?? '').trim();
+    if (!r && !n) continue;
+    if (r === n) continue;
+    if ((raw ?? '').trim() === (norm ?? '').trim()) {
+      trimmed.push(label);
+    } else {
+      changed.push(label);
+    }
+  }
+  // Artist field: detect honorific extraction vs actual name change
+  const rawA = (w.raw_artist ?? '').trim();
+  const normA = (w.artist_name ?? '').trim();
+  const hon = (w.artist_honorifics ?? '').trim();
+  if (hon) {
+    if (_isRaMember(hon)) {
+      reasons.push('RA honorific extracted: ' + hon);
+    } else {
+      reasons.push('Honorific extracted: ' + hon);
+    }
+  }
+  if (rawA && normA && rawA !== normA) {
+    const nameMatchesAfterHon = hon && rawA === (normA + ' ' + hon).trim();
+    const nameCloseAfterHon = hon && rawA.includes(hon) &&
+      rawA.replace(hon, '').replace(/\s+/g, ' ').trim().replace(/,\s*$/, '').trim() === normA;
+    if (!nameMatchesAfterHon && !nameCloseAfterHon) {
+      if ((w.raw_artist ?? '').trim() === (w.artist_name ?? '').trim()) {
+        trimmed.push('Artist');
+      } else {
+        changed.push('Artist');
+      }
+    }
+  }
+  if (trimmed.length) reasons.push('Whitespace trimmed: ' + trimmed.join(', '));
+  if (changed.length) reasons.push('Values changed: ' + changed.join(', '));
+  return reasons;
+}
+
+function _workNormBadges(w) {
+  const reasons = _workNormReasons(w);
+  if (!reasons.length) return '';
+  return `<div class="norm-reasons"><strong>Normalised:</strong> <span class="badge badge-normalised" title="${esc(reasons.join('; '))}">${esc(reasons.join('; '))}</span></div>`;
+}
+
 function _workWarningsBadges(workId) {
   const warns = _warningsByWorkId[workId];
   if (!warns || !warns.length) return '';
@@ -3455,14 +3509,21 @@ function _showWorkDetailPanel(importId, workId) {
   const cell = document.getElementById(`ovc-${workId}`);
   if (!cell) return;
   const hasOvr = !!w.override;
+  const included = w.include_in_export !== false;
+  const inclLabel = included ? 'Exclude from export' : 'Include in export';
+  const inclBtnClass = included ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-danger';
   cell.innerHTML = `
     <div class="work-detail">
+      ${_workNormBadges(w)}
       ${_workWarningsBadges(workId)}
       ${_buildWorkDetailTable(w)}
       <div class="work-detail-actions">
         ${ifEditor(`<button class="btn btn-sm ${hasOvr ? 'btn-warning' : ''}" id="wk-ov-btn-${esc(workId)}"
           onclick="event.stopPropagation(); toggleWorkOverrideForm('${esc(importId)}','${esc(workId)}')">
           ${hasOvr ? 'Edit Override \u270e' : 'Override\u2026'}</button>`)}
+        ${ifEditor(`<button class="${inclBtnClass}" id="wk-incl-btn-${esc(workId)}"
+          onclick="event.stopPropagation(); toggleIncludeFromDetail('${esc(importId)}','${esc(workId)}')">
+          ${esc(inclLabel)}</button>`)}
         <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); toggleOverrideForm('${esc(importId)}','${esc(workId)}')">Close &#x2715;</button>
       </div>
       <div id="wk-ovc-${esc(workId)}"></div>
@@ -3501,6 +3562,53 @@ async function toggleWorkOverrideForm(importId, workId) {
 function workRowHTML(importId, w, cfg) {
   const included = w.include_in_export !== false;
   const hasOverride = !!w.override;
+
+  // Build flags
+  const flags = [];
+  if (hasOverride) flags.push('<span class="badge badge-override" title="Has a user override">Override</span>');
+  // Normalisation detection: compare raw vs normalised fields
+  const _normDiffs = [];
+  const _normFields = [
+    ['Title', w.raw_title, w.title],
+    ['Price', w.raw_price, w.price_text ?? (w.price_numeric != null ? String(w.price_numeric) : null)],
+    ['Medium', w.raw_medium, w.medium],
+  ];
+  for (const [label, raw, norm] of _normFields) {
+    const r = (raw ?? '').trim();
+    const n = (norm ?? '').trim();
+    if (r && n && r !== n) _normDiffs.push(label);
+  }
+  // Artist field: detect honorific extraction vs actual name change
+  const _rawA = (w.raw_artist ?? '').trim();
+  const _normA = (w.artist_name ?? '').trim();
+  const _hon = (w.artist_honorifics ?? '').trim();
+  // Show RA badge when honorifics contain RA-type tokens
+  if (_hon) {
+    if (_isRaMember(_hon)) {
+      flags.push('<span class="badge badge-ra" title="RA honorific extracted from artist name">RA</span>');
+    } else {
+      flags.push(`<span class="badge badge-normalised" title="Honorific extracted: ${esc(_hon)}">${esc(_hon)}</span>`);
+    }
+  }
+  if (_rawA && _normA && _rawA !== _normA) {
+    // Check if the difference is fully explained by honorific extraction
+    const nameMatchesAfterHon = _hon && _rawA === (_normA + ' ' + _hon).trim();
+    const nameCloseAfterHon = _hon && _rawA.includes(_hon) &&
+      _rawA.replace(_hon, '').replace(/\s+/g, ' ').trim().replace(/,\s*$/, '').trim() === _normA;
+    if (!nameMatchesAfterHon && !nameCloseAfterHon) {
+      _normDiffs.push('Artist');
+    }
+  }
+  if (_normDiffs.length) flags.push(`<span class="badge badge-normalised" title="Normalised: ${esc(_normDiffs.join(', '))}">${esc('Norm')}</span>`);
+  // Warnings from the per-work lookup
+  const wWarns = _warningsByWorkId[w.id];
+  if (wWarns && wWarns.length) {
+    const warnTypes = [...new Set(wWarns.map(ww => ww.warning_type))];
+    for (const wt of warnTypes) {
+      const isChanged = _LOW_CHANGED_TYPES.has(wt);
+      flags.push(`<span class="badge ${isChanged ? 'badge-info' : 'badge-warning'}" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
+    }
+  }
 
   // Resolve effective values (override takes precedence)
   const o = w.override;
@@ -3542,11 +3650,7 @@ function workRowHTML(importId, w, cfg) {
       <td class="${hasOverride && (o?.edition_total_override || o?.edition_price_numeric_override) ? 'cell-overridden' : ''}">${esc(editionDisplay)}</td>
       ${cfg.show_artwork_column ? `<td class="${hasOverride && o?.artwork_override ? 'cell-overridden' : ''}">${w.artwork != null ? esc(String(w.artwork)) : ''}</td>` : ''}
       <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
-      <td class="col-include" onclick="event.stopPropagation()">
-        ${canEdit() ? `<input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="incl-${esc(w.id)}"
-          ${included ? 'checked' : ''}
-          onchange="toggleInclude('${esc(importId)}','${esc(w.id)}',this)">` : (included ? '\u2713' : '\u2717')}
-      </td>
+      <td class="col-flags">${flags.join(' ')}</td>
     </tr>
     <tr id="ovr-${esc(w.id)}" class="override-form-row" style="display:none">
       <td colspan="${cfg.show_artwork_column ? 8 : 7}" id="ovc-${esc(w.id)}"></td>
@@ -3571,6 +3675,29 @@ async function toggleInclude(importId, workId, checkbox) {
     showToast(`Toggle failed: ${err.message}`, 'error');
   } finally {
     checkbox.disabled = false;
+  }
+}
+
+async function toggleIncludeFromDetail(importId, workId) {
+  const w = _workCache[workId];
+  if (!w) return;
+  const wasIncluded = w.include_in_export !== false;
+  const btn = document.getElementById(`wk-incl-btn-${workId}`);
+  if (btn) btn.disabled = true;
+  try {
+    await api('PATCH', `/imports/${importId}/works/${workId}/exclude?exclude=${wasIncluded}`);
+    const nowIncluded = !wasIncluded;
+    w.include_in_export = nowIncluded;
+    const row = document.getElementById(`wr-${workId}`);
+    if (row) row.className = `work-row ${nowIncluded ? '' : 'row-excluded'}`;
+    if (btn) {
+      btn.textContent = nowIncluded ? 'Exclude from export' : 'Include in export';
+      btn.className = nowIncluded ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-danger';
+    }
+  } catch (err) {
+    showToast(`Toggle failed: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
