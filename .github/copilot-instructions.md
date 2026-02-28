@@ -18,8 +18,8 @@ products:
 | ---------- | --------------------------------------------------- |
 | Backend    | Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic       |
 | Database   | PostgreSQL 16 (Docker local, RDS in staging/prod)   |
-| Frontend   | Vanilla JS SPA (`frontend/app.js` ~5 000 lines)     |
-| Testing    | pytest (~730 tests), SQLite in-memory                |
+| Frontend   | Vanilla JS SPA (`frontend/app.js` ~5 500 lines)     |
+| Testing    | pytest (~769 tests), SQLite in-memory                |
 | Deployment | Docker Compose (local), ECS Fargate (staging/prod)  |
 | Auth       | AWS Cognito (JWT) / API key; disabled locally        |
 
@@ -108,7 +108,7 @@ PostgreSQL and the container's upload volume.
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q       # full suite (~730 tests)
+python -m pytest tests/ -q       # full suite (~769 tests)
 python -m pytest tests/ -x -q    # stop on first failure
 ```
 

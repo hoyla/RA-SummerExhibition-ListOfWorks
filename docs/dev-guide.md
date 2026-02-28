@@ -19,7 +19,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | -------- | -------------------------------------------------- |
 | Backend  | Python 3.12, FastAPI, SQLAlchemy, Alembic          |
 | Database | PostgreSQL 16 (Docker), SQLite (tests)             |
-| Frontend | Vanilla JS SPA (`frontend/app.js`, ~5070 lines)    |
+| Frontend | Vanilla JS SPA (`frontend/app.js`, ~5500 lines)    |
 | Infra    | Docker Compose (local), ECS Fargate (staging/prod) |
 
 ### Key directories
@@ -32,7 +32,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | `backend/alembic/versions/` | Database migrations (auto-run on startup)             |
 | `backend/seed_templates/`   | Default templates and known artist seed data          |
 | `frontend/`                 | Single-page app (`app.js`, `style.css`, `index.html`) |
-| `tests/`                    | Pytest suite (~730 tests, SQLite in-memory)           |
+| `tests/`                    | Pytest suite (~769 tests, SQLite in-memory)           |
 
 ### Data flow
 
@@ -71,19 +71,35 @@ badge colours:
 Warning types are free-text strings in the `ValidationWarning` table — no
 enum or migration is needed to add new types.
 
-### Frontend detail table
+### Frontend detail tables
 
-When clicking an artist entry, the detail table shows the data pipeline:
+Both the List of Works and Artists Index let you click a row to expand an
+inline detail panel. Both use the same visual convention:
+
+**Values are styled: grey = unchanged from previous column, bold black = changed.**
+
+Clicking a warning entry in the warnings panel scrolls to the relevant row
+and automatically opens its detail panel.
+
+#### List of Works (work row)
+
+| Column      | Shows                                                              |
+| ----------- | ------------------------------------------------------------------ |
+| Field       | Field name (including derived fields like Honorifics)              |
+| Spreadsheet | Raw value from Excel; `·` markers show leading/trailing whitespace |
+| Normalised  | After the normalisation service                                    |
+| Override    | After manual override (only shown when overrides exist)            |
+
+Per-work validation warning badges (amber/blue) are shown above the table.
+
+#### Artists Index (artist row)
 
 | Column          | Shows                                                          |
 | --------------- | -------------------------------------------------------------- |
 | Field           | Field name (including derived fields like Artist 2, RA Styled) |
 | Spreadsheet     | Raw value from the Excel file (dash for derived fields)        |
-| Resolved        | After normalisation + known artist lookup                      |
+| Auto-resolved   | After normalisation + known artist lookup                      |
 | Manual Override | After user overrides (only shown when overrides exist)         |
-
-Values are styled: **grey** = unchanged from previous column,
-**bold black** = changed by this stage.
 
 ---
 

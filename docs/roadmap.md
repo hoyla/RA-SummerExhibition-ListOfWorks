@@ -445,9 +445,29 @@ Company → Address.
 Known Artists "Saved" confirmation messages now appear on the specific card
 that was saved, rather than in the global status area.
 
+### LoW work detail panel
+
+Clicking a work row now expands an inline detail panel showing the full
+data pipeline: Spreadsheet (raw) | Normalised | Override. Same visual
+convention as the index detail panel (grey = unchanged, bold black =
+changed). Per-work validation warning badges are shown above the table.
+The Artwork column is hidden by default with a Settings toggle.
+
+### Warning → detail panel auto-expand (LoW + Index)
+
+Clicking a warning link in the warnings panel now scrolls to the relevant
+row **and** automatically opens its detail panel, so the normalisation
+context is immediately visible alongside the warning.
+
+### Raw fields in WorkOut API response
+
+Fixed a bug where `raw_title`, `raw_artist`, `raw_price`, `raw_edition`,
+`raw_artwork`, and `raw_medium` were always `null` in the `list_sections`
+response despite the data existing in the database.
+
 ### Test count
 
-- 730 tests across 31 test files
+- 769 tests across 31 test files
 
 ---
 

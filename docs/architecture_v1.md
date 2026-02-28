@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (730 tests across 31 test files) |
+| Testing    | pytest (769 tests across 31 test files) |
 
 ---
 
@@ -686,8 +686,16 @@ Deep links: `#/import/{id}` (LoW detail), `#/index/{id}` (Index detail),
 - Import list with upload and delete
 - Section browser with collapsible sections and per-section export
 - Works table (work number, artist, title, price, edition, artwork, medium, include flag)
-- Inline override editor per work with three-state resolved fields
+  - Artwork column hidden by default; toggle via Preview > Settings
+  - Click any work row to expand an inline detail panel
+- **Work detail panel** (expanded row):
+  - Three-column table: Spreadsheet (raw) | Normalised | Override
+  - Grey = value unchanged from previous column; **bold black** = changed
+  - Whitespace differences shown with a visible `·` marker in the Spreadsheet column
+  - Per-work validation warning badges (amber/blue) above the table
+  - Override form revealed as a sub-panel via an "Override…" button
 - Validation warnings panel per import (filterable badge summary by warning type)
+  - Clicking a warning link scrolls to the row **and** auto-opens its detail panel
 - Export buttons (full import and per-section) with template selector
 
 ### Artists Index
