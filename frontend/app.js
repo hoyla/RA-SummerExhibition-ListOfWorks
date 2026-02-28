@@ -4765,9 +4765,12 @@ function styledIndexName(a) {
 function _normReasons(a) {
   const reasons = [];
   const fields = [
+    ['Title', a.raw_title, a.title],
     ['Last Name', a.raw_last_name, a.last_name],
     ['First Name', a.raw_first_name, a.first_name],
     ['Quals', a.raw_quals, a.quals],
+    ['Company', a.raw_company, a.company],
+    ['Address', a.raw_address, a.address],
   ];
   const trimmedFields = [];
   const changedFields = [];
