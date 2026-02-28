@@ -1766,11 +1766,14 @@ details.section-block[open] > .section-summary::before {
 }
 
 /* Match-level badges */
-.cmp-badge-exact      { background: #d4edda; color: #155724; border: 1px solid #a3d9a5; }
-.cmp-badge-equivalent { background: #d1ecf1; color: #0c5460; border: 1px solid #8dd3df; }
-.cmp-badge-partial    { background: #fff3cd; color: #856404; border: 1px solid #f0c040; }
-.cmp-badge-none       { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-.cmp-badge-missing    { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
+.cmp-badge-exact           { background: #d4edda; color: #155724; border: 1px solid #a3d9a5; }
+.cmp-badge-equivalent      { background: #d1ecf1; color: #0c5460; border: 1px solid #8dd3df; }
+.cmp-badge-partial_title   { background: #e8eef4; color: #4a5568; border: 1px solid #b8c9dc; }
+.cmp-badge-partial_honorific { background: #fff3cd; color: #856404; border: 1px solid #f0c040; }
+.cmp-badge-partial_ra      { background: #ffe0b2; color: #7c4400; border: 1px solid #f0a040; }
+.cmp-badge-partial_name    { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.cmp-badge-none            { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.cmp-badge-missing         { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
 
 /* Difference badges */
 .cmp-diff-badge {
@@ -1781,10 +1784,13 @@ details.section-block[open] > .section-summary::before {
 }
 
 /* Table row tinting */
-.cmp-table tr.cmp-level-exact td      { }
-.cmp-table tr.cmp-level-equivalent td { background: #f0faff; }
-.cmp-table tr.cmp-level-partial td    { background: #fffcf0; }
-.cmp-table tr.cmp-level-none td       { background: #fff8f8; }
+.cmp-table tr.cmp-level-exact td           { }
+.cmp-table tr.cmp-level-equivalent td      { background: #f0faff; }
+.cmp-table tr.cmp-level-partial_title td   { background: #f5f7fb; }
+.cmp-table tr.cmp-level-partial_honorific td { background: #fffcf0; }
+.cmp-table tr.cmp-level-partial_ra td      { background: #fff8f0; }
+.cmp-table tr.cmp-level-partial_name td    { background: #fff5f5; }
+.cmp-table tr.cmp-level-none td            { background: #fff8f8; }
 
 .cmp-table tr:hover td { background: #f0f0f0 !important; }
 .cmp-diffs-cell { max-width: 260px; }

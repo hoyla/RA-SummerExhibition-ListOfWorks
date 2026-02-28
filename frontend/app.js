@@ -646,7 +646,10 @@ function _renderCompareResult(result) {
           <button class="btn btn-sm cmp-filter-btn active" data-filter="all">All <span class="cmp-count">${s.in_both + s.only_in_low + s.only_in_index}</span></button>
           <button class="btn btn-sm cmp-filter-btn cmp-badge-exact" data-filter="exact">Exact <span class="cmp-count">${s.match_exact}</span></button>
           <button class="btn btn-sm cmp-filter-btn cmp-badge-equivalent" data-filter="equivalent">Equivalent <span class="cmp-count">${s.match_equivalent}</span></button>
-          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial" data-filter="partial">Partial <span class="cmp-count">${s.match_partial}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_title" data-filter="partial_title">Title <span class="cmp-count">${s.match_partial_title}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_honorific" data-filter="partial_honorific">Honorific <span class="cmp-count">${s.match_partial_honorific}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_ra" data-filter="partial_ra">RA <span class="cmp-count">${s.match_partial_ra}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial_name" data-filter="partial_name">Name <span class="cmp-count">${s.match_partial_name}</span></button>
           <button class="btn btn-sm cmp-filter-btn cmp-badge-none" data-filter="none">None <span class="cmp-count">${s.match_none}</span></button>
           <button class="btn btn-sm cmp-filter-btn cmp-badge-missing" data-filter="missing">Missing <span class="cmp-count">${s.only_in_low + s.only_in_index}</span></button>
         </div>
@@ -691,6 +694,7 @@ function _renderCompareTable() {
 
   const rows = entries.map(e => {
     const levelClass = `cmp-level-${e.match_level}`;
+    const levelLabel = _matchLevelLabel(e.match_level);
     const lowName = e.low_artist_name != null
       ? esc(e.low_artist_name) + (e.low_artist_honorifics ? ` <span class="muted">${esc(e.low_artist_honorifics)}</span>` : '')
       : '<span class="muted">\u2014 not in LoW</span>';
@@ -714,7 +718,7 @@ function _renderCompareTable() {
       <td>${lowName}</td>
       <td>${idxName}</td>
       <td>${courtesy}</td>
-      <td><span class="badge cmp-badge-${e.match_level}">${esc(e.match_level)}</span></td>
+      <td><span class="badge cmp-badge-${e.match_level}">${esc(levelLabel)}</span></td>
       <td class="cmp-diffs-cell">${diffs}</td>
     </tr>`;
   }).join('');
@@ -745,10 +749,26 @@ function _formatDifference(diff) {
     'company_vs_person': 'company vs person',
   };
   if (map[diff]) return map[diff];
-  // Handle parameterised diffs like "extra_quals_in_index:obe"
+  // Handle parameterised RA diffs like "extra_ra_in_index:ra"
+  const ra = diff.match(/^extra_ra_in_(index|low):(.+)$/);
+  if (ra) return `+${ra[2].toUpperCase()} in ${ra[1] === 'index' ? 'Index' : 'LoW'}`;
+  // Handle parameterised non-RA quals diffs
   const m = diff.match(/^extra_quals_in_(index|low):(.+)$/);
   if (m) return `+${m[2].toUpperCase()} in ${m[1] === 'index' ? 'Index' : 'LoW'}`;
   return diff.replace(/_/g, ' ');
+}
+
+function _matchLevelLabel(level) {
+  const labels = {
+    'exact': 'exact',
+    'equivalent': 'equivalent',
+    'partial_title': 'title',
+    'partial_honorific': 'honorific',
+    'partial_ra': 'RA',
+    'partial_name': 'name',
+    'none': 'none',
+  };
+  return labels[level] || level;
 }
 
 // ---------------------------------------------------------------------------

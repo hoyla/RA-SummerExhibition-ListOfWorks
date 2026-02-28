@@ -46,11 +46,46 @@ class MatchLevel(str, Enum):
     equivalent = "equivalent"
     """Same name components, different formatting (e.g. word order, comma)."""
 
-    partial = "partial"
-    """Core name matches but qualifications/titles differ."""
+    partial_title = "partial_title"
+    """Name matches but title (Prof, Sir, Dame) differs — cosmetic only."""
+
+    partial_honorific = "partial_honorific"
+    """Name matches but non-RA honorifics (OBE, CBE, etc.) differ."""
+
+    partial_ra = "partial_ra"
+    """Name matches but RA membership designation differs."""
+
+    partial_name = "partial_name"
+    """Last name or first name differs — most significant partial."""
 
     none = "none"
     """Names do not match."""
+
+
+# Convenience set: all partial sub-levels, for filtering / counting.
+PARTIAL_LEVELS = frozenset(
+    {
+        MatchLevel.partial_title,
+        MatchLevel.partial_honorific,
+        MatchLevel.partial_ra,
+        MatchLevel.partial_name,
+    }
+)
+
+
+# RA-type qualification tokens (lower-cased for comparison).
+# Mirrors RA_MEMBER_TOKENS in index_importer but kept local to avoid coupling.
+_RA_QUAL_TOKENS: frozenset[str] = frozenset(
+    {
+        "ra",
+        "pra",
+        "ppra",
+        "hon ra",
+        "honra",
+        "ra elect",
+        "ex officio",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +132,10 @@ class ComparisonSummary:
     only_in_index: int = 0
     match_exact: int = 0
     match_equivalent: int = 0
-    match_partial: int = 0
+    match_partial_title: int = 0
+    match_partial_honorific: int = 0
+    match_partial_ra: int = 0
+    match_partial_name: int = 0
     match_none: int = 0
 
 
@@ -258,28 +296,69 @@ def _compare_names(
         else:
             differences.append("first_name_different")
 
-    # Quals comparison
-    if low_quals != idx_quals_set:
-        extra_in_index = idx_quals_set - low_quals
-        extra_in_low = low_quals - idx_quals_set
-        if extra_in_index:
-            differences.append(
-                f"extra_quals_in_index:{','.join(sorted(extra_in_index))}"
-            )
-        if extra_in_low:
-            differences.append(f"extra_quals_in_low:{','.join(sorted(extra_in_low))}")
+    # Quals comparison — split into RA-type and non-RA (other honorifics)
+    def _is_ra_token(tok: str) -> bool:
+        return tok in _RA_QUAL_TOKENS
 
-    # Classify match level
+    low_ra = {q for q in low_quals if _is_ra_token(q)}
+    low_other = low_quals - low_ra
+    idx_ra = {q for q in idx_quals_set if _is_ra_token(q)}
+    idx_other = idx_quals_set - idx_ra
+
+    ra_match = low_ra == idx_ra
+    other_match = low_other == idx_other
+
+    if not ra_match:
+        extra_ra_idx = idx_ra - low_ra
+        extra_ra_low = low_ra - idx_ra
+        if extra_ra_idx:
+            differences.append(f"extra_ra_in_index:{','.join(sorted(extra_ra_idx))}")
+        if extra_ra_low:
+            differences.append(f"extra_ra_in_low:{','.join(sorted(extra_ra_low))}")
+
+    if not other_match:
+        extra_other_idx = idx_other - low_other
+        extra_other_low = low_other - idx_other
+        if extra_other_idx:
+            differences.append(
+                f"extra_quals_in_index:{','.join(sorted(extra_other_idx))}"
+            )
+        if extra_other_low:
+            differences.append(
+                f"extra_quals_in_low:{','.join(sorted(extra_other_low))}"
+            )
+
+    # Title mismatch (already captured in differences above if first_match
+    # was resolved by absorbing the title).  Also flag explicit title presence.
+    has_title_diff = any(
+        d in ("title_in_index_not_in_low", "title_in_low_not_in_index")
+        for d in differences
+    )
+
+    # ----- Classify match level (most → least significant) -----
     if last_match and first_match:
-        if not low_quals and not idx_quals_set:
-            return (MatchLevel.exact, differences)
-        if low_quals == idx_quals_set:
+        if ra_match and other_match and not has_title_diff:
+            # Everything matches — exact or equivalent
+            if low_quals == idx_quals_set:
+                return (MatchLevel.exact, differences)
             return (MatchLevel.equivalent, differences)
-        # Same person, different quals
-        return (MatchLevel.partial, differences)
+        # Name matches; pick the most significant qualifier difference
+        if not ra_match:
+            return (MatchLevel.partial_ra, differences)
+        if not other_match:
+            return (MatchLevel.partial_honorific, differences)
+        # Only title differs
+        return (MatchLevel.partial_title, differences)
     elif last_match:
-        # Last name matches but first name issues (often title prefix)
-        return (MatchLevel.partial, differences)
+        # Last name matches but first name issues
+        # If the only first-name issue is a title prefix, downgrade
+        if has_title_diff and "first_name_different" not in differences:
+            if not ra_match:
+                return (MatchLevel.partial_ra, differences)
+            if not other_match:
+                return (MatchLevel.partial_honorific, differences)
+            return (MatchLevel.partial_title, differences)
+        return (MatchLevel.partial_name, differences)
     else:
         # Check word-set overlap as a fallback (handles companies, unusual name orders)
         low_all_words = _normalise_words(low_artist_name) | low_quals
@@ -289,7 +368,15 @@ def _compare_names(
         if low_all_words and low_all_words == idx_all_words:
             return (MatchLevel.equivalent, differences)
         if low_all_words and idx_all_words and low_all_words & idx_all_words:
-            return (MatchLevel.partial, differences)
+            # Some overlap — classify by most significant difference
+            if (
+                "last_name_different" in differences
+                or "first_name_different" in differences
+            ):
+                return (MatchLevel.partial_name, differences)
+            if not ra_match:
+                return (MatchLevel.partial_ra, differences)
+            return (MatchLevel.partial_honorific, differences)
         return (MatchLevel.none, differences)
 
 
@@ -492,8 +579,14 @@ def compare_datasets(
             summary.match_exact += 1
         elif entry.match_level == MatchLevel.equivalent:
             summary.match_equivalent += 1
-        elif entry.match_level == MatchLevel.partial:
-            summary.match_partial += 1
+        elif entry.match_level == MatchLevel.partial_title:
+            summary.match_partial_title += 1
+        elif entry.match_level == MatchLevel.partial_honorific:
+            summary.match_partial_honorific += 1
+        elif entry.match_level == MatchLevel.partial_ra:
+            summary.match_partial_ra += 1
+        elif entry.match_level == MatchLevel.partial_name:
+            summary.match_partial_name += 1
         else:
             summary.match_none += 1
 

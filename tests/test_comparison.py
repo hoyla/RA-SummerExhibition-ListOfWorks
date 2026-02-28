@@ -16,6 +16,7 @@ from backend.app.models.known_artist_model import KnownArtist
 from backend.app.models.section_model import Section
 from backend.app.services.comparison_service import (
     MatchLevel,
+    PARTIAL_LEVELS,
     _compare_names,
     _extract_low_name_parts,
     _normalise_words,
@@ -177,7 +178,7 @@ class TestCompareNames:
         level, diffs = _compare_names(
             "Ryan Gander", "RA", "Ryan", "Gander", None, "OBE RA", False
         )
-        assert level == MatchLevel.partial
+        assert level == MatchLevel.partial_honorific
         assert any("extra_quals_in_index" in d for d in diffs)
 
     def test_partial_title_in_index(self):
@@ -185,7 +186,7 @@ class TestCompareNames:
         level, diffs = _compare_names(
             "Farshid Moussavi", "RA", "Farshid", "Moussavi", "Prof.", "OBE RA", False
         )
-        assert level == MatchLevel.partial
+        assert level == MatchLevel.partial_honorific
 
     def test_title_prefix_in_low(self):
         """LoW 'Dame Tracey Emin RA' vs Index title=None first='Tracey' last='Emin'."""
@@ -193,7 +194,7 @@ class TestCompareNames:
         level, diffs = _compare_names(
             "Dame Tracey Emin", "RA", "Tracey", "Emin", "Dame", "DBE RA", False
         )
-        assert level == MatchLevel.partial
+        assert level in PARTIAL_LEVELS
 
     def test_company_match(self):
         level, diffs = _compare_names(
@@ -211,7 +212,7 @@ class TestCompareNames:
         level, diffs = _compare_names(
             "Alice Smith", None, "Bob", "Smith", None, None, False
         )
-        assert level == MatchLevel.partial
+        assert level == MatchLevel.partial_name
         assert "first_name_different" in diffs
 
 
@@ -329,7 +330,7 @@ class TestCompareDatasets:
 
         result = compare_datasets(db_session, low.id, idx.id)
         entry = result.entries[0]
-        assert entry.match_level == MatchLevel.partial
+        assert entry.match_level == MatchLevel.partial_honorific
         assert any("extra_quals_in_index" in d for d in entry.differences)
 
     def test_multi_cat_numbers_per_artist(self, db_session):
@@ -687,4 +688,12 @@ class TestCompareEndpoint:
             params={"low_import_id": str(low.id), "index_import_id": str(idx.id)},
         )
         entry = r.json()["entries"][0]
-        assert entry["match_level"] in ("exact", "equivalent", "partial", "none")
+        assert entry["match_level"] in (
+            "exact",
+            "equivalent",
+            "partial_title",
+            "partial_honorific",
+            "partial_ra",
+            "partial_name",
+            "none",
+        )

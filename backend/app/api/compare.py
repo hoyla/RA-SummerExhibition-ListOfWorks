@@ -80,7 +80,10 @@ def compare_imports(
             only_in_index=result.summary.only_in_index,
             match_exact=result.summary.match_exact,
             match_equivalent=result.summary.match_equivalent,
-            match_partial=result.summary.match_partial,
+            match_partial_title=result.summary.match_partial_title,
+            match_partial_honorific=result.summary.match_partial_honorific,
+            match_partial_ra=result.summary.match_partial_ra,
+            match_partial_name=result.summary.match_partial_name,
             match_none=result.summary.match_none,
         ),
         entries=[

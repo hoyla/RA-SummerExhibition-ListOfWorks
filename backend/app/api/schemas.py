@@ -520,7 +520,7 @@ class ComparisonEntryOut(BaseModel):
     index_artist_id: str | None = None
     index_courtesy: str | None = None
 
-    match_level: str  # "exact" | "equivalent" | "partial" | "none"
+    match_level: str  # "exact" | "equivalent" | "partial_title" | "partial_honorific" | "partial_ra" | "partial_name" | "none"
     differences: List[str] = []
 
 
@@ -532,7 +532,10 @@ class ComparisonSummaryOut(BaseModel):
     only_in_index: int
     match_exact: int
     match_equivalent: int
-    match_partial: int
+    match_partial_title: int
+    match_partial_honorific: int
+    match_partial_ra: int
+    match_partial_name: int
     match_none: int
 
 
