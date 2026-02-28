@@ -495,3 +495,49 @@ class KnownArtistUpdate(BaseModel):
     resolved_artist2_ra_styled: bool | None = None
     resolved_artist3_ra_styled: bool | None = None
     notes: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Cross-dataset comparison
+# ---------------------------------------------------------------------------
+
+
+class ComparisonEntryOut(BaseModel):
+    cat_no: int
+
+    # LoW side
+    low_artist_name: str | None = None
+    low_artist_honorifics: str | None = None
+    low_work_id: str | None = None
+
+    # Index side
+    index_name: str | None = None
+    index_first_name: str | None = None
+    index_last_name: str | None = None
+    index_title: str | None = None
+    index_quals: str | None = None
+    index_is_company: bool | None = None
+    index_artist_id: str | None = None
+    index_courtesy: str | None = None
+
+    match_level: str  # "exact" | "equivalent" | "partial" | "none"
+    differences: List[str] = []
+
+
+class ComparisonSummaryOut(BaseModel):
+    total_low: int
+    total_index: int
+    in_both: int
+    only_in_low: int
+    only_in_index: int
+    match_exact: int
+    match_equivalent: int
+    match_partial: int
+    match_none: int
+
+
+class ComparisonResultOut(BaseModel):
+    low_import_id: str
+    index_import_id: str
+    summary: ComparisonSummaryOut
+    entries: List[ComparisonEntryOut]

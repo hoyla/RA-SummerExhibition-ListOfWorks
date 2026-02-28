@@ -534,6 +534,224 @@ function esc(v) {
 }
 
 // ---------------------------------------------------------------------------
+// Compare — cross-dataset comparison
+// ---------------------------------------------------------------------------
+
+let _compareState = { entries: [], filter: 'all' };
+
+async function renderCompare() {
+  _compareState = { entries: [], filter: 'all' };
+  document.getElementById('app').innerHTML = `
+    <h2 class="page-heading">Compare LoW &harr; Index</h2>
+    <section class="panel">
+      <h3>Select Imports to Compare</h3>
+      <div class="compare-selectors">
+        <div class="compare-selector-group">
+          <label for="cmp-low-select">List of Works import</label>
+          <select id="cmp-low-select" class="compare-select"><option value="">Loading\u2026</option></select>
+        </div>
+        <div class="compare-selector-group">
+          <label for="cmp-idx-select">Artists Index import</label>
+          <select id="cmp-idx-select" class="compare-select"><option value="">Loading\u2026</option></select>
+        </div>
+        <button id="cmp-run-btn" class="btn btn-primary" disabled>Compare</button>
+      </div>
+    </section>
+    <div id="cmp-result"></div>`;
+
+  // Load both import lists in parallel
+  try {
+    const [lowImports, idxImports] = await Promise.all([
+      api('GET', '/imports'),
+      api('GET', '/index/imports'),
+    ]);
+    _populateCompareSelect('cmp-low-select', lowImports, 'works');
+    _populateCompareSelect('cmp-idx-select', idxImports, 'artist_count');
+    document.getElementById('cmp-run-btn').disabled = false;
+  } catch (err) {
+    document.getElementById('cmp-result').innerHTML =
+      `<p class="error">Failed to load imports: ${esc(err.message)}</p>`;
+  }
+
+  document.getElementById('cmp-run-btn').addEventListener('click', _runComparison);
+}
+
+function _populateCompareSelect(selectId, imports, countField) {
+  const sel = document.getElementById(selectId);
+  if (!imports.length) {
+    sel.innerHTML = '<option value="">No imports available</option>';
+    return;
+  }
+  sel.innerHTML = imports.map((imp, i) =>
+    `<option value="${esc(imp.id)}"${i === 0 ? ' selected' : ''}>${esc(imp.filename)} \u2014 ${formatDate(imp.uploaded_at)} (${imp[countField] ?? '?'} entries)</option>`
+  ).join('');
+}
+
+async function _runComparison() {
+  const lowId = document.getElementById('cmp-low-select').value;
+  const idxId = document.getElementById('cmp-idx-select').value;
+  if (!lowId || !idxId) {
+    showToast('Select both imports first', 'error');
+    return;
+  }
+  const btn = document.getElementById('cmp-run-btn');
+  const restore = btnLoading(btn, 'Comparing');
+  const container = document.getElementById('cmp-result');
+  container.innerHTML = '<p class="loading" style="padding:20px 0">Comparing datasets\u2026</p>';
+
+  try {
+    const result = await api('POST', `/compare?low_import_id=${lowId}&index_import_id=${idxId}`);
+    _compareState.entries = result.entries;
+    _compareState.filter = 'all';
+    _renderCompareResult(result);
+  } catch (err) {
+    container.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+  } finally {
+    restore();
+  }
+}
+
+function _renderCompareResult(result) {
+  const s = result.summary;
+  const container = document.getElementById('cmp-result');
+
+  container.innerHTML = `
+    <section class="panel" style="margin-top:16px">
+      <h3>Summary</h3>
+      <div class="cmp-summary-grid">
+        <div class="cmp-summary-card">
+          <span class="cmp-summary-value">${s.total_low}</span>
+          <span class="cmp-summary-label">in LoW</span>
+        </div>
+        <div class="cmp-summary-card">
+          <span class="cmp-summary-value">${s.total_index}</span>
+          <span class="cmp-summary-label">in Index</span>
+        </div>
+        <div class="cmp-summary-card">
+          <span class="cmp-summary-value">${s.in_both}</span>
+          <span class="cmp-summary-label">in both</span>
+        </div>
+        <div class="cmp-summary-card cmp-only-low">
+          <span class="cmp-summary-value">${s.only_in_low}</span>
+          <span class="cmp-summary-label">only in LoW</span>
+        </div>
+        <div class="cmp-summary-card cmp-only-idx">
+          <span class="cmp-summary-value">${s.only_in_index}</span>
+          <span class="cmp-summary-label">only in Index</span>
+        </div>
+      </div>
+      <div class="cmp-match-bar" style="margin-top:12px">
+        <h4 style="margin:0 0 6px">Match breakdown (shared cat numbers)</h4>
+        <div class="cmp-filter-btns">
+          <button class="btn btn-sm cmp-filter-btn active" data-filter="all">All <span class="cmp-count">${s.in_both + s.only_in_low + s.only_in_index}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-exact" data-filter="exact">Exact <span class="cmp-count">${s.match_exact}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-equivalent" data-filter="equivalent">Equivalent <span class="cmp-count">${s.match_equivalent}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-partial" data-filter="partial">Partial <span class="cmp-count">${s.match_partial}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-none" data-filter="none">None <span class="cmp-count">${s.match_none}</span></button>
+          <button class="btn btn-sm cmp-filter-btn cmp-badge-missing" data-filter="missing">Missing <span class="cmp-count">${s.only_in_low + s.only_in_index}</span></button>
+        </div>
+      </div>
+    </section>
+    <section class="panel" style="margin-top:16px">
+      <h3>Entries</h3>
+      <div id="cmp-table-wrap"></div>
+    </section>`;
+
+  // Wire up filter buttons
+  container.querySelectorAll('.cmp-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.cmp-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _compareState.filter = btn.dataset.filter;
+      _renderCompareTable();
+    });
+  });
+
+  _renderCompareTable();
+}
+
+function _renderCompareTable() {
+  const wrap = document.getElementById('cmp-table-wrap');
+  const filter = _compareState.filter;
+  let entries = _compareState.entries;
+
+  if (filter === 'missing') {
+    entries = entries.filter(e =>
+      e.low_artist_name == null || e.index_name == null
+    );
+  } else if (filter !== 'all') {
+    entries = entries.filter(e => e.match_level === filter
+      && e.low_artist_name != null && e.index_name != null);
+  }
+
+  if (!entries.length) {
+    wrap.innerHTML = '<p class="muted" style="padding:8px 0">No entries match this filter.</p>';
+    return;
+  }
+
+  const rows = entries.map(e => {
+    const levelClass = `cmp-level-${e.match_level}`;
+    const lowName = e.low_artist_name != null
+      ? esc(e.low_artist_name) + (e.low_artist_honorifics ? ` <span class="muted">${esc(e.low_artist_honorifics)}</span>` : '')
+      : '<span class="muted">\u2014 not in LoW</span>';
+
+    let idxName;
+    if (e.index_name != null) {
+      idxName = esc(e.index_name);
+      if (e.index_title) idxName = `<span class="muted">${esc(e.index_title)}</span> ` + idxName;
+      if (e.index_quals) idxName += ` <span class="muted">${esc(e.index_quals)}</span>`;
+    } else {
+      idxName = '<span class="muted">\u2014 not in Index</span>';
+    }
+
+    const courtesy = e.index_courtesy ? esc(e.index_courtesy) : '';
+    const diffs = e.differences.length
+      ? e.differences.map(d => `<span class="badge cmp-diff-badge">${esc(_formatDifference(d))}</span>`).join(' ')
+      : '';
+
+    return `<tr class="${levelClass}">
+      <td class="num">${e.cat_no}</td>
+      <td>${lowName}</td>
+      <td>${idxName}</td>
+      <td>${courtesy}</td>
+      <td><span class="badge cmp-badge-${e.match_level}">${esc(e.match_level)}</span></td>
+      <td class="cmp-diffs-cell">${diffs}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="data-table cmp-table">
+      <thead><tr>
+        <th class="num">Cat #</th>
+        <th>LoW Artist</th>
+        <th>Index Artist</th>
+        <th>Courtesy</th>
+        <th>Match</th>
+        <th>Differences</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function _formatDifference(diff) {
+  // Convert snake_case keys to readable labels
+  const map = {
+    'first_name_different': 'first name \u2260',
+    'last_name_different': 'last name \u2260',
+    'title_in_index_not_in_low': 'title in Index',
+    'title_in_low_not_in_index': 'title in LoW',
+    'missing_in_index': 'missing in Index',
+    'missing_in_low': 'missing in LoW',
+    'company_vs_person': 'company vs person',
+  };
+  if (map[diff]) return map[diff];
+  // Handle parameterised diffs like "extra_quals_in_index:obe"
+  const m = diff.match(/^extra_quals_in_(index|low):(.+)$/);
+  if (m) return `+${m[2].toUpperCase()} in ${m[1] === 'index' ? 'Index' : 'LoW'}`;
+  return diff.replace(/_/g, ' ');
+}
+
+// ---------------------------------------------------------------------------
 // Routing
 // ---------------------------------------------------------------------------
 
@@ -565,6 +783,7 @@ function router() {
   else if (hash === '#/index')             renderIndexList();
   else if (hash === '#/templates')         renderTemplates();
   else if (hash === '#/audit')             renderAuditLog();
+  else if (hash === '#/compare')           renderCompare();
   else if (hash === '#/settings')          renderSettings();
   else                                     renderList();
 }
