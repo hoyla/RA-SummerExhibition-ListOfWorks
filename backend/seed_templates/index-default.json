@@ -1,5 +1,5 @@
 {
-  "_name": "Index Default",
+  "_name": "Index Defaults",
   "_config_type": "index_template",
   "entry_style": "Index Text",
   "ra_surname_style": "RA Member Cap Surname",

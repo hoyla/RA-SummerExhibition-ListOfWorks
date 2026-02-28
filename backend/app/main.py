@@ -117,9 +117,12 @@ def _seed_builtin_templates() -> None:
 
     db = _SessionLocal()
     try:
-        for f in sorted(_seed_dir.glob("*.json")):
-            if f.name == "known-artists.json":
-                continue
+        # Get slugs of all current seed files, excluding known-artists
+        seed_files = [f for f in _seed_dir.glob("*.json") if f.name != "known-artists.json"]
+        seed_slugs = {f.stem for f in seed_files}
+
+        # Upsert templates from files
+        for f in sorted(seed_files):
             slug = f.stem
             with open(f, encoding="utf-8") as fp:
                 seed = json.load(fp)
@@ -148,6 +151,18 @@ def _seed_builtin_templates() -> None:
                     slug=slug,
                 )
             )
+        
+        # Delete built-in templates that no longer have a corresponding file
+        db_slugs = {
+            slug[0] for slug in db.query(_Ruleset.slug).filter(_Ruleset.is_builtin == True).all()
+        }
+        deleted_slugs = db_slugs - seed_slugs
+        if deleted_slugs:
+            db.query(_Ruleset).filter(
+                _Ruleset.is_builtin == True, _Ruleset.slug.in_(deleted_slugs)
+            ).delete(synchronize_session=False)
+            logger.info("Deleted orphaned seed templates: %s", ", ".join(sorted(deleted_slugs)))
+
         db.commit()
     except Exception as exc:  # pragma: no cover
         logger.error("Seed error: %s", exc)
