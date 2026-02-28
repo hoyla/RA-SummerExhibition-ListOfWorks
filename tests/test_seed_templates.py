@@ -194,12 +194,12 @@ class TestTemplateSeedFiles:
 # Template seeding process
 # ---------------------------------------------------------------------------
 
-from backend.app.main import _seed_builtin_templates
 from backend.app.models.ruleset_model import Ruleset
 
 
 def test_seed_templates_deletes_orphaned_builtins(db_session):
     """Templates marked is_builtin are deleted if no corresponding file exists."""
+    from backend.app.main import _seed_builtin_templates
     # 1. Create an orphaned built-in template that has no corresponding file
     db_session.add(
         Ruleset(
