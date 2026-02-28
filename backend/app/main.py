@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Depends
 from fastapi.exceptions import ResponseValidationError
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
 
 from backend.app.config import LOG_LEVEL, CORS_ORIGINS, API_KEY
@@ -489,9 +489,10 @@ def health():
     return JSONResponse(content=result, status_code=code)
 
 
-@app.get("/", tags=["ops"])
+@app.get("/", tags=["ops"], include_in_schema=False)
 def root():
-    return {"status": "Catalogue tool running"}
+    """Redirect root to the /ui/ frontend."""
+    return RedirectResponse(url="/ui/")
 
 
 # ---------------------------------------------------------------------------
