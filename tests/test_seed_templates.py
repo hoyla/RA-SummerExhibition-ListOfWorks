@@ -199,7 +199,7 @@ from backend.app.models.ruleset_model import Ruleset
 
 def test_seed_templates_deletes_orphaned_builtins(db_session):
     """Templates marked is_builtin are deleted if no corresponding file exists."""
-    from backend.app.main import _seed_builtin_templates
+    from backend.app.services.seed_service import seed_builtin_templates as _seed_builtin_templates
     # 1. Create an orphaned built-in template that has no corresponding file
     db_session.add(
         Ruleset(
@@ -228,7 +228,7 @@ def test_seed_templates_deletes_orphaned_builtins(db_session):
     assert db_session.query(Ruleset).filter_by(slug="user-template").one_or_none()
 
     # 3. Run the seeding process
-    _seed_builtin_templates()
+    _seed_builtin_templates(db=db_session)
 
     # 4. Assert the orphaned built-in was deleted, but the user one was not
     assert not db_session.query(Ruleset).filter_by(slug="orphaned-template").one_or_none()

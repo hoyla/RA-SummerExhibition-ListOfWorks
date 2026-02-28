@@ -104,72 +104,7 @@ _start_time = time.monotonic()
 # Seed built-in templates from backend/seed_templates/*.json
 # ---------------------------------------------------------------------------
 
-
-def _seed_builtin_templates() -> None:
-    from backend.app.db import SessionLocal as _SessionLocal
-    from backend.app.models.ruleset_model import Ruleset as _Ruleset
-
-    _seed_dir = (
-        Path(__file__).resolve().parent.parent.parent / "backend" / "seed_templates"
-    )
-    if not _seed_dir.exists():
-        return
-
-    db = _SessionLocal()
-    try:
-        # Get slugs of all current seed files, excluding known-artists
-        seed_files = [f for f in _seed_dir.glob("*.json") if f.name != "known-artists.json"]
-        seed_slugs = {f.stem for f in seed_files}
-
-        # Upsert templates from files
-        for f in sorted(seed_files):
-            slug = f.stem
-            with open(f, encoding="utf-8") as fp:
-                seed = json.load(fp)
-            name = seed.pop("_name", slug)
-            config_type = seed.pop("_config_type", "template")
-            cfg_hash = hashlib.sha256(
-                json.dumps(seed, sort_keys=True).encode()
-            ).hexdigest()
-            existing = db.query(_Ruleset).filter(_Ruleset.slug == slug).first()
-            if existing:
-                if existing.name != name:
-                    existing.name = name
-                if existing.config_type != config_type:
-                    existing.config_type = config_type
-                if existing.config_hash != cfg_hash:
-                    existing.config = seed
-                    existing.config_hash = cfg_hash
-                continue
-            db.add(
-                _Ruleset(
-                    name=name,
-                    config=seed,
-                    config_hash=cfg_hash,
-                    config_type=config_type,
-                    is_builtin=True,
-                    slug=slug,
-                )
-            )
-        
-        # Delete built-in templates that no longer have a corresponding file
-        db_slugs = {
-            slug[0] for slug in db.query(_Ruleset.slug).filter(_Ruleset.is_builtin == True).all()
-        }
-        deleted_slugs = db_slugs - seed_slugs
-        if deleted_slugs:
-            db.query(_Ruleset).filter(
-                _Ruleset.is_builtin == True, _Ruleset.slug.in_(deleted_slugs)
-            ).delete(synchronize_session=False)
-            logger.info("Deleted orphaned seed templates: %s", ", ".join(sorted(deleted_slugs)))
-
-        db.commit()
-    except Exception as exc:  # pragma: no cover
-        logger.error("Seed error: %s", exc)
-        db.rollback()
-    finally:
-        db.close()
-
+from backend.app.services.seed_service import seed_builtin_templates as _seed_builtin_templates
 
 _seed_builtin_templates()
 
