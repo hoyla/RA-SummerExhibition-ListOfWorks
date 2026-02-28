@@ -192,7 +192,7 @@ class TestListIndexArtists:
         assert data[1]["last_name"] == "Parker"
         # index_name is a computed composite
         assert data[0]["index_name"] == "Adams, Roger"
-        assert data[1]["index_name"] == "Parker, Cornelia cbe ra"
+        assert data[1]["index_name"] == "Parker, Cornelia CBE RA"
 
     def test_artists_include_cat_numbers(self, client, db_session):
         imp, artists = _seed_index_import(db_session)

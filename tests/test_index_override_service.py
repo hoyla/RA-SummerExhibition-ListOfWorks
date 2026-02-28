@@ -178,7 +178,7 @@ class TestResolveWithOverride:
         override = _FakeOverride(quals_override="CBE RA")
         eff = resolve_index_artist(artist, override)
         assert eff.quals == "CBE RA"
-        assert "cbe ra" in eff.index_name
+        assert "CBE RA" in eff.index_name
 
     def test_override_second_artist(self):
         artist = _FakeArtist(
@@ -265,7 +265,7 @@ class TestResolveWithKnownArtist:
         assert eff.artist2_last_name == "St John"
         assert eff.quals == "RA"  # preserved from artist
         assert eff.sort_key == "caruso adam"
-        assert eff.index_name == "Caruso, Adam ra, and Peter St John"
+        assert eff.index_name == "Caruso, Adam RA, and Peter St John"
 
     def test_known_none_means_keep_normalised(self):
         """None in known_artist fields means 'keep normalised value'."""
@@ -410,7 +410,7 @@ class TestBuildIndexName:
             None,
             False,
         )
-        assert name == "Parker, Cornelia cbe ra"
+        assert name == "Parker, Cornelia CBE RA"
 
     def test_with_title(self):
         name = build_index_name(
@@ -426,7 +426,7 @@ class TestBuildIndexName:
             None,
             False,
         )
-        assert name == "Adjaye, Sir David om obe ra"
+        assert name == "Adjaye, Sir David OM OBE RA"
 
     def test_company(self):
         assert (
@@ -440,7 +440,7 @@ class TestBuildIndexName:
         name = build_index_name(
             None, "Assemble", None, "RA", None, None, None, None, None, None, False
         )
-        assert name == "Assemble ra"
+        assert name == "Assemble RA"
 
     def test_second_artist(self):
         name = build_index_name(
@@ -456,7 +456,7 @@ class TestBuildIndexName:
             None,
             False,
         )
-        assert name == "Caruso, Adam ra, and Peter St John"
+        assert name == "Caruso, Adam RA, and Peter St John"
 
     def test_company_partnership(self):
         assert (
