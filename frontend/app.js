@@ -3448,11 +3448,11 @@ function _workNormReasons(w) {
   const trimmed = [];
   const changed = [];
   for (const [label, raw, norm] of fields) {
-    const r = (raw ?? '').trim();
-    const n = (norm ?? '').trim();
-    if (!r && !n) continue;
-    if (r === n) continue;
-    if ((raw ?? '').trim() === (norm ?? '').trim()) {
+    const rawStr = raw ?? '';
+    const normStr = norm ?? '';
+    if (!rawStr && !normStr) continue;
+    if (rawStr === normStr) continue;
+    if (rawStr.trim() === normStr.trim()) {
       trimmed.push(label);
     } else {
       changed.push(label);
@@ -3469,12 +3469,13 @@ function _workNormReasons(w) {
       reasons.push('Honorific extracted: ' + hon);
     }
   }
-  if (rawA && normA && rawA !== normA) {
+  const rawAFull = w.raw_artist ?? '';
+  if (rawAFull && normA && rawAFull !== (w.artist_name ?? '')) {
     const nameMatchesAfterHon = hon && rawA === (normA + ' ' + hon).trim();
     const nameCloseAfterHon = hon && rawA.includes(hon) &&
       rawA.replace(hon, '').replace(/\s+/g, ' ').trim().replace(/,\s*$/, '').trim() === normA;
     if (!nameMatchesAfterHon && !nameCloseAfterHon) {
-      if ((w.raw_artist ?? '').trim() === (w.artist_name ?? '').trim()) {
+      if (rawAFull.trim() === (w.artist_name ?? '').trim()) {
         trimmed.push('Artist');
       } else {
         changed.push('Artist');
@@ -3568,15 +3569,22 @@ function workRowHTML(importId, w, cfg) {
   if (hasOverride) flags.push('<span class="badge badge-override" title="Has a user override">Override</span>');
   // Normalisation detection: compare raw vs normalised fields
   const _normDiffs = [];
+  const _wsTrimmed = [];
   const _normFields = [
     ['Title', w.raw_title, w.title],
     ['Price', w.raw_price, w.price_text ?? (w.price_numeric != null ? String(w.price_numeric) : null)],
     ['Medium', w.raw_medium, w.medium],
   ];
   for (const [label, raw, norm] of _normFields) {
-    const r = (raw ?? '').trim();
-    const n = (norm ?? '').trim();
-    if (r && n && r !== n) _normDiffs.push(label);
+    const rawStr = raw ?? '';
+    const normStr = norm ?? '';
+    if (!rawStr && !normStr) continue;
+    if (rawStr === normStr) continue;
+    if (rawStr.trim() === normStr.trim()) {
+      _wsTrimmed.push(label);
+    } else {
+      _normDiffs.push(label);
+    }
   }
   // Artist field: detect honorific extraction vs actual name change
   const _rawA = (w.raw_artist ?? '').trim();
@@ -3590,15 +3598,21 @@ function workRowHTML(importId, w, cfg) {
       flags.push(`<span class="badge badge-normalised" title="Honorific extracted: ${esc(_hon)}">${esc(_hon)}</span>`);
     }
   }
-  if (_rawA && _normA && _rawA !== _normA) {
+  const _rawAFull = w.raw_artist ?? '';
+  if (_rawAFull && _normA && _rawAFull !== (w.artist_name ?? '')) {
     // Check if the difference is fully explained by honorific extraction
     const nameMatchesAfterHon = _hon && _rawA === (_normA + ' ' + _hon).trim();
     const nameCloseAfterHon = _hon && _rawA.includes(_hon) &&
       _rawA.replace(_hon, '').replace(/\s+/g, ' ').trim().replace(/,\s*$/, '').trim() === _normA;
     if (!nameMatchesAfterHon && !nameCloseAfterHon) {
-      _normDiffs.push('Artist');
+      if (_rawAFull.trim() === (w.artist_name ?? '').trim()) {
+        _wsTrimmed.push('Artist');
+      } else {
+        _normDiffs.push('Artist');
+      }
     }
   }
+  if (_wsTrimmed.length) flags.push(`<span class="badge badge-info" title="Whitespace trimmed: ${esc(_wsTrimmed.join(', '))}">${esc('Trimmed')}</span>`);
   if (_normDiffs.length) flags.push(`<span class="badge badge-normalised" title="Normalised: ${esc(_normDiffs.join(', '))}">${esc('Norm')}</span>`);
   // Warnings from the per-work lookup
   const wWarns = _warningsByWorkId[w.id];
