@@ -2414,10 +2414,13 @@ function _renderIndexEntryExamples(cfg) {
     },
   ];
 
+  // Helper: overlay a visible grey middle-dot on each space (keeps the space for flex layout)
+  const _vs = (html) => html.replace(/ /g, '<span class="ws-hint-ex">&middot;</span>');
+
   const html = examples.map(ex => {
     const partsHtml = ex.parts.map(p => {
       if (p.sep) {
-        return `<span class="idx-ex-sep">${esc(p.text)}</span>`;
+        return `<span class="idx-ex-sep">${_vs(esc(p.text))}</span>`;
       }
       // Choose visual class based on the role of this segment
       let vizClass = 'idx-ex-plain';
@@ -2430,7 +2433,7 @@ function _renderIndexEntryExamples(cfg) {
       const labelHtml = label
         ? `<span class="idx-ex-label">${esc(label)}</span>`
         : '';
-      return `<span class="${vizClass}">${esc(p.text)}${labelHtml}</span>`;
+      return `<span class="${vizClass}"><span class="idx-ex-text">${_vs(esc(p.text))}</span>${labelHtml}</span>`;
     }).join('');
 
     return `
@@ -4674,13 +4677,16 @@ function _valClass(prev, curr) {
 function _buildEntryPreview(a) {
   const parts = [];
 
+  // Helper: replace literal spaces with visible grey middle-dot markers
+  const _vs = (html) => html.replace(/ /g, '<span class="ws-hint">&middot;</span>');
+
   // Helper: push a styled segment
-  const plain = (text) => `<span class="idx-ep-plain">${esc(text)}</span>`;
-  const sep   = (text) => `<span class="idx-ep-sep">${esc(text)}</span>`;
-  const raSurname = (text) => `<span class="idx-ep-ra-surname" title="RA surname">${esc(text)}</span>`;
-  const raQuals   = (text) => `<span class="idx-ep-ra-quals" title="RA quals">${esc(text)}</span>`;
-  const honQuals  = (text) => `<span class="idx-ep-honorifics" title="Non-RA honorifics">${esc(text)}</span>`;
-  const catNo     = (text) => `<span class="idx-ep-catno" title="Cat number">${esc(text)}</span>`;
+  const plain = (text) => `<span class="idx-ep-plain">${_vs(esc(text))}</span>`;
+  const sep   = (text) => `<span class="idx-ep-sep">${_vs(esc(text))}</span>`;
+  const raSurname = (text) => `<span class="idx-ep-ra-surname" title="RA surname">${_vs(esc(text))}</span>`;
+  const raQuals   = (text) => `<span class="idx-ep-ra-quals" title="RA quals">${_vs(esc(text))}</span>`;
+  const honQuals  = (text) => `<span class="idx-ep-honorifics" title="Non-RA honorifics">${_vs(esc(text))}</span>`;
+  const catNo     = (text) => `<span class="idx-ep-catno" title="Cat number">${_vs(esc(text))}</span>`;
 
   // --- Name ---
   const surname = a.last_name || a.first_name || a.company || '';

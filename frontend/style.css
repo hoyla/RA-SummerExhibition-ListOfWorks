@@ -1513,6 +1513,30 @@ details.section-block[open] > .section-summary::before {
   opacity: 0.7;
 }
 
+/* Grey space-dot hint used in entry previews and layout examples */
+.ws-hint {
+  color: #aaa;
+  font-weight: normal;
+  font-size: 0.85em;
+  opacity: 0.8;
+  user-select: none;
+}
+
+/* Space-dot for Entry Layout Examples (flex context): renders a middle-dot
+   that occupies the same width as a normal space so flex layout is not
+   disrupted.  Uses a word-space-width inline-block with the dot centred. */
+.ws-hint-ex {
+  display: inline-block;
+  width: 0.35em;
+  text-align: center;
+  color: #aaa;
+  font-weight: normal;
+  font-size: 12px;
+  vertical-align: baseline;
+  opacity: 0.8;
+  user-select: none;
+}
+
 .norm-reasons {
   background: #e8f4f0;
   border: 1px solid #8fd6b8;
@@ -1636,6 +1660,9 @@ details.section-block[open] > .section-summary::before {
 .idx-ex-plain {
   padding: 2px 0 16px;
 }
+.idx-ex-text {
+  display: inline;
+}
 .idx-ex-label {
   position: absolute;
   bottom: 1px;
@@ -1656,6 +1683,12 @@ details.section-block[open] > .section-summary::before {
   color: var(--muted);
   padding: 2px 0 16px;
   font-size: 13px;
+}
+
+/* Nudge dots up inside smaller-font separator spans to align with component dots */
+.idx-ex-sep > .ws-hint-ex {
+  position: relative;
+  top: -1px;
 }
 
 /* -----------------------------------------------------------------------
