@@ -733,17 +733,23 @@ function _renderCompareTable() {
 
     let idxName;
     if (e.index_name != null) {
-      // Build name from structured fields so quals can be styled separately
-      // (index_name already contains quals — using it would duplicate them)
-      let namePart;
-      if (e.index_is_company || !e.index_last_name || !e.index_first_name) {
-        namePart = esc(e.index_last_name || e.index_first_name || '');
+      // index_name is the full composite: "Last, First Quals, and Artist2..."
+      // Show the full name; style quals portion if present
+      if (e.index_quals) {
+        // Highlight quals within the composite name as muted
+        const qualsEsc = esc(e.index_quals);
+        const nameEsc = esc(e.index_name);
+        const qIdx = nameEsc.indexOf(qualsEsc);
+        if (qIdx > -1) {
+          idxName = nameEsc.slice(0, qIdx)
+            + `<span class="muted">${qualsEsc}</span>`
+            + nameEsc.slice(qIdx + qualsEsc.length);
+        } else {
+          idxName = nameEsc;
+        }
       } else {
-        const rest = e.index_title ? `${esc(e.index_title)} ${esc(e.index_first_name)}` : esc(e.index_first_name);
-        namePart = `${esc(e.index_last_name)}, ${rest}`;
+        idxName = esc(e.index_name);
       }
-      idxName = namePart;
-      if (e.index_quals) idxName += ` <span class="muted">${esc(e.index_quals)}</span>`;
     } else {
       idxName = '<span class="muted">\u2014 not in Index</span>';
     }
