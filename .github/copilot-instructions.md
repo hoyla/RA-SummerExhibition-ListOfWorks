@@ -130,12 +130,15 @@ also needs updating (and vice versa).
 
 ## Common pitfalls
 
-| Mistake                                     | Prevention                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------- |
-| Changed model but forgot Alembic migration  | Tests won't catch this — always create a migration                  |
-| Tests pass but Docker 500s                  | DB schema out of sync — migration is missing                        |
-| Warning type not showing in UI              | Update `_IDX_WARNING_LABELS` map and `_IDX_CHANGED_TYPES` in app.js |
-| `.env` has `API_KEY=value`                  | Clear to `API_KEY=` for no-auth mode locally                        |
+| Mistake                                          | Prevention                                                                                                                |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Changed model but forgot Alembic migration       | Tests won't catch this — always create a migration                                                                        |
+| Tests pass but Docker 500s                       | DB schema out of sync — migration is missing                                                                              |
+| Index warning type not showing in UI             | Update `_IDX_WARNING_LABELS` map and `_IDX_CHANGED_TYPES` set in `app.js`                                                 |
+| LoW warning type not showing in UI               | Update `_LOW_WARNING_LABELS` map and `_LOW_CHANGED_TYPES` set in `app.js`                                                 |
+| LoW detail panel shows stale data                | `_workCache` is populated in `renderSections` — always refresh via `_showWorkDetailPanel` after override save/delete       |
+| LoW warning badges missing from detail panel     | `_warningsByWorkId` is populated in `renderWarningsPanel` — must be called before sections render                         |
+| `.env` has `API_KEY=value`                       | Clear to `API_KEY=` for no-auth mode locally                                                                              |
 
 ## Validation warnings
 
