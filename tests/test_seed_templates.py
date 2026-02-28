@@ -188,3 +188,48 @@ class TestTemplateSeedFiles:
                         f"{f.name} field '{key}' should be a string, "
                         f"got {type(val).__name__}: {val!r}"
                     )
+
+
+# ---------------------------------------------------------------------------
+# Template seeding process
+# ---------------------------------------------------------------------------
+
+from backend.app.main import _seed_builtin_templates
+from backend.app.models.ruleset_model import Ruleset
+
+
+def test_seed_templates_deletes_orphaned_builtins(db_session):
+    """Templates marked is_builtin are deleted if no corresponding file exists."""
+    # 1. Create an orphaned built-in template that has no corresponding file
+    db_session.add(
+        Ruleset(
+            name="Orphaned Template",
+            slug="orphaned-template",
+            is_builtin=True,
+            config_type="template",
+            config={"some": "config"},
+            config_hash="dummy_hash",
+        )
+    )
+    # 2. Create a non-builtin template that should NOT be deleted
+    db_session.add(
+        Ruleset(
+            name="User Template",
+            slug="user-template",
+            is_builtin=False,
+            config_type="template",
+            config={"some": "config"},
+            config_hash="dummy_hash",
+        )
+    )
+    db_session.commit()
+
+    assert db_session.query(Ruleset).filter_by(slug="orphaned-template").one_or_none()
+    assert db_session.query(Ruleset).filter_by(slug="user-template").one_or_none()
+
+    # 3. Run the seeding process
+    _seed_builtin_templates()
+
+    # 4. Assert the orphaned built-in was deleted, but the user one was not
+    assert not db_session.query(Ruleset).filter_by(slug="orphaned-template").one_or_none()
+    assert db_session.query(Ruleset).filter_by(slug="user-template").one_or_none()
