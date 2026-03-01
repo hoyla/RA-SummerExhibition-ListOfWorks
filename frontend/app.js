@@ -5617,6 +5617,9 @@ function _syncOvrSharedSurnameConstraint(container) {
   a2cb.addEventListener('change', () => setTimeout(sync, 0));
   sync();
 }
+
+/** Update the state text next to the company checkbox in the override form. */
+function _updateIdxOvrCompanyState(cb) {
   const state = cb.dataset.tristate;
   const stateEl = cb.closest('.ka-field-check')?.querySelector('.ka-field-state');
   if (stateEl) {
