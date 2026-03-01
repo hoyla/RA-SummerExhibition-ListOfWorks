@@ -215,8 +215,6 @@ async function _refreshCognitoTokens() {
 function _storeCognitoTokens(result) {
   _idToken = result.IdToken;
   if (result.RefreshToken) _refreshToken = result.RefreshToken;
-  localStorage.setItem('ra_id_token', _idToken);
-  if (_refreshToken) localStorage.setItem('ra_refresh_token', _refreshToken);
   try {
     const payload = JSON.parse(atob(_idToken.split('.')[1]));
     _userEmail = payload.email || payload['cognito:username'] || '';
