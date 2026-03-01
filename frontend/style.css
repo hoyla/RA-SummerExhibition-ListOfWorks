@@ -749,6 +749,16 @@ details.section-block[open] > .section-summary::before {
 .ovr-grid {
   margin-bottom: 14px;
 }
+/* Index override form has only 3 artist sections (no Match Pattern column) */
+.ovr-grid.ka-artists-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+@media (max-width: 900px) {
+  .ovr-grid.ka-artists-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .ovr-grid.ka-artists-grid { grid-template-columns: 1fr; }
+}
 
 /* LoW override form – 3-column grid */
 .low-ovr-grid {
