@@ -3038,7 +3038,7 @@ async function renderDetail(importId) {
       <h3>Export</h3>
       <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
     </section>
-    <section class="panel" id="warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
+    <section class="panel" id="warnings-panel"><p class="loading">Loading flagged issues\u2026</p></section>
     <section class="panel">
       <h3>Works</h3>
       <div class="works-filter-bar">
@@ -3185,7 +3185,7 @@ function _buildWarningsPanel() {
   const warnings = _warningsAll;
   const panel = document.getElementById('warnings-panel');
   if (!warnings.length) {
-    panel.innerHTML = '<p class="no-warnings">\u2713 No validation warnings</p>';
+    panel.innerHTML = '<p class="no-warnings">\u2713 No flagged issues</p>';
     return;
   }
   panel.classList.add('has-warnings');
@@ -3224,7 +3224,7 @@ function _buildWarningsPanel() {
     : String(warnings.length);
 
   panel.innerHTML = `
-    <h3>\u26a0 Validation Warnings (${countLabel})</h3>
+    <h3>\u26a0 Flagged Issues (${countLabel})</h3>
     <div class="warning-filter-bar">${summaryBadges}</div>
     <details>
       <summary class="warnings-toggle">Show detail</summary>
@@ -3483,6 +3483,15 @@ function _workNormReasons(w) {
       }
     }
   }
+  // Edition field: detect suppression (zero edition) or other changes
+  const rawEd = (w.raw_edition ?? '').trim();
+  const normEd = w.edition_total != null ? String(w.edition_total) : '';
+  if (rawEd && !normEd) {
+    // Raw edition existed but was cleared (e.g. zero edition suppressed)
+    reasons.push('Edition suppressed: ' + rawEd);
+  } else if (rawEd && normEd && rawEd !== normEd) {
+    changed.push('Edition');
+  }
   if (trimmed.length) reasons.push('Whitespace trimmed: ' + trimmed.join(', '));
   if (changed.length) reasons.push('Values changed: ' + changed.join(', '));
   return reasons;
@@ -3494,15 +3503,25 @@ function _workNormBadges(w) {
   return `<div class="norm-reasons"><strong>Normalised:</strong> <span class="badge badge-normalised" title="${esc(reasons.join('; '))}">${esc(reasons.join('; '))}</span></div>`;
 }
 
+// Warning types whose .message carries useful detail to show inline
+const _LOW_DETAIL_TYPES = new Set([
+  'non_ascii_characters', 'unrecognised_price', 'edition_anomaly',
+]);
+
 function _workWarningsBadges(workId) {
-  const warns = _warningsByWorkId[workId];
-  if (!warns || !warns.length) return '';
+  const warns = (_warningsByWorkId[workId] || []).filter(w => !_LOW_CHANGED_TYPES.has(w.warning_type));
+  if (!warns.length) return '';
   const badges = warns.map(w => {
-    const isChanged = _LOW_CHANGED_TYPES.has(w.warning_type);
-    const cls = isChanged ? 'badge badge-info' : 'badge badge-warning';
-    return `<span class="${cls}" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
+    return `<span class="badge badge-warning" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
   }).join(' ');
-  return `<div class="norm-reasons"><strong>Warnings:</strong> ${badges}</div>`;
+  // Collect detailed explanations for warning types that benefit from inline detail
+  const details = warns
+    .filter(w => _LOW_DETAIL_TYPES.has(w.warning_type) && w.message)
+    .map(w => esc(w.message));
+  const detailHtml = details.length
+    ? `<div class="warning-details">${details.map(d => `<small>${d}</small>`).join('<br>')}</div>`
+    : '';
+  return `<div class="norm-reasons"><strong>Warnings:</strong> ${badges}${detailHtml}</div>`;
 }
 
 function _showWorkDetailPanel(importId, workId) {
@@ -3615,13 +3634,12 @@ function workRowHTML(importId, w, cfg) {
   }
   if (_wsTrimmed.length) flags.push(`<span class="badge badge-info" title="Whitespace trimmed: ${esc(_wsTrimmed.join(', '))}">${esc('Trimmed')}</span>`);
   if (_normDiffs.length) flags.push(`<span class="badge badge-normalised" title="Normalised: ${esc(_normDiffs.join(', '))}">${esc('Norm')}</span>`);
-  // Warnings from the per-work lookup
+  // Warnings from the per-work lookup (exclude "changed" types — those are normalisations)
   const wWarns = _warningsByWorkId[w.id];
   if (wWarns && wWarns.length) {
-    const warnTypes = [...new Set(wWarns.map(ww => ww.warning_type))];
+    const warnTypes = [...new Set(wWarns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
     for (const wt of warnTypes) {
-      const isChanged = _LOW_CHANGED_TYPES.has(wt);
-      flags.push(`<span class="badge ${isChanged ? 'badge-info' : 'badge-warning'}" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
+      flags.push(`<span class="badge badge-warning" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
     }
   }
 
@@ -4338,7 +4356,7 @@ async function renderIndexDetail(importId) {
       <h3>Export</h3>
       <div id="index-export-panel"><p class="loading" style="padding:4px 0">Loading templates…</p></div>
     </section>
-    <section class="panel" id="index-warnings-panel"><p class="loading">Loading warnings\u2026</p></section>
+    <section class="panel" id="index-warnings-panel"><p class="loading">Loading flagged issues\u2026</p></section>
     <section class="panel">
       <h3>Artists</h3>
       <div id="index-group-legend-slot"></div>
@@ -4453,10 +4471,17 @@ function renderIndexAuditPanel(logs) {
 // ---------------------------------------------------------------------------
 let _indexWarningsAll = [];
 let _hiddenIndexWarningTypes = new Set();
+let _idxWarningsByArtistId = {};
 
 function _renderIndexWarnings(warnings) {
   _indexWarningsAll = warnings;
   _hiddenIndexWarningTypes = new Set();
+  _idxWarningsByArtistId = {};
+  for (const w of warnings) {
+    if (w.artist_id) {
+      (_idxWarningsByArtistId[w.artist_id] = _idxWarningsByArtistId[w.artist_id] || []).push(w);
+    }
+  }
   _buildIndexWarningsPanel();
 }
 
@@ -4488,11 +4513,33 @@ function _idxWarnLabel(type) {
   return _IDX_WARNING_LABELS[type] || type;
 }
 
+// Index warning types whose .message carries useful detail to show inline
+const _IDX_DETAIL_TYPES = new Set([
+  'non_ascii_characters', 'multi_artist_name_suspected', 'ra_styling_ambiguous',
+  'quals_in_name_field', 'missing_cat_nos',
+]);
+
+function _idxWarningsBadges(artistId) {
+  const warns = (_idxWarningsByArtistId[artistId] || []).filter(w => !_IDX_CHANGED_TYPES.has(w.warning_type));
+  if (!warns.length) return '';
+  const badges = warns.map(w => {
+    return `<span class="badge badge-warning" title="${esc(w.message)}">${esc(_idxWarnLabel(w.warning_type))}</span>`;
+  }).join(' ');
+  // Collect detailed explanations for warning types that benefit from inline detail
+  const details = warns
+    .filter(w => _IDX_DETAIL_TYPES.has(w.warning_type) && w.message)
+    .map(w => esc(w.message.replace(/^Row \d+:\s*/, '')));
+  const detailHtml = details.length
+    ? `<div class="warning-details">${details.map(d => `<small>${d}</small>`).join('<br>')}</div>`
+    : '';
+  return `<div class="norm-reasons"><strong>Warnings:</strong> ${badges}${detailHtml}</div>`;
+}
+
 function _buildIndexWarningsPanel() {
   const warnings = _indexWarningsAll;
   const panel = document.getElementById('index-warnings-panel');
   if (!warnings.length) {
-    panel.innerHTML = '<p class="no-warnings">\u2713 No validation warnings</p>';
+    panel.innerHTML = '<p class="no-warnings">\u2713 No flagged issues</p>';
     return;
   }
   panel.classList.add('has-warnings');
@@ -4530,7 +4577,7 @@ function _buildIndexWarningsPanel() {
     : String(warnings.length);
 
   panel.innerHTML = `
-    <h3>\u26a0 Validation Warnings (${countLabel})</h3>
+    <h3>\u26a0 Flagged Issues (${countLabel})</h3>
     <div class="warning-filter-bar">${summaryBadges}</div>
     <details>
       <summary class="warnings-toggle">Show detail</summary>
@@ -4671,7 +4718,6 @@ function renderIndexArtists(importId, artists) {
     <th>Courtesy / Company</th>
     <th>Cat Numbers</th>
     <th class="col-flags">Flags</th>
-    <th class="col-include"><abbr title="Include in export">Inc.</abbr></th>
   </tr></thead>`;
 
   container.innerHTML = letterGroups.map(g => {
@@ -5093,6 +5139,8 @@ function _buildDetailTable(a) {
 
 function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
   const included = a.include_in_export !== false;
+  const inclLabel = included ? 'Exclude from export' : 'Include in export';
+  const inclBtnClass = included ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-danger';
   const groupStyle = groupColor ? `border-left: 4px solid ${groupColor};` : '';
   const groupTitle = groupColor && sortKeyNames
     ? `Linked entries (same sort position): ${(sortKeyNames[a.sort_key || ''] || []).join(', ')}` : '';
@@ -5113,6 +5161,15 @@ function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
   if (a.has_override) badges.push('<span class="badge badge-override" title="Has a user override">Override</span>');
   if (a.merged_from_rows && a.merged_from_rows.length > 1) {
     badges.push(`<span class="badge badge-merged" title="Merged from spreadsheet rows ${a.merged_from_rows.join(', ')}">Merged</span>`);
+  }
+
+  // Per-artist server-side validation warnings (exclude "changed" types — those are normalisations)
+  const aWarns = _idxWarningsByArtistId[a.id];
+  if (aWarns && aWarns.length) {
+    const warnTypes = [...new Set(aWarns.filter(ww => !_IDX_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
+    for (const wt of warnTypes) {
+      badges.push(`<span class="badge badge-warning" title="${esc(aWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_idxWarnLabel(wt))}</span>`);
+    }
   }
 
   // Group cat numbers by courtesy
@@ -5160,23 +5217,21 @@ function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
       <td class="col-courtesy">${esc(courtesyDisplay)}</td>
       <td class="col-catnos">${esc(catDisplay)}</td>
       <td class="col-flags">${badges.join(' ')}</td>
-      <td class="col-include">
-        ${canEdit() ? `<input type="checkbox" class="include-cb${included ? '' : ' excluded'}" id="idx-incl-${esc(a.id)}"
-          ${included ? 'checked' : ''}
-          onclick="event.stopPropagation()"
-          onchange="toggleIndexInclude('${esc(importId)}','${esc(a.id)}',this)">` : (included ? '\u2713' : '\u2717')}
-      </td>
     </tr>
     <tr id="idx-detail-${esc(a.id)}" class="index-detail-row" style="display:none">
-      <td colspan="9">
+      <td colspan="8">
         <div class="index-detail">
           ${hasNorm ? `<div class="norm-reasons"><strong>Normalisation:</strong> ${normReasons.map(r => esc(r)).join(' · ')}</div>` : ''}
+          ${_idxWarningsBadges(a.id)}
           ${_buildDetailTable(a)}
           <div class="idx-detail-actions">
             ${_buildEntryPreview(a)}
             <div class="idx-detail-buttons">
             ${ifEditor(`<button class="btn btn-sm ${a.has_override ? 'btn-warning' : ''}" id="idx-ov-btn-${esc(a.id)}"
               onclick="event.stopPropagation(); toggleIndexOverrideForm('${esc(importId)}','${esc(a.id)}')">${a.has_override ? 'Edit Override' : 'Override\u2026'}</button>`)}
+            ${ifEditor(`<button class="${inclBtnClass}" id="idx-incl-btn-${esc(a.id)}"
+              onclick="event.stopPropagation(); toggleIndexIncludeFromDetail('${esc(importId)}','${esc(a.id)}')">
+              ${esc(inclLabel)}</button>`)}
             ${canEdit() && a.merged_from_rows && a.merged_from_rows.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); unmergeArtist('${esc(importId)}','${esc(a.id)}')" title="Split back into ${a.merged_from_rows.length} separate entries (rows ${a.merged_from_rows.join(', ')})">Unmerge (rows ${a.merged_from_rows.join(', ')})</button>` : ''}
             </div>
           </div>
@@ -5205,6 +5260,29 @@ async function toggleIndexInclude(importId, artistId, checkbox) {
     showToast(`Toggle failed: ${err.message}`, 'error');
   } finally {
     checkbox.disabled = false;
+  }
+}
+
+async function toggleIndexIncludeFromDetail(importId, artistId) {
+  const a = _indexArtistCache[artistId];
+  if (!a) return;
+  const wasIncluded = a.include_in_export !== false;
+  const btn = document.getElementById(`idx-incl-btn-${artistId}`);
+  if (btn) btn.disabled = true;
+  try {
+    await api('PATCH', `/index/imports/${importId}/artists/${artistId}/exclude?exclude=${wasIncluded}`);
+    const nowIncluded = !wasIncluded;
+    a.include_in_export = nowIncluded;
+    const row = document.getElementById(`idx-${artistId}`);
+    if (row) row.className = `index-row ${nowIncluded ? '' : 'row-excluded'}`;
+    if (btn) {
+      btn.textContent = nowIncluded ? 'Exclude from export' : 'Include in export';
+      btn.className = nowIncluded ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-danger';
+    }
+  } catch (err) {
+    showToast(`Toggle failed: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

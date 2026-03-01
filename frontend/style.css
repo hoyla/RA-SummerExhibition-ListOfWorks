@@ -667,6 +667,9 @@ details.section-block[open] > .section-summary::before {
 .works-table .col-flags .badge { white-space: nowrap; }
 .work-row.row-excluded td.col-no::after { content: ' ✕'; color: #c0392b; font-size: 0.85em; text-decoration: none; }
 
+.index-row.row-excluded td { opacity: 0.45; text-decoration: line-through; text-decoration-color: #999; }
+.index-row.row-excluded td.col-flags { text-decoration: none; }
+
 /* ------------------------------------------------------------------ */
 /* Override form                                                       */
 /* ------------------------------------------------------------------ */
@@ -1340,9 +1343,12 @@ details.section-block[open] > .section-summary::before {
 }
 
 .index-table .col-flags {
-  text-align: left;
-  white-space: nowrap;
+  text-align: right;
+  max-width: 160px;
+  white-space: normal;
+  line-height: 1.8;
 }
+.index-table .col-flags .badge { white-space: nowrap; }
 
 .index-table .col-courtesy {
   font-size: 12px;
@@ -1539,6 +1545,14 @@ details.section-block[open] > .section-summary::before {
   font-size: 12px;
   color: #1a7a5a;
   margin-bottom: 8px;
+}
+
+.warning-details {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(0,0,0,0.08);
+  color: #6b5900;
+  line-height: 1.5;
 }
 
 /* Value comparison classes for detail table columns */
