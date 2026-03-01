@@ -328,6 +328,8 @@ class AutoResolvedFields(BaseModel):
     artist1_ra_styled: bool = False
     artist2_ra_styled: bool = False
     artist3_ra_styled: bool = False
+    artist2_shared_surname: bool = False
+    artist3_shared_surname: bool = False
 
 
 class IndexArtistOut(BaseModel):
@@ -355,6 +357,8 @@ class IndexArtistOut(BaseModel):
     artist1_ra_styled: bool = False
     artist2_ra_styled: bool = False
     artist3_ra_styled: bool = False
+    artist2_shared_surname: bool = False
+    artist3_shared_surname: bool = False
     is_ra_member: bool
     is_company: bool
     is_company_auto: bool = False
@@ -386,6 +390,8 @@ class IndexArtistOverrideIn(BaseModel):
     artist1_ra_styled_override: bool | None = None
     artist2_ra_styled_override: bool | None = None
     artist3_ra_styled_override: bool | None = None
+    artist2_shared_surname_override: bool | None = None
+    artist3_shared_surname_override: bool | None = None
     is_company_override: bool | None = None
     company_override: str | None = None
     address_override: str | None = None
@@ -407,6 +413,8 @@ class IndexArtistOverrideOut(BaseModel):
     artist1_ra_styled_override: bool | None = None
     artist2_ra_styled_override: bool | None = None
     artist3_ra_styled_override: bool | None = None
+    artist2_shared_surname_override: bool | None = None
+    artist3_shared_surname_override: bool | None = None
     is_company_override: bool | None = None
     company_override: str | None = None
     address_override: str | None = None
@@ -453,6 +461,8 @@ class KnownArtistOut(BaseModel):
     resolved_artist1_ra_styled: bool | None = None
     resolved_artist2_ra_styled: bool | None = None
     resolved_artist3_ra_styled: bool | None = None
+    resolved_artist2_shared_surname: bool | None = None
+    resolved_artist3_shared_surname: bool | None = None
     notes: str | None = None
     is_seeded: bool = False
 
@@ -479,6 +489,8 @@ class KnownArtistCreate(BaseModel):
     resolved_artist1_ra_styled: bool | None = None
     resolved_artist2_ra_styled: bool | None = None
     resolved_artist3_ra_styled: bool | None = None
+    resolved_artist2_shared_surname: bool | None = None
+    resolved_artist3_shared_surname: bool | None = None
     notes: str | None = None
 
 
@@ -502,6 +514,8 @@ class KnownArtistUpdate(BaseModel):
     resolved_artist1_ra_styled: bool | None = None
     resolved_artist2_ra_styled: bool | None = None
     resolved_artist3_ra_styled: bool | None = None
+    resolved_artist2_shared_surname: bool | None = None
+    resolved_artist3_shared_surname: bool | None = None
     notes: str | None = None
 
 

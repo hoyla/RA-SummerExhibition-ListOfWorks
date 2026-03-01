@@ -47,6 +47,10 @@ class IndexArtistOverride(Base):
     artist2_ra_styled_override = Column(Boolean, nullable=True)
     artist3_ra_styled_override = Column(Boolean, nullable=True)
 
+    # Shared-surname overrides (tri-state: None = no override)
+    artist2_shared_surname_override = Column(Boolean, nullable=True)
+    artist3_shared_surname_override = Column(Boolean, nullable=True)
+
     # Human-readable note explaining why this override exists
     notes = Column(Text, nullable=True)
 

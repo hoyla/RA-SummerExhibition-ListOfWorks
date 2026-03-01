@@ -41,6 +41,8 @@ def _entry(
     artist1_ra_styled=None,
     artist2_ra_styled=False,
     artist3_ra_styled=False,
+    artist2_shared_surname=False,
+    artist3_shared_surname=False,
 ):
     # Default artist1_ra_styled to is_ra for backwards-compat in tests
     if artist1_ra_styled is None:
@@ -65,6 +67,8 @@ def _entry(
         artist1_ra_styled=artist1_ra_styled,
         artist2_ra_styled=artist2_ra_styled,
         artist3_ra_styled=artist3_ra_styled,
+        artist2_shared_surname=artist2_shared_surname,
+        artist3_shared_surname=artist3_shared_surname,
     )
 
 
@@ -697,3 +701,116 @@ class TestLetterHeading:
         assert "<pstyle:Index Text>B" in parts
         # No blank separator lines between groups
         assert "" not in parts[1:]  # no empty parts after header
+
+
+# ---------------------------------------------------------------------------
+# Shared surname
+# ---------------------------------------------------------------------------
+
+
+class TestSharedSurnameRenderer:
+    def test_two_artists_shared_surname(self):
+        """Shared surname suppresses artist 2's surname in tagged text."""
+        entries = [
+            _entry(
+                last_name="Orta",
+                first_name="Lucy",
+                artist2_first_name="Jorge",
+                artist2_last_name="Orta",
+                artist2_shared_surname=True,
+                cat_nos=[42],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "Orta, Lucy, "
+            "and Jorge, "
+            "<cstyle:Index works numbers>42<cstyle:>"
+        )
+        assert line == expected
+
+    def test_two_artists_no_shared_surname(self):
+        """Without shared surname, artist 2's full name appears."""
+        entries = [
+            _entry(
+                last_name="Orta",
+                first_name="Lucy",
+                artist2_first_name="Jorge",
+                artist2_last_name="Orta",
+                artist2_shared_surname=False,
+                cat_nos=[42],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        assert "and Jorge Orta, " in line
+
+    def test_shared_surname_with_ra_styling(self):
+        """Shared surname suppresses RA-styled surname too."""
+        entries = [
+            _entry(
+                last_name="Orta",
+                first_name="Lucy",
+                is_ra=True,
+                artist2_first_name="Jorge",
+                artist2_last_name="Orta",
+                artist2_ra_styled=True,
+                artist2_shared_surname=True,
+                cat_nos=[42],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        # Artist 2 surname should NOT appear (no RA Member Cap Surname for artist 2)
+        assert "and Jorge, " in line
+        assert "<cstyle:RA Member Cap Surname>Orta<cstyle:>" in line  # Artist 1 still has it
+
+    def test_three_artists_all_shared_surname(self):
+        """Three artists all sharing surname — both suppressed."""
+        entries = [
+            _entry(
+                last_name="Smith",
+                first_name="Melanie",
+                artist2_first_name="Michael",
+                artist2_last_name="Smith",
+                artist2_shared_surname=True,
+                artist3_first_name="Anthony",
+                artist3_last_name="Smith",
+                artist3_shared_surname=True,
+                cat_nos=[100],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "Smith, Melanie, "
+            "Michael, "
+            "and Anthony, "
+            "<cstyle:Index works numbers>100<cstyle:>"
+        )
+        assert line == expected
+
+    def test_shared_surname_with_quals_preserved(self):
+        """Shared surname suppresses last name but quals are still shown."""
+        entries = [
+            _entry(
+                last_name="Orta",
+                first_name="Lucy",
+                quals="RA",
+                is_ra=True,
+                artist2_first_name="Jorge",
+                artist2_last_name="Orta",
+                artist2_quals="CBE",
+                artist2_shared_surname=True,
+                cat_nos=[42],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        # "Jorge CBE" should be there (with quals), not "Jorge Orta CBE"
+        assert "and Jorge " in line
+        assert "cbe" in line.lower()
+        assert "Jorge Orta" not in line

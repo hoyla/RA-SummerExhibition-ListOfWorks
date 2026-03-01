@@ -59,6 +59,12 @@ class IndexArtist(Base):
     artist2_ra_styled = Column(Boolean, nullable=False, server_default="false")
     artist3_ra_styled = Column(Boolean, nullable=False, server_default="false")
 
+    # Shared-surname flags: when True, the additional artist shares Artist 1's
+    # surname (e.g. siblings, married couples) and only their first name + quals
+    # are rendered — the surname is not repeated.
+    artist2_shared_surname = Column(Boolean, nullable=False, server_default="false")
+    artist3_shared_surname = Column(Boolean, nullable=False, server_default="false")
+
     is_ra_member = Column(Boolean, nullable=False, server_default="false")
     is_company = Column(Boolean, nullable=False, server_default="false")
 

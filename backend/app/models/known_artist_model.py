@@ -54,6 +54,10 @@ class KnownArtist(Base):
     resolved_artist2_ra_styled = Column(Boolean, nullable=True)
     resolved_artist3_ra_styled = Column(Boolean, nullable=True)
 
+    # Shared-surname resolved flags
+    resolved_artist2_shared_surname = Column(Boolean, nullable=True)
+    resolved_artist3_shared_surname = Column(Boolean, nullable=True)
+
     # Human-readable note explaining why this override exists
     notes = Column(Text, nullable=True)
 

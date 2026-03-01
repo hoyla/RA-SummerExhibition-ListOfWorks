@@ -169,6 +169,8 @@ def _seed_known_artists() -> None:
                     resolved_artist1_ra_styled=entry.get("resolved_artist1_ra_styled"),
                     resolved_artist2_ra_styled=entry.get("resolved_artist2_ra_styled"),
                     resolved_artist3_ra_styled=entry.get("resolved_artist3_ra_styled"),
+                    resolved_artist2_shared_surname=entry.get("resolved_artist2_shared_surname"),
+                    resolved_artist3_shared_surname=entry.get("resolved_artist3_shared_surname"),
                     notes=entry.get("notes"),
                 )
             )

@@ -30,6 +30,8 @@ class _FakeArtist:
         self.artist1_ra_styled = kwargs.get("artist1_ra_styled", False)
         self.artist2_ra_styled = kwargs.get("artist2_ra_styled", False)
         self.artist3_ra_styled = kwargs.get("artist3_ra_styled", False)
+        self.artist2_shared_surname = kwargs.get("artist2_shared_surname", False)
+        self.artist3_shared_surname = kwargs.get("artist3_shared_surname", False)
         self.raw_first_name = kwargs.get("raw_first_name")
         self.raw_last_name = kwargs.get("raw_last_name")
         self.raw_quals = kwargs.get("raw_quals")
@@ -57,6 +59,8 @@ class _FakeOverride:
         self.artist1_ra_styled_override = kwargs.get("artist1_ra_styled_override")
         self.artist2_ra_styled_override = kwargs.get("artist2_ra_styled_override")
         self.artist3_ra_styled_override = kwargs.get("artist3_ra_styled_override")
+        self.artist2_shared_surname_override = kwargs.get("artist2_shared_surname_override")
+        self.artist3_shared_surname_override = kwargs.get("artist3_shared_surname_override")
         self.company_override = kwargs.get("company_override")
         self.address_override = kwargs.get("address_override")
 
@@ -76,6 +80,8 @@ class _FakeKnownArtist:
         self.resolved_artist1_ra_styled = kwargs.get("resolved_artist1_ra_styled")
         self.resolved_artist2_ra_styled = kwargs.get("resolved_artist2_ra_styled")
         self.resolved_artist3_ra_styled = kwargs.get("resolved_artist3_ra_styled")
+        self.resolved_artist2_shared_surname = kwargs.get("resolved_artist2_shared_surname")
+        self.resolved_artist3_shared_surname = kwargs.get("resolved_artist3_shared_surname")
         self.resolved_is_company = kwargs.get("resolved_is_company")
         self.resolved_company = kwargs.get("resolved_company")
         self.resolved_address = kwargs.get("resolved_address")
@@ -657,3 +663,184 @@ class TestTitleFromKnownArtist:
         ovr = _FakeOverride(title_override="")
         eff = resolve_index_artist(artist, ovr)
         assert eff.title is None
+
+
+# ---------------------------------------------------------------------------
+# Tests — shared surname
+# ---------------------------------------------------------------------------
+
+
+class TestSharedSurname:
+    """Tests for the shared_surname flag on additional artists."""
+
+    def test_defaults_false(self):
+        """Without any overrides, shared_surname defaults to False."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+        )
+        eff = resolve_index_artist(artist, None)
+        assert eff.artist2_shared_surname is False
+        assert eff.artist3_shared_surname is False
+
+    def test_normalised_value_passes_through(self):
+        """When set on the normalised artist, shared_surname passes through."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+            artist2_shared_surname=True,
+        )
+        eff = resolve_index_artist(artist, None)
+        assert eff.artist2_shared_surname is True
+
+    def test_known_artist_sets_shared_surname(self):
+        """Known artist can set shared_surname for additional artists."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+        )
+        known = _FakeKnownArtist(resolved_artist2_shared_surname=True)
+        eff = resolve_index_artist(artist, None, known)
+        assert eff.artist2_shared_surname is True
+
+    def test_override_sets_shared_surname(self):
+        """User override can set shared_surname for additional artists."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+        )
+        ovr = _FakeOverride(artist2_shared_surname_override=True)
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.artist2_shared_surname is True
+
+    def test_override_beats_known_artist(self):
+        """User override shared_surname takes priority over known artist."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+        )
+        known = _FakeKnownArtist(resolved_artist2_shared_surname=True)
+        ovr = _FakeOverride(artist2_shared_surname_override=False)
+        eff = resolve_index_artist(artist, ovr, known)
+        assert eff.artist2_shared_surname is False
+
+    def test_override_none_falls_through_to_known_artist(self):
+        """None override means no override — falls through to known artist."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+        )
+        known = _FakeKnownArtist(resolved_artist2_shared_surname=True)
+        ovr = _FakeOverride(artist2_shared_surname_override=None)
+        eff = resolve_index_artist(artist, ovr, known)
+        assert eff.artist2_shared_surname is True
+
+    def test_artist3_shared_surname(self):
+        """Shared surname works for artist 3 as well."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+            artist3_first_name="Pablo",
+            artist3_last_name="Orta",
+        )
+        ovr = _FakeOverride(artist3_shared_surname_override=True)
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.artist3_shared_surname is True
+        assert eff.artist2_shared_surname is False  # independent
+
+
+class TestBuildIndexNameSharedSurname:
+    """Tests for shared_surname in build_index_name()."""
+
+    def test_two_artists_shared_surname(self):
+        """Shared surname suppresses artist 2's last name."""
+        name = build_index_name(
+            "Orta", "Lucy", None, None,
+            "Jorge", "Orta", None,
+            None, None, None,
+            False,
+            artist2_shared_surname=True,
+        )
+        assert name == "Orta, Lucy, and Jorge"
+
+    def test_two_artists_no_shared_surname(self):
+        """Without shared surname, artist 2's last name is preserved."""
+        name = build_index_name(
+            "Orta", "Lucy", None, None,
+            "Jorge", "Orta", None,
+            None, None, None,
+            False,
+            artist2_shared_surname=False,
+        )
+        assert name == "Orta, Lucy, and Jorge Orta"
+
+    def test_three_artists_all_shared_surname(self):
+        """Three artists with shared surname — Oxford-comma style."""
+        name = build_index_name(
+            "Smith", "Melanie", None, None,
+            "Michael", "Smith", None,
+            "Anthony", "Smith", None,
+            False,
+            artist2_shared_surname=True,
+            artist3_shared_surname=True,
+        )
+        assert name == "Smith, Melanie, Michael, and Anthony"
+
+    def test_three_artists_only_artist2_shared(self):
+        """Three artists, only artist 2 shares surname."""
+        name = build_index_name(
+            "Smith", "Melanie", None, None,
+            "Michael", "Smith", None,
+            "Anthony", "Jones", None,
+            False,
+            artist2_shared_surname=True,
+            artist3_shared_surname=False,
+        )
+        assert name == "Smith, Melanie, Michael, and Anthony Jones"
+
+    def test_shared_surname_with_quals(self):
+        """Shared surname still shows quals."""
+        name = build_index_name(
+            "Orta", "Lucy", None, "RA",
+            "Jorge", "Orta", "CBE",
+            None, None, None,
+            False,
+            artist2_shared_surname=True,
+        )
+        assert name == "Orta, Lucy RA, and Jorge CBE"
+
+    def test_shared_surname_in_resolved_index_name(self):
+        """Shared surname propagates to the resolved index_name."""
+        artist = _FakeArtist(
+            first_name="Lucy",
+            last_name="Orta",
+            artist2_first_name="Jorge",
+            artist2_last_name="Orta",
+        )
+        ovr = _FakeOverride(artist2_shared_surname_override=True)
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.index_name == "Orta, Lucy, and Jorge"
+
+    def test_three_artist_grammar_no_shared_surname(self):
+        """Regression: 3-artist entries use Oxford-comma pattern (no 'and' before artist 2)."""
+        name = build_index_name(
+            "Eggerling", "Gabriele", None, None,
+            "Dhruv", "Jadhav", None,
+            "Hannah", "Puerta-Carlson", None,
+            False,
+        )
+        assert name == "Eggerling, Gabriele, Dhruv Jadhav, and Hannah Puerta-Carlson"

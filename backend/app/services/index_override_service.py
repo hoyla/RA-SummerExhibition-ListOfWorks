@@ -93,12 +93,19 @@ def build_index_name(
     artist3_last_name: Optional[str],
     artist3_quals: Optional[str],
     is_company: bool,
+    artist2_shared_surname: bool = False,
+    artist3_shared_surname: bool = False,
 ) -> str:
     """Build the composite index name from resolved fields.
 
     Quals follow the name with a space (no comma), matching the LoW
     convention for honorifics.  Additional artists are appended with
     ", and ..." connectors.
+
+    When ``artist2_shared_surname`` (or ``artist3_…``) is True the
+    additional artist's surname is suppressed — only first name and
+    quals are shown — because the surname is the same family name as
+    Artist 1.
 
     Quals are preserved in their original case — lowercasing for export
     is handled by the renderer (controlled by ``quals_lowercase`` in the
@@ -111,7 +118,8 @@ def build_index_name(
       Boyd & Evans
       Assemble RA
       Caruso, Adam RA, and Peter St John
-      Caruso, Adam RA, and Peter St John CBE
+      Orta, Lucy, and Jorge                   (shared surname)
+      Smith, Melanie, Michael, and Anthony     (3 artists, shared surname)
     """
     surname = last_name or first_name or ""
     if not surname:
@@ -134,14 +142,25 @@ def build_index_name(
 
     # Second artist suffix (never for companies)
     if not is_company:
+        has_artist3 = bool(artist3_first_name or artist3_last_name)
         a2_name = _format_additional_artist(
-            artist2_first_name, artist2_last_name, artist2_quals
+            artist2_first_name,
+            artist2_last_name,
+            artist2_quals,
+            shared_surname=artist2_shared_surname,
         )
         if a2_name:
-            name += ", and " + a2_name
+            # With 3 artists, omit "and" before artist 2 (Oxford-comma style)
+            if has_artist3:
+                name += ", " + a2_name
+            else:
+                name += ", and " + a2_name
 
         a3_name = _format_additional_artist(
-            artist3_first_name, artist3_last_name, artist3_quals
+            artist3_first_name,
+            artist3_last_name,
+            artist3_quals,
+            shared_surname=artist3_shared_surname,
         )
         if a3_name:
             name += ", and " + a3_name
@@ -153,12 +172,19 @@ def _format_additional_artist(
     first_name: Optional[str],
     last_name: Optional[str],
     quals: Optional[str],
+    *,
+    shared_surname: bool = False,
 ) -> Optional[str]:
-    """Format an additional artist name for the index name composite."""
+    """Format an additional artist name for the index name composite.
+
+    When *shared_surname* is True the surname is suppressed — only the
+    first name (and quals) are rendered because the artist shares
+    Artist 1's family name.
+    """
     parts = []
     if first_name:
         parts.append(first_name)
-    if last_name:
+    if last_name and not shared_surname:
         parts.append(last_name)
     if not parts:
         return None
@@ -200,6 +226,10 @@ class EffectiveIndexArtist:
     artist1_ra_styled: bool
     artist2_ra_styled: bool
     artist3_ra_styled: bool
+
+    # Shared-surname flags (resolved)
+    artist2_shared_surname: bool
+    artist3_shared_surname: bool
 
     # Flags — effective (after override)
     is_ra_member: bool
@@ -252,6 +282,8 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     artist1_ra_styled = bool(getattr(artist, "artist1_ra_styled", False))
     artist2_ra_styled = bool(getattr(artist, "artist2_ra_styled", False))
     artist3_ra_styled = bool(getattr(artist, "artist3_ra_styled", False))
+    artist2_shared_surname = bool(getattr(artist, "artist2_shared_surname", False))
+    artist3_shared_surname = bool(getattr(artist, "artist3_shared_surname", False))
     company = artist.company
     address = getattr(artist, "raw_address", None)
     if address:
@@ -286,6 +318,10 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
             artist2_ra_styled = bool(known_artist.resolved_artist2_ra_styled)
         if getattr(known_artist, "resolved_artist3_ra_styled", None) is not None:
             artist3_ra_styled = bool(known_artist.resolved_artist3_ra_styled)
+        if getattr(known_artist, "resolved_artist2_shared_surname", None) is not None:
+            artist2_shared_surname = bool(known_artist.resolved_artist2_shared_surname)
+        if getattr(known_artist, "resolved_artist3_shared_surname", None) is not None:
+            artist3_shared_surname = bool(known_artist.resolved_artist3_shared_surname)
         if getattr(known_artist, "resolved_company", None) is not None:
             company = known_artist.resolved_company or None
         if getattr(known_artist, "resolved_address", None) is not None:
@@ -319,6 +355,10 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
             artist2_ra_styled = bool(override.artist2_ra_styled_override)
         if getattr(override, "artist3_ra_styled_override", None) is not None:
             artist3_ra_styled = bool(override.artist3_ra_styled_override)
+        if getattr(override, "artist2_shared_surname_override", None) is not None:
+            artist2_shared_surname = bool(override.artist2_shared_surname_override)
+        if getattr(override, "artist3_shared_surname_override", None) is not None:
+            artist3_shared_surname = bool(override.artist3_shared_surname_override)
         if getattr(override, "company_override", None) is not None:
             company = override.company_override or None
         if getattr(override, "address_override", None) is not None:
@@ -377,6 +417,8 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
         artist3_last_name=artist3_last_name,
         artist3_quals=artist3_quals,
         is_company=effective_company,
+        artist2_shared_surname=artist2_shared_surname,
+        artist3_shared_surname=artist3_shared_surname,
     )
 
     return EffectiveIndexArtist(
@@ -396,6 +438,8 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
         artist1_ra_styled=artist1_ra_styled,
         artist2_ra_styled=artist2_ra_styled,
         artist3_ra_styled=artist3_ra_styled,
+        artist2_shared_surname=artist2_shared_surname,
+        artist3_shared_surname=artist3_shared_surname,
         is_ra_member=bool(artist.is_ra_member),
         is_company=effective_company,
         is_company_auto=auto_company,

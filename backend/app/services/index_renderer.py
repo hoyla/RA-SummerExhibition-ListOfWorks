@@ -85,6 +85,8 @@ class ArtistExportEntry:
     artist1_ra_styled: bool
     artist2_ra_styled: bool
     artist3_ra_styled: bool
+    artist2_shared_surname: bool
+    artist3_shared_surname: bool
     is_ra_member: bool
     is_company: bool
     sort_key: str
@@ -165,6 +167,8 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
                     artist1_ra_styled=eff.artist1_ra_styled,
                     artist2_ra_styled=eff.artist2_ra_styled,
                     artist3_ra_styled=eff.artist3_ra_styled,
+                    artist2_shared_surname=eff.artist2_shared_surname,
+                    artist3_shared_surname=eff.artist3_shared_surname,
                     is_ra_member=eff.is_ra_member,
                     is_company=eff.is_company,
                     sort_key=eff.sort_key,
@@ -294,15 +298,19 @@ def _render_additional_artist(
     cfg: IndexExportConfig,
     *,
     include_and: bool = True,
+    shared_surname: bool = False,
 ) -> str:
     """Render an additional artist (artist2 or artist3) with styling.
 
     Character styles wrap only the value, not surrounding separators.
     When *include_and* is False the 'and ' prefix is omitted (used for
     the non-final artist in a 3-artist entry where commas suffice).
+    When *shared_surname* is True the surname is suppressed — the artist
+    shares Artist 1's family name.
 
     Returns formatted string like:
       'and Peter St John, '
+      'and Jorge, '                          (shared surname)
       'and <cstyle:RA Member Cap Surname>St John<cstyle:> Peter cbe ra, '
     """
     if not first_name and not last_name:
@@ -312,10 +320,15 @@ def _render_additional_artist(
     if first_name:
         parts.append(first_name + " ")
     surname = last_name or ""
-    if ra_styled and surname:
-        parts.append(_cstyle(cfg.ra_surname_style, surname))
-    else:
-        parts.append(surname)
+    if not shared_surname and surname:
+        if ra_styled:
+            parts.append(_cstyle(cfg.ra_surname_style, surname))
+        else:
+            parts.append(surname)
+    elif shared_surname:
+        # Remove trailing space from first_name if surname is suppressed
+        if parts and parts[-1].endswith(" "):
+            parts[-1] = parts[-1][:-1]
 
     if quals:
         display_q = quals.lower() if cfg.quals_lowercase else quals
@@ -419,6 +432,7 @@ def render_index_tagged_text(
             entry.artist2_ra_styled,
             cfg,
             include_and=not has_artist3,
+            shared_surname=entry.artist2_shared_surname,
         )
         if a2:
             line_parts.append(a2)
@@ -429,6 +443,7 @@ def render_index_tagged_text(
             entry.artist3_quals,
             entry.artist3_ra_styled,
             cfg,
+            shared_surname=entry.artist3_shared_surname,
         )
         if a3:
             line_parts.append(a3)

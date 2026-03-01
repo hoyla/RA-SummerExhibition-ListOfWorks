@@ -1408,6 +1408,8 @@ function _kaPreviewIndexName(tr) {
   const a1RaStyled = tr.querySelector('.ka-a1-ra')?.checked || false;
   const a2RaStyled = tr.querySelector('.ka-a2-ra')?.checked || false;
   const a3RaStyled = tr.querySelector('.ka-a3-ra')?.checked || false;
+  const a2SharedSurname = tr.querySelector('.ka-a2-shared-surname')?.checked || false;
+  const a3SharedSurname = tr.querySelector('.ka-a3-shared-surname')?.checked || false;
   const surname = lastName || firstName || '';
   if (!surname) return '<span class="muted">&mdash;</span>';
 
@@ -1435,11 +1437,15 @@ function _kaPreviewIndexName(tr) {
 
   // Additional artists from structured fields (suppressed for companies, matching index export)
   const suffixes = [];
-  for (const [aFirst, aLast, aQuals, aRaStyled] of [[a2First, a2Last, a2Quals, a2RaStyled], [a3First, a3Last, a3Quals, a3RaStyled]]) {
+  const hasA3 = !isCompany && (a3First || a3Last);
+  for (const [aFirst, aLast, aQuals, aRaStyled, aSharedSurname, isLast] of [
+    [a2First, a2Last, a2Quals, a2RaStyled, a2SharedSurname, !hasA3],
+    [a3First, a3Last, a3Quals, a3RaStyled, a3SharedSurname, true],
+  ]) {
     if (!isCompany && (aFirst || aLast)) {
-      const parts = ['and'];
+      const parts = isLast ? ['and'] : [];
       if (aFirst) parts.push(esc(aFirst));
-      if (aLast) {
+      if (aLast && !aSharedSurname) {
         if (aRaStyled) parts.push(`<span class="idx-ra-styled">${esc(aLast)}</span>`);
         else parts.push(esc(aLast));
       }
@@ -1738,6 +1744,9 @@ function _knownArtistCard(ka) {
             <div class="ka-field ka-field-check">
               <label><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
+            <div class="ka-field ka-field-check">
+              <label><input type="checkbox" class="ka-a2-shared-surname" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist2_shared_surname ? ' checked' : ''}${dis}> Shared surname</label>
+            </div>
           </div>
         </div>
         <div class="ka-section ka-section-a3">
@@ -1748,6 +1757,9 @@ function _knownArtistCard(ka) {
             ${_kaResolvedField('Qualifications', 'ka-res-a3-quals', ka.resolved_artist3_quals, locked)}
             <div class="ka-field ka-field-check">
               <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
+            </div>
+            <div class="ka-field ka-field-check">
+              <label><input type="checkbox" class="ka-a3-shared-surname" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist3_shared_surname ? ' checked' : ''}${dis}> Shared surname</label>
             </div>
           </div>
         </div>
@@ -1785,6 +1797,7 @@ function addKnownArtistRow() {
     resolved_artist3_quals: '',
     resolved_artist1_ra_styled: false, resolved_artist2_ra_styled: false,
     resolved_artist3_ra_styled: false,
+    resolved_artist2_shared_surname: false, resolved_artist3_shared_surname: false,
     resolved_is_company: null, resolved_company: '', resolved_address: '',
     notes: '',
   }));
@@ -1819,6 +1832,8 @@ function _readKaRow(tr) {
   const a1RaEl = tr.querySelector('.ka-a1-ra');
   const a2RaEl = tr.querySelector('.ka-a2-ra');
   const a3RaEl = tr.querySelector('.ka-a3-ra');
+  const a2SharedSurnameEl = tr.querySelector('.ka-a2-shared-surname');
+  const a3SharedSurnameEl = tr.querySelector('.ka-a3-shared-surname');
   return {
     match_first_name:              val('.ka-match-first'),
     match_last_name:               val('.ka-match-last'),
@@ -1836,6 +1851,8 @@ function _readKaRow(tr) {
     resolved_artist1_ra_styled:    a1RaEl?.checked || null,
     resolved_artist2_ra_styled:    a2RaEl?.checked || null,
     resolved_artist3_ra_styled:    a3RaEl?.checked || null,
+    resolved_artist2_shared_surname: a2SharedSurnameEl?.checked || false,
+    resolved_artist3_shared_surname: a3SharedSurnameEl?.checked || false,
     resolved_is_company:           isCompany,
     resolved_company:              val('.ka-res-company'),
     resolved_address:              val('.ka-res-address'),
@@ -2436,6 +2453,48 @@ function _renderIndexEntryExamples(cfg) {
         styled('14', 'catno', 'Cat no'),
         sep(catSep + '\u2009'), styled('215', 'catno', 'Cat no'),
         sep(catSep + '\u2009'), styled('387', 'catno', 'Cat no'),
+      ],
+    },
+    // 11. Two artists — shared surname
+    {
+      title: 'Two artists — shared surname',
+      desc: 'A dual-artist entry where both artists share a family name. The second artist\u2019s surname is suppressed, connected by \u201cand\u201d.',
+      parts: [
+        styled('Orta', 'ra-surname', 'RA surname'),
+        sep(', '),
+        plain('Lucy'),  sep(' '),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
+        plain('and Jorge'),  sep(', '),
+        styled('55', 'catno', 'Cat no'),
+      ],
+    },
+    // 12. Three artists — first two share surname, third does not
+    {
+      title: 'Three artists — partial shared surname',
+      desc: 'Artists 1 and 2 share a surname (suppressed on artist 2). Artist 3 has a different surname shown in full. Oxford-comma style: no \u201cand\u201d before artist 2, \u201cand\u201d before artist 3.',
+      parts: [
+        plain('Smith'),  sep(', '),
+        plain('Melanie'),  sep(', '),
+        plain('Michael'),  sep(', '),
+        plain('and Anthony Jones'),  sep(', '),
+        styled('200', 'catno', 'Cat no'),
+      ],
+    },
+    // 13. Three artists — regular (no shared surname)
+    {
+      title: 'Three artists',
+      desc: 'A three-artist entry. Oxford-comma pattern: artist 2 is comma-separated (no \u201cand\u201d), artist 3 is preceded by \u201cand\u201d.',
+      parts: [
+        plain('Eggerling'),  sep(', '),
+        plain('Gabriele'),  sep(', '),
+        plain('Dhruv Jadhav'),  sep(', '),
+        plain('and Hannah '),
+        styled('Puerta-Carlson', 'ra-surname', 'RA surname'),
+        sep(' '),
+        styled('RA', 'ra-quals', 'RA quals'),
+        sep(', '),
+        styled('100', 'catno', 'Cat no'),
       ],
     },
   ];
@@ -4779,11 +4838,11 @@ function styledIndexName(a) {
   // Additional artists from structured fields (never for companies)
   const suffixes = [];
   const hasArtist3 = !!(a.artist3_first_name || a.artist3_last_name);
-  function _addArtist(first, last, quals, raStyled, includeAnd) {
+  function _addArtist(first, last, quals, raStyled, includeAnd, sharedSurname) {
     if (!first && !last) return;
     const parts = includeAnd ? ['and'] : [];
     if (first) parts.push(esc(first));
-    if (last) {
+    if (last && !sharedSurname) {
       if (raStyled) parts.push(`<span class="idx-ra-styled">${esc(last)}</span>`);
       else parts.push(esc(last));
     }
@@ -4795,8 +4854,8 @@ function styledIndexName(a) {
     suffixes.push(suffix);
   }
   if (!a.is_company) {
-    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasArtist3);
-    _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true);
+    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasArtist3, a.artist2_shared_surname);
+    _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true, a.artist3_shared_surname);
   }
 
   let result = commaParts.join(', ');
@@ -4956,11 +5015,11 @@ function _buildEntryPreview(a) {
 
   // --- Additional artists ---
   const hasA3 = !!(a.artist3_first_name || a.artist3_last_name);
-  function addArtist(first, last, quals, raStyled, includeAnd) {
+  function addArtist(first, last, quals, raStyled, includeAnd, sharedSurname) {
     if (!first && !last) return;
     if (includeAnd) parts.push(plain('and '));
-    if (first) parts.push(plain(first + ' '));
-    if (last) {
+    if (first) parts.push(plain(first + (last && !sharedSurname ? ' ' : '')));
+    if (last && !sharedSurname) {
       if (raStyled) parts.push(raSurname(last));
       else parts.push(plain(last));
     }
@@ -4974,8 +5033,8 @@ function _buildEntryPreview(a) {
     }
   }
   if (!a.is_company) {
-    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasA3);
-    addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true);
+    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasA3, a.artist2_shared_surname);
+    addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true, a.artist3_shared_surname);
   }
 
   // --- Courtesy / Company ---
@@ -5101,7 +5160,8 @@ function _buildDetailTable(a) {
 
   // Artist 2 fields — only if any artist2 data exists
   const hasA2 = a.artist2_first_name || a.artist2_last_name || a.artist2_quals || a.artist2_ra_styled
-    || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name || ar.artist2_quals || ar.artist2_ra_styled));
+    || a.artist2_shared_surname
+    || (hasOvr && (ar.artist2_first_name || ar.artist2_last_name || ar.artist2_quals || ar.artist2_ra_styled || ar.artist2_shared_surname));
   if (hasA2) {
     rows.push(derivedRow('Artist 2 First Name',
       hasOvr ? ar.artist2_first_name : a.artist2_first_name, a.artist2_first_name));
@@ -5112,11 +5172,15 @@ function _buildDetailTable(a) {
     rows.push(derivedRow('Artist 2 RA Styled',
       hasOvr ? (ar.artist2_ra_styled ? 'Yes' : 'No') : (a.artist2_ra_styled ? 'Yes' : 'No'),
       a.artist2_ra_styled ? 'Yes' : 'No'));
+    rows.push(derivedRow('Artist 2 Shared Surname',
+      hasOvr ? (ar.artist2_shared_surname ? 'Yes' : 'No') : (a.artist2_shared_surname ? 'Yes' : 'No'),
+      a.artist2_shared_surname ? 'Yes' : 'No'));
   }
 
   // Artist 3 fields — only if any artist3 data exists
   const hasA3 = a.artist3_first_name || a.artist3_last_name || a.artist3_quals || a.artist3_ra_styled
-    || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name || ar.artist3_quals || ar.artist3_ra_styled));
+    || a.artist3_shared_surname
+    || (hasOvr && (ar.artist3_first_name || ar.artist3_last_name || ar.artist3_quals || ar.artist3_ra_styled || ar.artist3_shared_surname));
   if (hasA3) {
     rows.push(derivedRow('Artist 3 First Name',
       hasOvr ? ar.artist3_first_name : a.artist3_first_name, a.artist3_first_name));
@@ -5127,6 +5191,9 @@ function _buildDetailTable(a) {
     rows.push(derivedRow('Artist 3 RA Styled',
       hasOvr ? (ar.artist3_ra_styled ? 'Yes' : 'No') : (a.artist3_ra_styled ? 'Yes' : 'No'),
       a.artist3_ra_styled ? 'Yes' : 'No'));
+    rows.push(derivedRow('Artist 3 Shared Surname',
+      hasOvr ? (ar.artist3_shared_surname ? 'Yes' : 'No') : (a.artist3_shared_surname ? 'Yes' : 'No'),
+      a.artist3_shared_surname ? 'Yes' : 'No'));
   }
 
   // Company flag (derived)
@@ -5399,6 +5466,15 @@ function showIndexOverrideForm(importId, artistId, existing) {
     </div>`;
   };
 
+  // Helper: shared surname tri-state checkbox (artists 2 & 3 only)
+  const sharedSurnameCheck = (name, value) => {
+    const checked = value === true ? 'checked' : '';
+    const indet = value === null || value === undefined ? 'data-indeterminate="1"' : '';
+    return `<div class="ka-field ka-field-check">
+      <label><input type="checkbox" name="${name}" ${checked} ${indet}> Shared surname</label>
+    </div>`;
+  };
+
   const cell = document.getElementById(`idx-ovc-${artistId}`);
   cell.innerHTML = `
     <div class="override-form" onclick="event.stopPropagation()">
@@ -5422,6 +5498,7 @@ function showIndexOverrideForm(importId, artistId, existing) {
               ${ovrField('Last Name', 'artist2_last_name_override', 'Artist 2 last name')}
               ${ovrField('Quals', 'artist2_quals_override', 'Artist 2 quals')}
               ${raCheck('artist2_ra_styled_override', o.artist2_ra_styled_override)}
+              ${sharedSurnameCheck('artist2_shared_surname_override', o.artist2_shared_surname_override)}
             </div>
           </div>
           <div class="ka-section">
@@ -5431,6 +5508,7 @@ function showIndexOverrideForm(importId, artistId, existing) {
               ${ovrField('Last Name', 'artist3_last_name_override', 'Artist 3 last name')}
               ${ovrField('Quals', 'artist3_quals_override', 'Artist 3 quals')}
               ${raCheck('artist3_ra_styled_override', o.artist3_ra_styled_override)}
+              ${sharedSurnameCheck('artist3_shared_surname_override', o.artist3_shared_surname_override)}
             </div>
           </div>
         </div>
@@ -5556,14 +5634,17 @@ async function saveIndexOverride(importId, artistId) {
     body.is_company_override = _readTriState(companyCb);
   }
 
-  // RA styled checkboxes: same indeterminate logic
-  for (const raField of ['artist1_ra_styled_override', 'artist2_ra_styled_override', 'artist3_ra_styled_override']) {
-    const cb = formEl.querySelector(`[name="${raField}"]`);
+  // RA styled + shared surname checkboxes: same indeterminate logic
+  for (const boolField of [
+    'artist1_ra_styled_override', 'artist2_ra_styled_override', 'artist3_ra_styled_override',
+    'artist2_shared_surname_override', 'artist3_shared_surname_override',
+  ]) {
+    const cb = formEl.querySelector(`[name="${boolField}"]`);
     if (cb) {
       if (cb.dataset.indeterminate === '1' && !cb.checked) {
-        body[raField] = null;
+        body[boolField] = null;
       } else {
-        body[raField] = cb.checked;
+        body[boolField] = cb.checked;
       }
       delete cb.dataset.indeterminate;
     }

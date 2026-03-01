@@ -45,6 +45,8 @@ def _to_out(ka: KnownArtist) -> KnownArtistOut:
         resolved_artist1_ra_styled=ka.resolved_artist1_ra_styled,
         resolved_artist2_ra_styled=ka.resolved_artist2_ra_styled,
         resolved_artist3_ra_styled=ka.resolved_artist3_ra_styled,
+        resolved_artist2_shared_surname=ka.resolved_artist2_shared_surname,
+        resolved_artist3_shared_surname=ka.resolved_artist3_shared_surname,
         notes=ka.notes,
         is_seeded=ka.is_seeded,
     )
@@ -90,6 +92,8 @@ _SEED_FIELDS = [
     "resolved_artist1_ra_styled",
     "resolved_artist2_ra_styled",
     "resolved_artist3_ra_styled",
+    "resolved_artist2_shared_surname",
+    "resolved_artist3_shared_surname",
     "notes",
 ]
 
@@ -167,6 +171,8 @@ def create_known_artist(
         resolved_artist1_ra_styled=body.resolved_artist1_ra_styled,
         resolved_artist2_ra_styled=body.resolved_artist2_ra_styled,
         resolved_artist3_ra_styled=body.resolved_artist3_ra_styled,
+        resolved_artist2_shared_surname=body.resolved_artist2_shared_surname,
+        resolved_artist3_shared_surname=body.resolved_artist3_shared_surname,
         notes=body.notes,
     )
     db.add(ka)
