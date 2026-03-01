@@ -153,6 +153,10 @@ def build_index_name(
             # With 3 artists, omit "and" before artist 2 (Oxford-comma style)
             if has_artist3:
                 name += ", " + a2_name
+            elif artist2_shared_surname:
+                # Shared surname pair reads as a family unit — no comma
+                # before "and": "Orta, Lucy and Jorge"
+                name += " and " + a2_name
             else:
                 name += ", and " + a2_name
 

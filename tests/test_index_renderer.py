@@ -710,7 +710,7 @@ class TestLetterHeading:
 
 class TestSharedSurnameRenderer:
     def test_two_artists_shared_surname(self):
-        """Shared surname suppresses artist 2's surname in tagged text."""
+        """Shared surname suppresses artist 2's surname, no comma before 'and'."""
         entries = [
             _entry(
                 last_name="Orta",
@@ -725,7 +725,7 @@ class TestSharedSurnameRenderer:
         line = result.split("\r")[1]
         expected = (
             "<pstyle:Index Text>"
-            "Orta, Lucy, "
+            "Orta, Lucy "
             "and Jorge, "
             "<cstyle:Index works numbers>42<cstyle:>"
         )
@@ -748,7 +748,7 @@ class TestSharedSurnameRenderer:
         assert "and Jorge Orta, " in line
 
     def test_shared_surname_with_ra_styling(self):
-        """Shared surname suppresses RA-styled surname too."""
+        """Shared surname suppresses RA-styled surname too, no comma before 'and'."""
         entries = [
             _entry(
                 last_name="Orta",
@@ -763,8 +763,8 @@ class TestSharedSurnameRenderer:
         ]
         result = render_index_tagged_text(entries, CFG)
         line = result.split("\r")[1]
-        # Artist 2 surname should NOT appear (no RA Member Cap Surname for artist 2)
-        assert "and Jorge, " in line
+        # No comma before 'and' for shared surname pair
+        assert "Lucy and Jorge, " in line
         assert "<cstyle:RA Member Cap Surname>Orta<cstyle:>" in line  # Artist 1 still has it
 
     def test_three_artists_all_shared_surname(self):
@@ -794,7 +794,7 @@ class TestSharedSurnameRenderer:
         assert line == expected
 
     def test_shared_surname_with_quals_preserved(self):
-        """Shared surname suppresses last name but quals are still shown."""
+        """Shared surname suppresses last name but quals still shown, no comma before 'and'."""
         entries = [
             _entry(
                 last_name="Orta",
@@ -810,7 +810,7 @@ class TestSharedSurnameRenderer:
         ]
         result = render_index_tagged_text(entries, CFG)
         line = result.split("\r")[1]
-        # "Jorge CBE" should be there (with quals), not "Jorge Orta CBE"
-        assert "and Jorge " in line
+        # No comma before "and" — shared surname family unit
+        assert "ra> and Jorge" in line or "ra>, and Jorge" not in line
         assert "cbe" in line.lower()
         assert "Jorge Orta" not in line

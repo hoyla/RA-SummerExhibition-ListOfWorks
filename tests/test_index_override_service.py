@@ -767,7 +767,7 @@ class TestBuildIndexNameSharedSurname:
     """Tests for shared_surname in build_index_name()."""
 
     def test_two_artists_shared_surname(self):
-        """Shared surname suppresses artist 2's last name."""
+        """Shared surname suppresses artist 2's last name, no comma before 'and'."""
         name = build_index_name(
             "Orta", "Lucy", None, None,
             "Jorge", "Orta", None,
@@ -775,7 +775,7 @@ class TestBuildIndexNameSharedSurname:
             False,
             artist2_shared_surname=True,
         )
-        assert name == "Orta, Lucy, and Jorge"
+        assert name == "Orta, Lucy and Jorge"
 
     def test_two_artists_no_shared_surname(self):
         """Without shared surname, artist 2's last name is preserved."""
@@ -813,7 +813,7 @@ class TestBuildIndexNameSharedSurname:
         assert name == "Smith, Melanie, Michael, and Anthony Jones"
 
     def test_shared_surname_with_quals(self):
-        """Shared surname still shows quals."""
+        """Shared surname still shows quals, no comma before 'and'."""
         name = build_index_name(
             "Orta", "Lucy", None, "RA",
             "Jorge", "Orta", "CBE",
@@ -821,7 +821,7 @@ class TestBuildIndexNameSharedSurname:
             False,
             artist2_shared_surname=True,
         )
-        assert name == "Orta, Lucy RA, and Jorge CBE"
+        assert name == "Orta, Lucy RA and Jorge CBE"
 
     def test_shared_surname_in_resolved_index_name(self):
         """Shared surname propagates to the resolved index_name."""
@@ -833,7 +833,7 @@ class TestBuildIndexNameSharedSurname:
         )
         ovr = _FakeOverride(artist2_shared_surname_override=True)
         eff = resolve_index_artist(artist, ovr)
-        assert eff.index_name == "Orta, Lucy, and Jorge"
+        assert eff.index_name == "Orta, Lucy and Jorge"
 
     def test_three_artist_grammar_no_shared_surname(self):
         """Regression: 3-artist entries use Oxford-comma pattern (no 'and' before artist 2)."""

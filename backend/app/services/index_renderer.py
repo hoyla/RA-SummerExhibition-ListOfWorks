@@ -435,6 +435,16 @@ def render_index_tagged_text(
             shared_surname=entry.artist2_shared_surname,
         )
         if a2:
+            # For shared-surname pairs (2 artists only), drop the comma
+            # before "and" so the entry reads as a family unit:
+            # "Orta, Lucy and Jorge" not "Orta, Lucy, and Jorge"
+            if not has_artist3 and entry.artist2_shared_surname:
+                # Walk backwards to find the last non-empty part ending
+                # with ", " (quals or name part) and replace with " ".
+                for i in range(len(line_parts) - 1, -1, -1):
+                    if line_parts[i].endswith(", "):
+                        line_parts[i] = line_parts[i][:-2] + " "
+                        break
             line_parts.append(a2)
 
         a3 = _render_additional_artist(

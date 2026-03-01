@@ -1460,7 +1460,12 @@ function _kaPreviewIndexName(tr) {
 
   let result = commaParts.join(', ');
   if (nameParts.length) result += ' ' + nameParts.join(' ');
-  if (suffixes.length) result += ', ' + suffixes.join(', ');
+  // Shared-surname pair (2 artists only): space before "and" not comma,
+  // so "Orta, Lucy and Jorge" reads as a family unit.
+  if (suffixes.length) {
+    const sharedPair = !hasA3 && a2SharedSurname;
+    result += (sharedPair ? ' ' : ', ') + suffixes.join(', ');
+  }
   return result;
 }
 
@@ -2458,13 +2463,13 @@ function _renderIndexEntryExamples(cfg) {
     // 11. Two artists — shared surname
     {
       title: 'Two artists — shared surname',
-      desc: 'A dual-artist entry where both artists share a family name. The second artist\u2019s surname is suppressed, connected by \u201cand\u201d.',
+      desc: 'A dual-artist entry where both artists share a family name. The second artist\u2019s surname is suppressed, connected by \u201cand\u201d with no comma (reads as a family unit).',
       parts: [
         styled('Orta', 'ra-surname', 'RA surname'),
         sep(', '),
         plain('Lucy'),  sep(' '),
         styled('RA', 'ra-quals', 'RA quals'),
-        sep(', '),
+        sep(' '),
         plain('and Jorge'),  sep(', '),
         styled('55', 'catno', 'Cat no'),
       ],
@@ -4860,7 +4865,12 @@ function styledIndexName(a) {
 
   let result = commaParts.join(', ');
   if (nameParts.length) result += ' ' + nameParts.join(' ');
-  if (suffixes.length) result += ', ' + suffixes.join(', ');
+  // Shared-surname pair (2 artists only): space before "and" not comma,
+  // so "Orta, Lucy and Jorge" reads as a family unit.
+  if (suffixes.length) {
+    const sharedPair = !hasArtist3 && a.artist2_shared_surname;
+    result += (sharedPair ? ' ' : ', ') + suffixes.join(', ');
+  }
   return result;
 }
 
@@ -5017,6 +5027,14 @@ function _buildEntryPreview(a) {
   const hasA3 = !!(a.artist3_first_name || a.artist3_last_name);
   function addArtist(first, last, quals, raStyled, includeAnd, sharedSurname) {
     if (!first && !last) return;
+    // Shared-surname pair (2 artists only): replace preceding ", " separator
+    // with " " so "Orta, Lucy and Jorge" reads as a family unit.
+    if (includeAnd && sharedSurname && parts.length) {
+      const prev = parts[parts.length - 1];
+      if (prev === sep(', ')) {
+        parts[parts.length - 1] = sep(' ');
+      }
+    }
     if (includeAnd) parts.push(plain('and '));
     if (first) parts.push(plain(first + (last && !sharedSurname ? ' ' : '')));
     if (last && !sharedSurname) {
