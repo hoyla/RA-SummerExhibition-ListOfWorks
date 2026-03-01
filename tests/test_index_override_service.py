@@ -511,6 +511,95 @@ class TestBuildIndexName:
             == ""
         )
 
+    # --- Scenario coverage tests (from multi-artist table) ---
+
+    def test_two_artists_plain(self):
+        """Scenario 1: Two artists, no shared surname, no quals."""
+        name = build_index_name(
+            "Caruso", "Adam", None, None,
+            "Peter", "St John", None,
+            None, None, None, False,
+        )
+        assert name == "Caruso, Adam, and Peter St John"
+
+    def test_two_artists_a2_with_quals(self):
+        """Scenario 3: Two artists, A2 has quals."""
+        name = build_index_name(
+            "Langlands", "Ben", None, None,
+            "Nikki", "Bell", "CBE",
+            None, None, None, False,
+        )
+        assert name == "Langlands, Ben, and Nikki Bell CBE"
+
+    def test_two_artists_both_plain(self):
+        """Scenario 4: Two artists, both plain (no quals/title)."""
+        name = build_index_name(
+            "Boyd", "Arthur", None, None,
+            "Mary", "Evans", None,
+            None, None, None, False,
+        )
+        assert name == "Boyd, Arthur, and Mary Evans"
+
+    def test_two_artists_a1_title_quals_ra(self):
+        """Scenario 5: Two artists, A1 has title + quals + RA."""
+        name = build_index_name(
+            "Adjaye", "David", "Sir", "OM OBE RA",
+            "Mariam", "Kamara", None,
+            None, None, None, False,
+        )
+        assert name == "Adjaye, Sir David OM OBE RA, and Mariam Kamara"
+
+    def test_two_artists_shared_a1_title_quals(self):
+        """Scenario 8: Two artists, shared surname, A1 has title + quals."""
+        name = build_index_name(
+            "Smith", "Melanie", "Dame", "DBE",
+            "Michael", "Smith", None,
+            None, None, None, False,
+            artist2_shared_surname=True,
+        )
+        assert name == "Smith, Dame Melanie DBE and Michael"
+
+    def test_two_artists_shared_a2_ra_quals(self):
+        """Scenario 9: Two artists, shared surname, A2 has RA quals."""
+        name = build_index_name(
+            "Hirst", "Damien", None, None,
+            "Connor", "Hirst", "RA",
+            None, None, None, False,
+            artist2_shared_surname=True,
+        )
+        assert name == "Hirst, Damien and Connor RA"
+
+    def test_three_artists_no_shared_all_quals(self):
+        """Scenario 11: Three artists, no shared surname, all with quals."""
+        name = build_index_name(
+            "Eggerling", "Gabriele", None, "RA",
+            "Dhruv", "Jadhav", "CBE",
+            "Hannah", "Puerta-Carlson", "OBE",
+            False,
+        )
+        assert name == "Eggerling, Gabriele RA, Dhruv Jadhav CBE, and Hannah Puerta-Carlson OBE"
+
+    def test_three_artists_all_shared_with_quals(self):
+        """Scenario 13: Three artists, A2+A3 shared surname, with quals."""
+        name = build_index_name(
+            "Smith", "Melanie", None, "RA",
+            "Michael", "Smith", "CBE",
+            "Anthony", "Smith", None,
+            False,
+            artist2_shared_surname=True,
+            artist3_shared_surname=True,
+        )
+        assert name == "Smith, Melanie RA and Michael CBE, and Anthony"
+
+    def test_single_name_ra_with_second_artist(self):
+        """Scenario 17: Single-name RA artist with a second artist."""
+        name = build_index_name(
+            None, "Assemble", None, "RA",
+            "Jane", "Doe", None,
+            None, None, None, False,
+        )
+        assert name == "Assemble RA, and Jane Doe"
+
 
 # ---------------------------------------------------------------------------
 # Tests — sort key recomputation
@@ -747,20 +836,39 @@ class TestSharedSurname:
         eff = resolve_index_artist(artist, ovr, known)
         assert eff.artist2_shared_surname is True
 
-    def test_artist3_shared_surname(self):
-        """Shared surname works for artist 3 as well."""
+    def test_artist3_shared_surname_requires_artist2(self):
+        """A3 shared surname without A2 shared is forced to False by constraint."""
         artist = _FakeArtist(
             first_name="Lucy",
             last_name="Orta",
             artist2_first_name="Jorge",
-            artist2_last_name="Orta",
+            artist2_last_name="Garcia",
             artist3_first_name="Pablo",
             artist3_last_name="Orta",
         )
         ovr = _FakeOverride(artist3_shared_surname_override=True)
         eff = resolve_index_artist(artist, ovr)
+        # A3 shared forced to False because A2 isn't shared
+        assert eff.artist3_shared_surname is False
+        assert eff.artist2_shared_surname is False
+
+    def test_artist3_shared_surname_with_artist2_shared(self):
+        """A3 shared surname works when A2 is also shared."""
+        artist = _FakeArtist(
+            first_name="Melanie",
+            last_name="Smith",
+            artist2_first_name="Michael",
+            artist2_last_name="Smith",
+            artist3_first_name="Anthony",
+            artist3_last_name="Smith",
+        )
+        ovr = _FakeOverride(
+            artist2_shared_surname_override=True,
+            artist3_shared_surname_override=True,
+        )
+        eff = resolve_index_artist(artist, ovr)
+        assert eff.artist2_shared_surname is True
         assert eff.artist3_shared_surname is True
-        assert eff.artist2_shared_surname is False  # independent
 
 
 class TestBuildIndexNameSharedSurname:
@@ -789,7 +897,7 @@ class TestBuildIndexNameSharedSurname:
         assert name == "Orta, Lucy, and Jorge Orta"
 
     def test_three_artists_all_shared_surname(self):
-        """Three artists with shared surname — Oxford-comma style."""
+        """Three artists with shared surname — A2 gets family-unit 'and', A3 gets Oxford comma."""
         name = build_index_name(
             "Smith", "Melanie", None, None,
             "Michael", "Smith", None,
@@ -798,10 +906,10 @@ class TestBuildIndexNameSharedSurname:
             artist2_shared_surname=True,
             artist3_shared_surname=True,
         )
-        assert name == "Smith, Melanie, Michael, and Anthony"
+        assert name == "Smith, Melanie and Michael, and Anthony"
 
     def test_three_artists_only_artist2_shared(self):
-        """Three artists, only artist 2 shares surname."""
+        """Three artists, only artist 2 shares surname — family 'and' for A2, Oxford comma for A3."""
         name = build_index_name(
             "Smith", "Melanie", None, None,
             "Michael", "Smith", None,
@@ -810,7 +918,7 @@ class TestBuildIndexNameSharedSurname:
             artist2_shared_surname=True,
             artist3_shared_surname=False,
         )
-        assert name == "Smith, Melanie, Michael, and Anthony Jones"
+        assert name == "Smith, Melanie and Michael, and Anthony Jones"
 
     def test_shared_surname_with_quals(self):
         """Shared surname still shows quals, no comma before 'and'."""
@@ -844,3 +952,15 @@ class TestBuildIndexNameSharedSurname:
             False,
         )
         assert name == "Eggerling, Gabriele, Dhruv Jadhav, and Hannah Puerta-Carlson"
+
+    def test_three_artist_a2_shared_family_unit(self):
+        """3-artist entry with A2 shared — family 'and' for A2, Oxford comma for A3."""
+        name = build_index_name(
+            "Rivera", "Maria", None, None,
+            "Carlos", "Rivera", None,
+            "Hannah", "Jones", None,
+            False,
+            artist2_shared_surname=True,
+            artist3_shared_surname=False,
+        )
+        assert name == "Rivera, Maria and Carlos, and Hannah Jones"

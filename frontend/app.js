@@ -1438,12 +1438,14 @@ function _kaPreviewIndexName(tr) {
   // Additional artists from structured fields (suppressed for companies, matching index export)
   const suffixes = [];
   const hasA3 = !isCompany && (a3First || a3Last);
-  for (const [aFirst, aLast, aQuals, aRaStyled, aSharedSurname, isLast] of [
-    [a2First, a2Last, a2Quals, a2RaStyled, a2SharedSurname, !hasA3],
+  // A2 gets "and" when: (a) no A3 (standard 2-artist), or (b) A2 is shared surname (family unit)
+  const a2IncludeAnd = !hasA3 || !!a2SharedSurname;
+  for (const [aFirst, aLast, aQuals, aRaStyled, aSharedSurname, includeAnd] of [
+    [a2First, a2Last, a2Quals, a2RaStyled, a2SharedSurname, a2IncludeAnd],
     [a3First, a3Last, a3Quals, a3RaStyled, a3SharedSurname, true],
   ]) {
     if (!isCompany && (aFirst || aLast)) {
-      const parts = isLast ? ['and'] : [];
+      const parts = includeAnd ? ['and'] : [];
       if (aFirst) parts.push(esc(aFirst));
       if (aLast && !aSharedSurname) {
         if (aRaStyled) parts.push(`<span class="idx-ra-styled">${esc(aLast)}</span>`);
@@ -1460,10 +1462,10 @@ function _kaPreviewIndexName(tr) {
 
   let result = commaParts.join(', ');
   if (nameParts.length) result += ' ' + nameParts.join(' ');
-  // Shared-surname pair (2 artists only): space before "and" not comma,
-  // so "Orta, Lucy and Jorge" reads as a family unit.
+  // Shared-surname A2: space before "and" not comma, so the family unit
+  // reads naturally (2-artist and 3-artist).
   if (suffixes.length) {
-    const sharedPair = !hasA3 && a2SharedSurname;
+    const sharedPair = !!a2SharedSurname;
     result += (sharedPair ? ' ' : ', ') + suffixes.join(', ');
   }
   return result;
@@ -1473,6 +1475,23 @@ function _kaPreviewIndexName(tr) {
 function _updateKaPreview(tr) {
   const cell = tr.querySelector('.ka-preview');
   if (cell) cell.innerHTML = _kaPreviewIndexName(tr);
+}
+
+/**
+ * Enforce A2→A3 shared-surname constraint in a Known Artist card.
+ * When A2 shared surname is unchecked, A3 is disabled + unchecked.
+ */
+function _syncKaSharedSurnameConstraint(card) {
+  const a2cb = card.querySelector('.ka-a2-shared-surname');
+  const a3cb = card.querySelector('.ka-a3-shared-surname');
+  const a3wrap = card.querySelector('.ka-a3-shared-wrap');
+  if (!a2cb || !a3cb) return;
+  const a2On = a2cb.checked;
+  if (!a2On) {
+    a3cb.checked = false;
+  }
+  a3cb.disabled = !a2On;
+  if (a3wrap) a3wrap.style.opacity = a2On ? '1' : '0.45';
 }
 
 /** Refresh all Known Artist preview cells (call after table body changes). */
@@ -1750,7 +1769,7 @@ function _knownArtistCard(ka) {
               <label><input type="checkbox" class="ka-a2-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist2_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
             <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a2-shared-surname" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist2_shared_surname ? ' checked' : ''}${dis}> Shared surname</label>
+              <label><input type="checkbox" class="ka-a2-shared-surname" onchange="_syncKaSharedSurnameConstraint(this.closest('.ka-card')); _updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist2_shared_surname ? ' checked' : ''}${dis}> Shared surname</label>
             </div>
           </div>
         </div>
@@ -1763,8 +1782,8 @@ function _knownArtistCard(ka) {
             <div class="ka-field ka-field-check">
               <label><input type="checkbox" class="ka-a3-ra" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist3_ra_styled ? ' checked' : ''}${dis}> RA styled</label>
             </div>
-            <div class="ka-field ka-field-check">
-              <label><input type="checkbox" class="ka-a3-shared-surname" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist3_shared_surname ? ' checked' : ''}${dis}> Shared surname</label>
+            <div class="ka-field ka-field-check ka-a3-shared-wrap" style="opacity:${ka.resolved_artist2_shared_surname ? '1' : '0.45'}">
+              <label><input type="checkbox" class="ka-a3-shared-surname" onchange="_updateKaPreview(this.closest('.ka-card')); _markKaDirty(this.closest('.ka-card'))"${ka.resolved_artist3_shared_surname ? ' checked' : ''}${dis}${ka.resolved_artist2_shared_surname ? '' : ' disabled'}> Shared surname</label>
             </div>
           </div>
         </div>
@@ -2477,11 +2496,11 @@ function _renderIndexEntryExamples(cfg) {
     // 12. Three artists — first two share surname, third does not
     {
       title: 'Three artists — partial shared surname',
-      desc: 'Artists 1 and 2 share a surname (suppressed on artist 2). Artist 3 has a different surname shown in full. Oxford-comma style: no \u201cand\u201d before artist 2, \u201cand\u201d before artist 3.',
+      desc: 'Artists 1 and 2 share a surname (suppressed on artist 2). The family pair is connected by \u201cand\u201d with no preceding comma. Artist 3 has a different surname shown in full, preceded by Oxford-comma \u201cand\u201d.',
       parts: [
         plain('Smith'),  sep(', '),
-        plain('Melanie'),  sep(', '),
-        plain('Michael'),  sep(', '),
+        plain('Melanie'),  sep(' '),
+        plain('and Michael'),  sep(', '),
         plain('and Anthony Jones'),  sep(', '),
         styled('200', 'catno', 'Cat no'),
       ],
@@ -4859,16 +4878,18 @@ function styledIndexName(a) {
     suffixes.push(suffix);
   }
   if (!a.is_company) {
-    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasArtist3, a.artist2_shared_surname);
+    // A2 gets "and" when: (a) no A3 (standard 2-artist), or (b) A2 is shared surname (family unit)
+    const a2IncludeAnd = !hasArtist3 || !!a.artist2_shared_surname;
+    _addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, a2IncludeAnd, a.artist2_shared_surname);
     _addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true, a.artist3_shared_surname);
   }
 
   let result = commaParts.join(', ');
   if (nameParts.length) result += ' ' + nameParts.join(' ');
-  // Shared-surname pair (2 artists only): space before "and" not comma,
-  // so "Orta, Lucy and Jorge" reads as a family unit.
+  // Shared-surname A2: space before "and" not comma, so the family unit
+  // reads naturally (2-artist and 3-artist).
   if (suffixes.length) {
-    const sharedPair = !hasArtist3 && a.artist2_shared_surname;
+    const sharedPair = !!a.artist2_shared_surname;
     result += (sharedPair ? ' ' : ', ') + suffixes.join(', ');
   }
   return result;
@@ -5027,8 +5048,9 @@ function _buildEntryPreview(a) {
   const hasA3 = !!(a.artist3_first_name || a.artist3_last_name);
   function addArtist(first, last, quals, raStyled, includeAnd, sharedSurname) {
     if (!first && !last) return;
-    // Shared-surname pair (2 artists only): replace preceding ", " separator
-    // with " " so "Orta, Lucy and Jorge" reads as a family unit.
+    // Shared-surname: replace preceding ", " separator with " " so the
+    // family unit reads naturally (2-artist: "Lucy and Jorge",
+    // 3-artist: "Maria and Carlos, and Hannah Jones").
     if (includeAnd && sharedSurname && parts.length) {
       const prev = parts[parts.length - 1];
       if (prev === sep(', ')) {
@@ -5051,7 +5073,9 @@ function _buildEntryPreview(a) {
     }
   }
   if (!a.is_company) {
-    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, !hasA3, a.artist2_shared_surname);
+    // A2 gets "and" when: (a) no A3 (standard 2-artist), or (b) A2 is shared surname (family unit)
+    const a2IncludeAnd = !hasA3 || !!a.artist2_shared_surname;
+    addArtist(a.artist2_first_name, a.artist2_last_name, a.artist2_quals, a.artist2_ra_styled, a2IncludeAnd, a.artist2_shared_surname);
     addArtist(a.artist3_first_name, a.artist3_last_name, a.artist3_quals, a.artist3_ra_styled, true, a.artist3_shared_surname);
   }
 
@@ -5563,10 +5587,36 @@ function showIndexOverrideForm(importId, artistId, existing) {
 
   // Initialise tri-state checkboxes (must set .indeterminate via JS)
   _initTriStateCheckboxes(cell);
+
+  // Constraint: A3 shared surname requires A2 shared surname.
+  // Disable the A3 checkbox when A2 isn't checked, and uncheck it if needed.
+  _syncOvrSharedSurnameConstraint(cell);
 }
 
-/** Update the state text next to the company checkbox in the override form. */
-function _updateIdxOvrCompanyState(cb) {
+/**
+ * Wire the A2→A3 shared-surname constraint in an override form container.
+ * When A2 shared surname is unchecked (or indeterminate), A3 is disabled + unchecked.
+ */
+function _syncOvrSharedSurnameConstraint(container) {
+  const a2cb = container.querySelector('[name="artist2_shared_surname_override"]');
+  const a3cb = container.querySelector('[name="artist3_shared_surname_override"]');
+  if (!a2cb || !a3cb) return;
+  function sync() {
+    const a2On = a2cb.checked && !a2cb.indeterminate;
+    if (!a2On) {
+      a3cb.checked = false;
+      a3cb.indeterminate = false;
+      // Reset tri-state to 'false' (explicitly off) when forced
+      a3cb.dataset.tristate = 'false';
+    }
+    a3cb.disabled = !a2On;
+    a3cb.closest('.ka-field-check').style.opacity = a2On ? '1' : '0.45';
+  }
+  // Listen for changes on A2 (tri-state cycles via onclick, but also onchange)
+  a2cb.addEventListener('click', () => setTimeout(sync, 0));
+  a2cb.addEventListener('change', () => setTimeout(sync, 0));
+  sync();
+}
   const state = cb.dataset.tristate;
   const stateEl = cb.closest('.ka-field-check')?.querySelector('.ka-field-state');
   if (stateEl) {

@@ -118,8 +118,9 @@ def build_index_name(
       Boyd & Evans
       Assemble RA
       Caruso, Adam RA, and Peter St John
-      Orta, Lucy, and Jorge                   (shared surname)
-      Smith, Melanie, Michael, and Anthony     (3 artists, shared surname)
+      Orta, Lucy and Jorge                    (2 artists, shared surname)
+      Rivera, Maria and Carlos, and H. Jones  (3 artists, A2 shared surname)
+      Smith, Melanie, Michael, and Anthony    (3 artists, all shared surname)
     """
     surname = last_name or first_name or ""
     if not surname:
@@ -150,13 +151,14 @@ def build_index_name(
             shared_surname=artist2_shared_surname,
         )
         if a2_name:
-            # With 3 artists, omit "and" before artist 2 (Oxford-comma style)
-            if has_artist3:
-                name += ", " + a2_name
-            elif artist2_shared_surname:
-                # Shared surname pair reads as a family unit — no comma
-                # before "and": "Orta, Lucy and Jorge"
+            if artist2_shared_surname:
+                # Shared-surname family unit — no comma before "and":
+                # 2-artist: "Orta, Lucy and Jorge"
+                # 3-artist: "Rivera, Maria and Carlos, and Hannah Jones"
                 name += " and " + a2_name
+            elif has_artist3:
+                # With 3 artists, omit "and" before artist 2 (Oxford-comma style)
+                name += ", " + a2_name
             else:
                 name += ", and " + a2_name
 
@@ -404,6 +406,11 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
         artist3_first_name = None
         artist3_last_name = None
         artist3_quals = None
+
+    # Enforce constraint: artist3 shared surname requires artist2 shared surname.
+    # If A2 isn't shared, A3 can't be either — there's no family unit to extend.
+    if not artist2_shared_surname:
+        artist3_shared_surname = False
 
     # Recompute sort key from resolved values
     resolved_sort_key = build_sort_key(last_name, first_name)

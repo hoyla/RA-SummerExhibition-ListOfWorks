@@ -421,24 +421,26 @@ def render_index_tagged_text(
         line_parts.append(_render_quals(entry.quals, entry.is_ra_member, cfg))
 
         # Additional artists (structured, with per-artist RA styling)
-        # When there are 3 artists, omit "and" before artist 2 so we get
-        # "Surname, First, Second Artist, and Third Artist, ..." instead of
-        # "Surname, First, and Second Artist, and Third Artist, ..."
+        # When there are 3 artists:
+        # - Normal: omit "and" before artist 2 → "First, Second, and Third"
+        # - Shared surname on A2: include "and" → "First and Second, and Third"
         has_artist3 = bool(entry.artist3_first_name or entry.artist3_last_name)
+        a2_include_and = (not has_artist3) or entry.artist2_shared_surname
         a2 = _render_additional_artist(
             entry.artist2_first_name,
             entry.artist2_last_name,
             entry.artist2_quals,
             entry.artist2_ra_styled,
             cfg,
-            include_and=not has_artist3,
+            include_and=a2_include_and,
             shared_surname=entry.artist2_shared_surname,
         )
         if a2:
-            # For shared-surname pairs (2 artists only), drop the comma
-            # before "and" so the entry reads as a family unit:
-            # "Orta, Lucy and Jorge" not "Orta, Lucy, and Jorge"
-            if not has_artist3 and entry.artist2_shared_surname:
+            # For shared-surname entries, drop the comma before "and" so
+            # the family unit reads naturally:
+            # 2-artist: "Orta, Lucy and Jorge"
+            # 3-artist: "Rivera, Maria and Carlos, and Hannah Jones"
+            if entry.artist2_shared_surname:
                 # Walk backwards to find the last non-empty part ending
                 # with ", " (quals or name part) and replace with " ".
                 for i in range(len(line_parts) - 1, -1, -1):

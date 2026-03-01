@@ -768,7 +768,7 @@ class TestSharedSurnameRenderer:
         assert "<cstyle:RA Member Cap Surname>Orta<cstyle:>" in line  # Artist 1 still has it
 
     def test_three_artists_all_shared_surname(self):
-        """Three artists all sharing surname — both suppressed."""
+        """Three artists all sharing surname — A2 gets 'and' prefix, A3 gets Oxford comma 'and'."""
         entries = [
             _entry(
                 last_name="Smith",
@@ -786,8 +786,8 @@ class TestSharedSurnameRenderer:
         line = result.split("\r")[1]
         expected = (
             "<pstyle:Index Text>"
-            "Smith, Melanie, "
-            "Michael, "
+            "Smith, Melanie "
+            "and Michael, "
             "and Anthony, "
             "<cstyle:Index works numbers>100<cstyle:>"
         )
@@ -814,3 +814,191 @@ class TestSharedSurnameRenderer:
         assert "ra> and Jorge" in line or "ra>, and Jorge" not in line
         assert "cbe" in line.lower()
         assert "Jorge Orta" not in line
+
+    def test_three_artists_a2_shared_surname_only(self):
+        """3-artist entry with only A2 shared — family 'and' for A2, Oxford comma for A3."""
+        entries = [
+            _entry(
+                last_name="Rivera",
+                first_name="Maria",
+                artist2_first_name="Carlos",
+                artist2_last_name="Rivera",
+                artist2_shared_surname=True,
+                artist3_first_name="Hannah",
+                artist3_last_name="Jones",
+                artist3_shared_surname=False,
+                cat_nos=[77],
+            )
+        ]
+        result = render_index_tagged_text(entries, CFG)
+        line = result.split("\r")[1]
+        expected = (
+            "<pstyle:Index Text>"
+            "Rivera, Maria "
+            "and Carlos, "
+            "and Hannah Jones, "
+            "<cstyle:Index works numbers>77<cstyle:>"
+        )
+        assert line == expected
+
+
+class TestMultiArtistScenarios:
+    """Renderer tests covering all 17 multi-artist scenarios from the reference table."""
+
+    def test_scenario_1_two_artists_plain(self):
+        """Two artists, no shared surname, no quals."""
+        entries = [_entry(
+            last_name="Caruso", first_name="Adam",
+            artist2_first_name="Peter", artist2_last_name="St John",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "Adam, and Peter St John, " in line
+
+    def test_scenario_2_two_artists_a1_ra(self):
+        """Two artists, A1 is RA styled."""
+        entries = [_entry(
+            last_name="Caruso", first_name="Adam", quals="RA", is_ra=True,
+            artist2_first_name="Peter", artist2_last_name="St John",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "<cstyle:RA Member Cap Surname>Caruso<cstyle:>" in line
+        assert "and Peter St John, " in line
+
+    def test_scenario_3_two_artists_a2_quals(self):
+        """Two artists, A2 with quals."""
+        entries = [_entry(
+            last_name="Langlands", first_name="Ben",
+            artist2_first_name="Nikki", artist2_last_name="Bell",
+            artist2_quals="CBE",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "and Nikki Bell" in line
+        assert "cbe" in line.lower()
+
+    def test_scenario_4_two_artists_both_plain(self):
+        """Two artists, both plain."""
+        entries = [_entry(
+            last_name="Boyd", first_name="Arthur",
+            artist2_first_name="Mary", artist2_last_name="Evans",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "Arthur, and Mary Evans, " in line
+
+    def test_scenario_5_two_artists_a1_title_quals(self):
+        """Two artists, A1 has title + quals + RA."""
+        entries = [_entry(
+            last_name="Adjaye", first_name="David", title="Sir",
+            quals="OM OBE RA", is_ra=True,
+            artist2_first_name="Mariam", artist2_last_name="Kamara",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "Sir David" in line
+        assert "and Mariam Kamara, " in line
+
+    def test_scenario_8_two_artists_shared_a1_title_quals(self):
+        """Two artists, shared surname, A1 has title + quals."""
+        entries = [_entry(
+            last_name="Smith", first_name="Melanie", title="Dame",
+            quals="DBE",
+            artist2_first_name="Michael", artist2_last_name="Smith",
+            artist2_shared_surname=True,
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        # No comma before "and" — family unit
+        assert "Dame Melanie" in line
+        assert "dbe" in line.lower()
+        assert "and Michael, " in line
+        # Surname suppressed for A2
+        assert "Michael Smith" not in line
+
+    def test_scenario_9_two_artists_shared_a2_ra_quals(self):
+        """Two artists, shared surname, A2 has RA quals."""
+        entries = [_entry(
+            last_name="Hirst", first_name="Damien",
+            artist2_first_name="Connor", artist2_last_name="Hirst",
+            artist2_quals="RA", artist2_ra_styled=True,
+            artist2_shared_surname=True,
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "Damien " in line
+        assert "and Connor " in line
+        assert "Connor Hirst" not in line
+
+    def test_scenario_10_three_artists_plain(self):
+        """Three artists, no shared surname, no quals (renderer)."""
+        entries = [_entry(
+            last_name="Eggerling", first_name="Gabriele",
+            artist2_first_name="Dhruv", artist2_last_name="Jadhav",
+            artist3_first_name="Hannah", artist3_last_name="Puerta-Carlson",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "Gabriele, Dhruv Jadhav, and Hannah Puerta-Carlson, " in line
+
+    def test_scenario_11_three_artists_all_quals(self):
+        """Three artists, no shared surname, all with quals."""
+        entries = [_entry(
+            last_name="Eggerling", first_name="Gabriele",
+            quals="RA", is_ra=True,
+            artist2_first_name="Dhruv", artist2_last_name="Jadhav",
+            artist2_quals="CBE",
+            artist3_first_name="Hannah", artist3_last_name="Puerta-Carlson",
+            artist3_quals="OBE",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "Dhruv Jadhav" in line
+        assert "and Hannah Puerta-Carlson" in line
+        assert "cbe" in line.lower()
+        assert "obe" in line.lower()
+
+    def test_scenario_13_three_artists_all_shared_with_quals(self):
+        """Three artists, A2+A3 shared surname, with quals."""
+        entries = [_entry(
+            last_name="Smith", first_name="Melanie",
+            quals="RA", is_ra=True,
+            artist2_first_name="Michael", artist2_last_name="Smith",
+            artist2_quals="CBE", artist2_shared_surname=True,
+            artist3_first_name="Anthony", artist3_last_name="Smith",
+            artist3_shared_surname=True,
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        # Family unit "and" for A2, Oxford comma "and" for A3
+        assert "and Michael " in line
+        assert "cbe" in line.lower()
+        assert "and Anthony, " in line
+        # Surnames suppressed for A2 and A3
+        assert "Michael Smith" not in line
+        assert "Anthony Smith" not in line
+
+    def test_scenario_16_a1_quals_a2_plain(self):
+        """Two artists, A1 with CBE RA quals, A2 plain."""
+        entries = [_entry(
+            last_name="Parker", first_name="Cornelia",
+            quals="CBE RA", is_ra=True,
+            artist2_first_name="John", artist2_last_name="Doe",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "<cstyle:RA Member Cap Surname>Parker<cstyle:>" in line
+        assert "and John Doe, " in line
+
+    def test_scenario_17_single_name_ra_with_a2(self):
+        """Single-name RA artist with a second artist."""
+        entries = [_entry(
+            last_name=None, first_name="Assemble",
+            quals="RA", is_ra=True,
+            artist2_first_name="Jane", artist2_last_name="Doe",
+            cat_nos=[10],
+        )]
+        line = render_index_tagged_text(entries, CFG).split("\r")[1]
+        assert "Assemble" in line
+        assert "and Jane Doe, " in line
