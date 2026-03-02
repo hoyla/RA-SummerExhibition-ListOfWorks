@@ -239,7 +239,7 @@
 
 - **Amazon Cognito** user pool replacing single shared API key
 - Three-mode auth: Cognito JWT → API key (legacy) → no auth (local dev)
-- JWT validation via `python-jose` (signature, expiry, audience, issuer)
+- JWT validation via `PyJWT` (signature, expiry, audience, issuer)
 - Cognito groups mapped to application roles (admin > editor > viewer)
 - `ContextVar`-based request-scoped user context
 - Audit log `user_email` column auto-populated from request context

@@ -32,7 +32,8 @@ from functools import lru_cache
 from typing import Optional
 
 from fastapi import Header, HTTPException, Request, status, Depends
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 
 from backend.app.config import (
     API_KEY,
@@ -98,12 +99,12 @@ def _decode_cognito_token(token: str) -> dict:
         )
 
     kid = unverified_header.get("kid")
-    key = None
+    jwk_dict = None
     for k in jwks.get("keys", []):
         if k["kid"] == kid:
-            key = k
+            jwk_dict = k
             break
-    if key is None:
+    if jwk_dict is None:
         # Force JWKS refresh in case keys were rotated
         _get_jwks.cache_clear()
         try:
@@ -112,13 +113,16 @@ def _decode_cognito_token(token: str) -> dict:
             pass
         for k in jwks.get("keys", []):
             if k["kid"] == kid:
-                key = k
+                jwk_dict = k
                 break
-    if key is None:
+    if jwk_dict is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token signing key not found",
         )
+
+    # PyJWT requires a key object rather than a raw JWK dict
+    key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk_dict)
 
     issuer = (
         f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/" f"{COGNITO_USER_POOL_ID}"

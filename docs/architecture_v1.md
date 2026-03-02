@@ -788,7 +788,7 @@ on environment configuration:
 
 - JWKS fetched once per process from the Cognito well-known endpoint and cached.
 - Token signature, expiry, audience (`aud`), and issuer (`iss`) are verified
-  using `python-jose`.
+  using `PyJWT`.
 - User email extracted from the `email` claim.
 - Role derived from Cognito groups mapped to the `Role` IntEnum
   (admin=3 > editor=2 > viewer=1); highest-precedence group wins.
