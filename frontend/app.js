@@ -1468,6 +1468,19 @@ function _kaPreviewIndexName(tr) {
     const sharedPair = !!a2SharedSurname;
     result += (sharedPair ? ' ' : ', ') + suffixes.join(', ');
   }
+
+  // Company name (for non-company entries with a practice/firm)
+  const companyVal = resolve('.ka-res-company', '');
+  if (!isCompany && companyVal) {
+    result += ', ' + esc(companyVal);
+  }
+
+  // Address (shown after company/name)
+  const addressVal = resolve('.ka-res-address', '');
+  if (addressVal) {
+    result += ', ' + esc(addressVal);
+  }
+
   return result;
 }
 
@@ -4892,6 +4905,17 @@ function styledIndexName(a) {
     const sharedPair = !!a.artist2_shared_surname;
     result += (sharedPair ? ' ' : ', ') + suffixes.join(', ');
   }
+
+  // Company name (for non-company entries with a practice/firm)
+  if (!a.is_company && a.company) {
+    result += ', ' + esc(a.company);
+  }
+
+  // Address (shown after company/name)
+  if (a.address) {
+    result += ', ' + esc(a.address);
+  }
+
   return result;
 }
 
@@ -5100,6 +5124,12 @@ function _buildEntryPreview(a) {
     }
   } else {
     // Company entry — courtesy still applies if present
+  }
+
+  // Address (shown when no per-cat-number courtesy values exist;
+  // otherwise the courtesy groups already display the address text)
+  if (a.address && !courtesyKeys.some(k => k)) {
+    parts.push(plain(a.address + ', '));
   }
 
   // --- Cat numbers (grouped by courtesy) ---
