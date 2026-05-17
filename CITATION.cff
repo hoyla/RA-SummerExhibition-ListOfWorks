@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "Royal Academy Summer Exhibition catalogue tool"
+message: "If you use this software, please cite it using the metadata below."
+type: software
+authors:
+  - given-names: Luke
+    family-name: Hoyland
+abstract: >-
+  A web-based tool that ingests editorial spreadsheets for the Royal
+  Academy's annual Summer Exhibition, lets editors review and correct the
+  data, and generates InDesign Tagged Text files ready for import into the
+  printed catalogue. Provides two data products: List of Works (sections
+  with works) and Artists Index (alphabetical index of exhibiting
+  artists). Replaces a manual copy-and-format workflow.
+keywords:
+  - royal-academy
+  - summer-exhibition
+  - exhibition-catalogue
+  - indesign
+  - tagged-text
+  - editorial-tools
+  - data-normalisation
+license: Apache-2.0
+repository-code: "https://github.com/hoyla/RA-SummerExhibition-ListOfWorks"
+url: "https://github.com/hoyla/RA-SummerExhibition-ListOfWorks"
