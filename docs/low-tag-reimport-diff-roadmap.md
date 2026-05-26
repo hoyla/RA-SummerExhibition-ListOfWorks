@@ -4,7 +4,10 @@
 > be handed between sessions and people. It is intended to evolve as we build,
 > and to be **deleted when the feature is complete**. Branch: `low-tag-reimport-diff`.
 >
-> **Status:** design agreed; implementation not yet started.
+> **Status:** in progress. Done: edition character style (task #1); the parser
+> `low_tag_parser.py` (#2); the round-trip identity gate (#3) — **passing**,
+> including the 2026 template's wrap + style-collision + price-interleave case.
+> Next: matching service (#4).
 > **Last updated:** 2026-05-26.
 
 ---
@@ -144,6 +147,20 @@ From `backend/app/services/export_renderer.py`:
   CatNo-span" entry rule (§5.4).
 - Honorifics are appended to the artist as ` ` + a separate
   `<CharStyle:Honorifics>` span → recovered as a distinct field.
+- **Style collision (found while building):** the production 2026 template styles
+  **both** the work number and the title as `Work Number/Name`. Group-by-style
+  alone would merge them, so collisions are resolved by component order — the
+  first span of a shared style is the earlier component (work number), the rest
+  the later (title). Verified by round-trip test.
+- **One entry == one entry-style paragraph** for the current templates: both use
+  soft returns (and tabs/column breaks) within an entry, never hard returns. So
+  entries are delimited by entry-style paragraphs. Hard-return continuation
+  merging is deferred (the defensive count check in §5.8 would flag it).
+- **Comparison is at the display-string level** (decision refined): because the
+  MVP only detects (doesn't resolve), the parser recovers each field's display
+  string and the diff compares strings — so we never invert `£1,200` → `1200`
+  or `(edition of 5 at £200)` back into numbers. `low_diff.work_display_fields`
+  computes the DB side the same way for like-for-like comparison.
 
 ## 7. Architecture / where things live
 
@@ -167,9 +184,9 @@ Tracked as session tasks #1–#7. The **feasibility gate is round-trip identity*
 (#3): if an *unmodified* exported file doesn't parse straight back to the
 resolved DB values, every diff is false positives.
 
-1. Add `edition_style` to renderer, default config + seed templates. *(prereq for clean round-trip)*
-2. Build `low_tag_parser.py` (character-style span parser).
-3. **Round-trip identity harness + test** — export → parse → assert equality on an unmodified file. *(gate)*
+1. ✅ Add `edition_style` to renderer, default config + seed templates. *(prereq for clean round-trip)*
+2. ✅ Build `low_tag_parser.py` (character-style span parser).
+3. ✅ **Round-trip identity harness + test** — export → parse → assert equality on an unmodified file. *(gate — passing)*
 4. Matching service — cat-no two-pass join + room alignment by membership overlap.
 5. 2-way field diff + data-driven significance tiering + cosmetic suppression.
 6. Disparity report — import snapshot + read-only review view.
