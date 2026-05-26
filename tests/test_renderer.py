@@ -70,6 +70,9 @@ def test_renderer_price_and_edition_formatting():
     assert "£3,900" in output
     assert "(edition of 7 at £920)" in output
     assert ".00" not in output
+    # Edition is wrapped in its own character style (enables lossless round-trip
+    # parsing of the LOW tags), and the style wraps only the value.
+    assert "<CharStyle:Edition>(edition of 7 at £920)<CharStyle:>" in output
 
 
 def test_renderer_nfs_passes_through():

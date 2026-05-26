@@ -13,6 +13,7 @@
   "price_style": "Price",
   "medium_style": "Medium",
   "artwork_style": "Artwork",
+  "edition_style": "Edition",
   "thousands_separator": ",",
   "decimal_places": 0,
   "leading_separator": "none",

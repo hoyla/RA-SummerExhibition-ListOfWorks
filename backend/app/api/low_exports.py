@@ -102,6 +102,7 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
         price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
         medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
         artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
+        edition_style=cfg.get("edition_style", DEFAULT_CONFIG.edition_style),
         thousands_separator=cfg.get(
             "thousands_separator", DEFAULT_CONFIG.thousands_separator
         ),

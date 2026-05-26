@@ -70,6 +70,7 @@ class ExportConfig:
     price_style: str = "Price"
     medium_style: str = "Medium"
     artwork_style: str = "Artwork"
+    edition_style: str = "Edition"
     # Number formatting
     thousands_separator: str = ","
     decimal_places: int = 0
@@ -352,7 +353,7 @@ def _field_char_style(config: "ExportConfig", field: str) -> str:
         "work_number": config.cat_no_style,
         "artist": config.artist_style,
         "title": config.title_style,
-        "edition": "",
+        "edition": config.edition_style,
         "artwork": config.artwork_style,
         "price": config.price_style,
         "medium": config.medium_style,
@@ -483,7 +484,7 @@ def render_import_as_tagged_text(
                 "work_number": _cs(config.cat_no_style, w["number"] or ""),
                 "artist": artist,
                 "title": _cs(config.title_style, w["title"]),
-                "edition": edition_display,
+                "edition": _cs(config.edition_style, edition_display),
                 "artwork": _cs(
                     config.artwork_style, str(w["artwork"]) if w["artwork"] else ""
                 ),

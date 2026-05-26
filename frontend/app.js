@@ -2806,6 +2806,7 @@ async function renderTemplateEdit(id) {
         <div class="form-row"><label>Price</label><input id="tmpl-price-style" type="text" value="${esc(cfg.price_style ?? '')}"${ro}></div>
         <div class="form-row"><label>Medium</label><input id="tmpl-medium-style" type="text" value="${esc(cfg.medium_style ?? '')}"${ro}></div>
         <div class="form-row"><label>Artwork number</label><input id="tmpl-artwork-style" type="text" value="${esc(cfg.artwork_style ?? '')}"${ro}></div>
+        <div class="form-row"><label>Edition</label><input id="tmpl-edition-style" type="text" value="${esc(cfg.edition_style ?? '')}"${ro}></div>
       </div>
     </section>
 
@@ -2890,6 +2891,7 @@ async function saveTemplate(id) {
     price_style:         (document.getElementById('tmpl-price-style')?.value        ?? '').trim(),
     medium_style:        (document.getElementById('tmpl-medium-style')?.value       ?? '').trim(),
     artwork_style:       (document.getElementById('tmpl-artwork-style')?.value      ?? '').trim(),
+    edition_style:       (document.getElementById('tmpl-edition-style')?.value      ?? '').trim(),
     leading_separator:    document.getElementById('tmpl-leading-sep')?.value        ?? 'none',
     trailing_separator:   document.getElementById('tmpl-trailing-sep')?.value       ?? 'none',
     final_sep_from_last_component: document.getElementById('tmpl-final-sep-from-last')?.checked ?? false,

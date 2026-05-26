@@ -247,6 +247,7 @@ class TemplateBodyIn(BaseModel):
     price_style: str = "Price"
     medium_style: str = "Medium"
     artwork_style: str = "Artwork"
+    edition_style: str = "Edition"
     thousands_separator: str = ","
     decimal_places: int = 0
     section_separator: str = "paragraph"
