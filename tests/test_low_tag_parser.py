@@ -265,3 +265,25 @@ def test_numeric_escape_is_decoded():
     )
     parsed = parse_low_tags(doc, config)
     assert parsed[0].fields["title"] == "M’Coul"
+
+
+def test_parses_indesign_short_dialect():
+    """A real InDesign re-export uses <pstyle:>/<cstyle:> short tags and LF
+    paragraph breaks, with a preamble of style definitions to ignore."""
+    config = ExportConfig()  # default style names
+    doc = (
+        "<ASCII-MAC>\n"
+        "<vsn:20.2><fset:InDesign-Roman>\n"
+        "<dcs:CatNo=<Nextstyle:CatNo><ct:Bold>>\n"
+        "<pstyle:SectionTitle>Gallery I\n"
+        "<pstyle:CatalogueEntry><cstyle:CatNo>5<cstyle:>\t"
+        "<cstyle:ArtistName>Jane Doe<cstyle:>\t"
+        "<cstyle:WorkTitle>A Quiet Work<cstyle:>\n"
+    )
+    parsed = parse_low_tags(doc, config)
+    assert len(parsed) == 1
+    e = parsed[0]
+    assert e.cat_no == "5"
+    assert e.section_name == "Gallery I"
+    assert e.fields["artist"] == "Jane Doe"
+    assert e.fields["title"] == "A Quiet Work"

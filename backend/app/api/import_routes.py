@@ -14,6 +14,7 @@ from backend.app.api import (
     low_imports,
     low_overrides,
     low_exports,
+    low_reconcile,
     low_templates,
     normalisation_config,
     audit,
@@ -29,6 +30,7 @@ router = APIRouter(dependencies=[Depends(require_api_key)])
 router.include_router(low_imports.router)
 router.include_router(low_overrides.router)
 router.include_router(low_exports.router)
+router.include_router(low_reconcile.router)
 router.include_router(low_templates.router)
 router.include_router(normalisation_config.router)
 router.include_router(audit.router)

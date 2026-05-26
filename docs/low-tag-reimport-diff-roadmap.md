@@ -7,9 +7,12 @@
 > **Status:** in progress. Done: edition character style (#1); parser
 > `low_tag_parser.py` (#2); round-trip identity gate (#3, **passing** incl. the
 > 2026 wrap + style-collision + price-interleave case); matching + 2-way diff +
-> significance tiering `low_diff.py` (#4, #5); canonical-mutation tests (#7).
-> The whole detection engine works end to end (832 tests). **Only the report UI
-> + snapshot storage (#6) remain** — that's the next piece and wants UX input.
+> significance tiering `low_diff.py` (#4, #5); canonical-mutation tests (#7);
+> thin ingestion endpoint `POST /imports/{id}/low-tag-diff` (#6). The detection
+> engine works end to end through HTTP (838 tests), and is **dialect-tolerant**
+> (handles both our tags and the real InDesign short dialect — see §6).
+> **Next / blocked on a real file:** validate against a real corrected LOW
+> export, then build the report UI + snapshot persistence (#8).
 > **Last updated:** 2026-05-26.
 
 ---
@@ -163,6 +166,14 @@ From `backend/app/services/export_renderer.py`:
   string and the diff compares strings — so we never invert `£1,200` → `1200`
   or `(edition of 5 at £200)` back into numbers. `low_diff.work_display_fields`
   computes the DB side the same way for like-for-like comparison.
+- **Real InDesign dialect differs from our renderer** (found in the
+  `test_sample_files/` real export). InDesign re-exports use the **short** tag
+  forms `<pstyle:Name>` / `<cstyle:Name>…<cstyle:>` (not `<ParaStyle:>` /
+  `<CharStyle:>`), **LF paragraph breaks** (not CR), and a preamble of `<vsn:>`
+  / `<dps:>` / `<dcs:>` style definitions. The parser now handles both dialects
+  (tag-name + line-ending), and the paragraph allowlist discards the preamble.
+  This is exactly why validating against a real file matters — a native-only
+  parser would have returned zero entries on any real re-export.
 
 ## 7. Architecture / where things live
 
@@ -191,14 +202,20 @@ resolved DB values, every diff is false positives.
 3. ✅ **Round-trip identity harness + test** — export → parse → assert equality on an unmodified file. *(gate — passing)*
 4. ✅ Matching service — cat-no two-pass join + room alignment by membership overlap.
 5. ✅ 2-way field diff + data-driven significance tiering + cosmetic suppression.
-6. Disparity report — import snapshot + read-only review view. *(remaining)*
+6. ✅ Thin ingestion endpoint `POST /imports/{id}/low-tag-diff` (parse + diff → JSON, dialect-tolerant, no persistence/UI).
+8. Report UI + snapshot persistence — **deferred** until validated against a real corrected LOW file.
 7. ✅ Canonical test mutations — text edit, room move, renumber — assert correct classification.
 
 ## 9. Open questions / pending
 
-- **Real corrected-tags sample.** Luke to supply a real corrected LOW export "in
-  time" to validate against. Until then, prototype with synthetic round-trips
-  (export → mutate a few entries → re-import → diff).
+- **Real corrected-tags sample.** The thin endpoint (`POST /imports/{id}/
+  low-tag-diff`) is ready to point at a real corrected LOW export. The one
+  dialect detail still unconfirmed: how InDesign's short dialect represents a
+  **forced line break within a paragraph** (the wrap/soft-return case) — the
+  sample available was an Index export without LOW-style wrapping. A real
+  wrapped LOW re-export will settle it; the parser's soft-return handling may
+  need a small tweak then. The diagnostic short-parse warning in the endpoint
+  will flag if a real file doesn't parse as expected.
 - ~~**Edition character style.**~~ ✅ Confirmed: the InDesign test template uses
   `Work Edition`, which is exactly what the 2026 seed template now specifies and
   what the round-trip test exercises.

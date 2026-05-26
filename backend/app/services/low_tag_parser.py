@@ -27,10 +27,14 @@ Parsing strategy
   the first span of a shared style maps to the earlier component, the rest to
   the later one (only the last colliding component may be wrapped/multi-span).
 
-Note on tag dialect: our renderer emits ``<CharStyle:Name>…<CharStyle:>`` and
-``<ParaStyle:Name>``. A real InDesign re-export may use a different dialect
-(e.g. ``<cstyle:…>``); adapt ``_SPAN_RE`` / ``_PARA_RE`` when a real corrected
-file is available.
+Tag dialects: our renderer emits the verbose forms ``<ParaStyle:Name>`` /
+``<CharStyle:Name>…<CharStyle:>`` with CR (``\\r``) paragraph breaks. A real
+InDesign re-export uses the short forms ``<pstyle:Name>`` / ``<cstyle:Name>…
+<cstyle:>`` with line-feed paragraph breaks (and a preamble of ``<vsn:>`` /
+``<dps:>`` / ``<dcs:>`` style definitions, which the paragraph allowlist
+discards). The parser handles both. (How InDesign represents a *forced line
+break* within a paragraph in the short dialect is still to be confirmed against
+a real wrapped LOW file — see the roadmap's open questions.)
 """
 
 from __future__ import annotations
@@ -41,8 +45,12 @@ from dataclasses import dataclass
 
 from backend.app.services.export_renderer import ExportConfig, DEFAULT_CONFIG
 
-_PARA_RE = re.compile(r"^<ParaStyle:([^>]*)>")
-_SPAN_RE = re.compile(r"<CharStyle:([^>]+)>(.*?)<CharStyle:>", re.DOTALL)
+# Match both the verbose (our renderer) and short (InDesign) tag dialects.
+_PARA_RE = re.compile(r"^\s*<(?:ParaStyle|pstyle):([^>]*)>")
+_SPAN_RE = re.compile(
+    r"<(?:CharStyle|cstyle):([^>]+)>(.*?)<(?:CharStyle|cstyle):>", re.DOTALL
+)
+_INDESIGN_HINT = re.compile(r"<(?:pstyle|cstyle):")
 _HEX_RE = re.compile(r"<0x([0-9A-Fa-f]+)>")
 _TAG_RE = re.compile(r"<[^>]*>")
 
@@ -159,7 +167,15 @@ def parse_low_tags(
     entries: list[ParsedEntry] = []
     current_section = ""
 
-    for idx, para in enumerate(text.split("\r")):
+    # Native dialect uses CR for paragraphs and LF for soft returns (kept inside
+    # spans and removed by _clean). The InDesign short dialect uses line breaks
+    # for paragraphs, so split on either there.
+    if _INDESIGN_HINT.search(text):
+        paragraphs = re.split(r"[\r\n]+", text)
+    else:
+        paragraphs = text.split("\r")
+
+    for idx, para in enumerate(paragraphs):
         m = _PARA_RE.match(para)
         if not m:
             continue  # header, blank separator paragraphs, etc.
