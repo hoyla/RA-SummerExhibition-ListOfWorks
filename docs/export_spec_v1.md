@@ -99,6 +99,7 @@ Default style names:
 | artist name | `ArtistName`  |
 | honorifics  | `Honorifics`  |
 | title       | `WorkTitle`   |
+| edition     | `Edition`     |
 | price       | `Price`       |
 | medium      | `Medium`      |
 | artwork     | `Artwork`     |
@@ -115,6 +116,8 @@ Default style names:
 | Neither         | suppressed                |
 
 The prefix `edition of` and bracketing are configurable via `ExportConfig`.
+The rendered edition string is wrapped in the `edition` character style
+(default `Edition`), so every field carries a character style.
 
 ---
 

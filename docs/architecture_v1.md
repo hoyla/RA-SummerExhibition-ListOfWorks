@@ -529,7 +529,7 @@ Controls all export behaviour:
 
 - `currency_symbol`, `thousands_separator`, `decimal_places`
 - `section_style`, `entry_style` — InDesign paragraph style names
-- `cat_no_style`, `artist_style`, `honorifics_style`, `title_style`, `price_style`, `medium_style`, `artwork_style` — character style names
+- `cat_no_style`, `artist_style`, `honorifics_style`, `title_style`, `price_style`, `medium_style`, `artwork_style`, `edition_style` — character style names
 - `honorifics_lowercase`
 - `leading_separator`, `trailing_separator`
 - `components` — ordered list of `ComponentConfig`

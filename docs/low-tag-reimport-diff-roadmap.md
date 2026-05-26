@@ -233,6 +233,20 @@ resolved DB values, every diff is false positives.
 5. ✅ 2-way field diff + data-driven significance tiering + cosmetic suppression.
 6. ✅ Thin ingestion endpoint `POST /imports/{id}/low-tag-diff` (parse + diff → JSON, dialect-tolerant, no persistence/UI).
 8. Report UI + snapshot persistence — **deferred** until validated against a real corrected LOW file.
+
+### On completion (when this temp doc is deleted)
+
+- **Consolidated permanent-docs pass:** README (features / project structure /
+  API table), `architecture_v1.md` (new `low_tag_parser` + `low_diff` services,
+  the `/imports/{id}/low-tag-diff` route), `dev-guide.md`, and a new phase in
+  `roadmap.md`. Refresh the stale test count (`~775` → current) across all docs.
+- **⚠️ Migrate the dialect knowledge before deleting this doc.** §6's real
+  InDesign re-export findings (short `<pstyle>`/`<cstyle>` tags, LF breaks,
+  `<0x000A>` forced line breaks, `<0x####>` escaping of all non-ASCII,
+  backslash-escaped style names) exist nowhere else. Move them into a permanent
+  home (a parse/import section of `architecture_v1.md` or `export_spec_v1.md`)
+  so the knowledge survives. *(Already done now: `edition_style` synced into
+  `export_spec_v1.md` + `architecture_v1.md`, since it shipped independently.)*
 7. ✅ Canonical test mutations — text edit, room move, renumber — assert correct classification.
 
 ## 9. Open questions / pending
