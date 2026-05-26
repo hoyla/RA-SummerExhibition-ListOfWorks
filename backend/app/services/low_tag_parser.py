@@ -53,6 +53,9 @@ _SPAN_RE = re.compile(
 _INDESIGN_HINT = re.compile(r"<(?:pstyle|cstyle):")
 _HEX_RE = re.compile(r"<0x([0-9A-Fa-f]+)>")
 _TAG_RE = re.compile(r"<[^>]*>")
+# InDesign escapes special characters with a backslash, in both content and
+# style names (e.g. "Work Number\/Name", "\<", "\\").
+_BACKSLASH_RE = re.compile(r"\\(.)", re.DOTALL)
 
 # Field name -> the ExportConfig attribute that holds its character-style name.
 _FIELD_STYLE_ATTRS: dict[str, str] = {
@@ -77,15 +80,27 @@ class ParsedEntry:
     paragraph_index: int
 
 
-def _clean(value: str) -> str:
-    """Reverse soft-return wrapping, decode numeric escapes, NFC-normalise.
+def _decode(s: str) -> str:
+    """Undo InDesign escaping: backslash escapes then ``<0x####>`` numeric
+    escapes (the latter incl. ``<0x000A>`` forced line breaks → ``\\n``)."""
+    s = _BACKSLASH_RE.sub(r"\1", s)
+    return _HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), s)
 
-    Deleting ``\\n`` is the exact inverse of the renderer's wrapping because the
-    breaking space is retained on the preceding line.
+
+def _clean(value: str) -> str:
+    """Decode escapes, drop soft returns, NFC-normalise a field value.
+
+    Order matters: decode ``<0x000A>`` to ``\\n`` *before* deleting newlines, so
+    both literal soft returns and escaped ones are removed. Deleting ``\\n`` is
+    the exact inverse of the renderer's wrapping because the breaking space is
+    kept on the preceding line.
     """
-    value = value.replace("\n", "")
-    value = _HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), value)
-    return unicodedata.normalize("NFC", value)
+    return unicodedata.normalize("NFC", _decode(value).replace("\n", ""))
+
+
+def _unescape_name(name: str) -> str:
+    """Style names are backslash-escaped by InDesign (e.g. ``Work Number\\/Name``)."""
+    return _BACKSLASH_RE.sub(r"\1", name)
 
 
 def enabled_field_order(config: ExportConfig) -> list[str]:
@@ -136,7 +151,7 @@ def _assign_spans(
     """
     by_style: dict[str, list[str]] = {}
     for style, value in spans:
-        by_style.setdefault(style, []).append(value)
+        by_style.setdefault(_unescape_name(style), []).append(value)
 
     out: dict[str, str] = {}
     for style, values in by_style.items():
@@ -183,7 +198,10 @@ def parse_low_tags(
         body = para[m.end() :]
 
         if para_style == config.section_style:
-            current_section = _clean(_TAG_RE.sub("", body)).strip()
+            # Decode escapes first, then strip any residual tags, so a room name
+            # containing escaped characters isn't lost with the tags.
+            name = _TAG_RE.sub("", _decode(body)).replace("\n", " ")
+            current_section = unicodedata.normalize("NFC", name).strip()
             continue
         if para_style != config.entry_style:
             continue  # not on the paragraph allowlist

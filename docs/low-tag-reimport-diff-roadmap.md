@@ -8,11 +8,12 @@
 > `low_tag_parser.py` (#2); round-trip identity gate (#3, **passing** incl. the
 > 2026 wrap + style-collision + price-interleave case); matching + 2-way diff +
 > significance tiering `low_diff.py` (#4, #5); canonical-mutation tests (#7);
-> thin ingestion endpoint `POST /imports/{id}/low-tag-diff` (#6). The detection
-> engine works end to end through HTTP (838 tests), and is **dialect-tolerant**
-> (handles both our tags and the real InDesign short dialect — see §6).
-> **Next / blocked on a real file:** validate against a real corrected LOW
-> export, then build the report UI + snapshot persistence (#8).
+> thin ingestion endpoint `POST /imports/{id}/low-tag-diff` (#6). **Validated
+> against real data:** the actual 2025 catalogue InDesign export (1729 works)
+> diffs against its source spreadsheet with **0 false positives** (93 cosmetic
+> suppressed). 841 tests. See §6 for the real-dialect specifics that took.
+> **Next:** a real *corrected* LOW export (to see genuine downstream edits
+> surface), then the report UI + snapshot persistence (#8).
 > **Last updated:** 2026-05-26.
 
 ---
@@ -174,6 +175,30 @@ From `backend/app/services/export_renderer.py`:
   (tag-name + line-ending), and the paragraph allowlist discards the preamble.
   This is exactly why validating against a real file matters — a native-only
   parser would have returned zero entries on any real re-export.
+- **Real LOW export specifics** (confirmed against the 2025 catalogue export,
+  `test_sample_files/Sample 26-05-26 with edition cstyle.txt`):
+  - Style names are **backslash-escaped**: `<cstyle:Work Number\/Name>`. The
+    parser unescapes them before matching against the config.
+  - A **forced line break inside a paragraph is `<0x000A>`** (the open question,
+    now answered) — decoded then deleted like any soft return. Whole entry stays
+    one `<pstyle>` paragraph.
+  - **All non-ASCII is escaped** as `<0x####>` even when Mac-Roman-encodable
+    (e.g. `£` = `<0x00A3>`, `’` = `<0x2019>`); the file itself is plain ASCII.
+  - **Catalogue titles are uppercase in the *source spreadsheet*** (e.g.
+    `WHAT DO ANIMALS DREAM OF?`), not via a style transform — so title case
+    matches and needs no case-folding.
+  - **Manual newlines in a source field** (a multi-line medium) need consistent
+    handling: the DB keeps the `\n`, the parser deletes it, so the comparison
+    normaliser (`low_diff._norm`) strips CR/LF on both sides. Without this, 4 of
+    1729 works showed spurious medium changes.
+- **Result:** parsing the real export → diffing against the imported source
+  spreadsheet yields **0 findings**, 1729/1729 matched. Locked in by
+  `tests/test_low_real_sample.py`.
+- **Incidental fix:** `Work.include_in_export` had a DB `server_default` but no
+  Python-side `default`, so works created via `import_excel` failed `== True`
+  filters on SQLite (production PostgreSQL unaffected). Added `default=True`
+  (app-level, no migration) so SQLite tests exercise the real import→collect→diff
+  path faithfully.
 
 ## 7. Architecture / where things live
 
@@ -208,14 +233,12 @@ resolved DB values, every diff is false positives.
 
 ## 9. Open questions / pending
 
-- **Real corrected-tags sample.** The thin endpoint (`POST /imports/{id}/
-  low-tag-diff`) is ready to point at a real corrected LOW export. The one
-  dialect detail still unconfirmed: how InDesign's short dialect represents a
-  **forced line break within a paragraph** (the wrap/soft-return case) — the
-  sample available was an Index export without LOW-style wrapping. A real
-  wrapped LOW re-export will settle it; the parser's soft-return handling may
-  need a small tweak then. The diagnostic short-parse warning in the endpoint
-  will flag if a real file doesn't parse as expected.
+- ~~**Real corrected-tags sample.**~~ ✅ A real *uncorrected* LOW export has been
+  validated (parser + dialect + clean diff, see §6). The dialect is now fully
+  confirmed. **Still wanted:** a real *corrected* export (with genuine downstream
+  edits) to confirm real corrections surface as expected. The endpoint and
+  diff are ready for it; the diagnostic short-parse warning will flag any file
+  that doesn't parse cleanly.
 - ~~**Edition character style.**~~ ✅ Confirmed: the InDesign test template uses
   `Work Edition`, which is exactly what the 2026 seed template now specifies and
   what the round-trip test exercises.

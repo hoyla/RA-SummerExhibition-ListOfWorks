@@ -185,6 +185,11 @@ def _norm(s: str | None, config: LowDiffConfig) -> str:
     if config.fold_typographic:
         s = "".join(_TYPO_FOLD.get(ch, ch) for ch in s)
     s = unicodedata.normalize("NFC", s)
+    # Line breaks aren't editorially significant (the LPG re-lays-out), and the
+    # parser deletes soft returns, so strip CR/LF on both sides — otherwise a
+    # manual newline in a source field (e.g. a multi-line medium) reads as a
+    # change because the DB keeps the newline and the parsed LOW does not.
+    s = s.replace("\r", "").replace("\n", "")
     return _WS_RE.sub(" ", s).strip()
 
 

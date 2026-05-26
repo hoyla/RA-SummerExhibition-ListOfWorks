@@ -13,7 +13,7 @@ from backend.app.services.export_renderer import (
     _collect_export_data,
     ExportConfig,
 )
-from backend.app.services.low_tag_parser import parse_low_tags
+from backend.app.services.low_tag_parser import parse_low_tags, ParsedEntry
 from backend.app.services.low_diff import diff_low, LowDiffConfig
 
 
@@ -204,6 +204,30 @@ def test_tiering_is_configurable():
     price_changes = [f for f in result.findings if f.field == "price"]
     assert len(price_changes) == 1
     assert price_changes[0].severity == "high"  # tuned up from the medium default
+
+
+def test_manual_newline_in_field_is_not_a_finding():
+    """A manual line break in a source field (e.g. a multi-line medium) is kept
+    in the DB but deleted by the parser when it round-trips through InDesign's
+    soft returns. That must read as cosmetic, not a real change. (Found on the
+    real 2025 catalogue.)"""
+    collected = [{
+        "section_name": "Gallery I", "position": 1,
+        "works": [{
+            "number": "1", "artist": "A", "honorifics": None, "title": "T",
+            "price_numeric": 100, "price_text": "", "edition_total": None,
+            "edition_price_numeric": None, "artwork": None,
+            "medium": "resin\nand steel",
+        }],
+    }]
+    parsed = [ParsedEntry(
+        cat_no="1", section_name="Gallery I", paragraph_index=0,
+        fields={"work_number": "1", "artist": "A", "title": "T",
+                "price": "£100", "medium": "resinand steel"},
+    )]
+    result = diff_low(parsed, collected, ExportConfig())
+    assert [f for f in result.findings if f.field == "medium"] == []
+    assert result.counts["suppressed_cosmetic"] >= 1
 
 
 def test_combined_canonical_mutations():
