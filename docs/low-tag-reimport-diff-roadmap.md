@@ -12,6 +12,10 @@
 > against real data:** the actual 2025 catalogue InDesign export (1729 works)
 > diffs against its source spreadsheet with **0 false positives** (93 cosmetic
 > suppressed). 841 tests. See §6 for the real-dialect specifics that took.
+> Also **smoke-tested on the live Docker/PostgreSQL stack**: same 0-findings
+> result through real HTTP + file upload; a simulated downstream title edit
+> surfaced exactly the affected entries (`field_change` → override channel),
+> confirming `include_in_export` is fine on PostgreSQL (the quirk was SQLite-only).
 > **Next:** a real *corrected* LOW export (to see genuine downstream edits
 > surface), then the report UI + snapshot persistence (#8).
 > **Last updated:** 2026-05-26.
