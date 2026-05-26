@@ -4,10 +4,12 @@
 > be handed between sessions and people. It is intended to evolve as we build,
 > and to be **deleted when the feature is complete**. Branch: `low-tag-reimport-diff`.
 >
-> **Status:** in progress. Done: edition character style (task #1); the parser
-> `low_tag_parser.py` (#2); the round-trip identity gate (#3) — **passing**,
-> including the 2026 template's wrap + style-collision + price-interleave case.
-> Next: matching service (#4).
+> **Status:** in progress. Done: edition character style (#1); parser
+> `low_tag_parser.py` (#2); round-trip identity gate (#3, **passing** incl. the
+> 2026 wrap + style-collision + price-interleave case); matching + 2-way diff +
+> significance tiering `low_diff.py` (#4, #5); canonical-mutation tests (#7).
+> The whole detection engine works end to end (832 tests). **Only the report UI
+> + snapshot storage (#6) remain** — that's the next piece and wants UX input.
 > **Last updated:** 2026-05-26.
 
 ---
@@ -187,18 +189,19 @@ resolved DB values, every diff is false positives.
 1. ✅ Add `edition_style` to renderer, default config + seed templates. *(prereq for clean round-trip)*
 2. ✅ Build `low_tag_parser.py` (character-style span parser).
 3. ✅ **Round-trip identity harness + test** — export → parse → assert equality on an unmodified file. *(gate — passing)*
-4. Matching service — cat-no two-pass join + room alignment by membership overlap.
-5. 2-way field diff + data-driven significance tiering + cosmetic suppression.
-6. Disparity report — import snapshot + read-only review view.
-7. Canonical test mutations — text edit, room move, renumber — assert correct classification.
+4. ✅ Matching service — cat-no two-pass join + room alignment by membership overlap.
+5. ✅ 2-way field diff + data-driven significance tiering + cosmetic suppression.
+6. Disparity report — import snapshot + read-only review view. *(remaining)*
+7. ✅ Canonical test mutations — text edit, room move, renumber — assert correct classification.
 
 ## 9. Open questions / pending
 
 - **Real corrected-tags sample.** Luke to supply a real corrected LOW export "in
   time" to validate against. Until then, prototype with synthetic round-trips
   (export → mutate a few entries → re-import → diff).
-- **Edition character style.** Luke to define it in the InDesign template (based
-  on / matching the paragraph style); we mirror in renderer + seed templates.
+- ~~**Edition character style.**~~ ✅ Confirmed: the InDesign test template uses
+  `Work Edition`, which is exactly what the 2026 seed template now specifies and
+  what the round-trip test exercises.
 - **Template pinning.** Import flow needs to know which export template produced
   the file (drives the allowlist + format inverters).
 - **Does a moved room count as a data change?** Yes — confirmed first-class for
