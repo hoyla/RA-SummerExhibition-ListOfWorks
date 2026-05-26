@@ -16,8 +16,14 @@
 > result through real HTTP + file upload; a simulated downstream title edit
 > surfaced exactly the affected entries (`field_change` → override channel),
 > confirming `include_in_export` is fine on PostgreSQL (the quirk was SQLite-only).
-> **Next:** a real *corrected* LOW export (to see genuine downstream edits
-> surface), then the report UI + snapshot persistence (#8).
+> **Snapshot persistence (the #8 backend) is now built + Docker-verified:** a
+> `low_tag_snapshots` table (Alembic `k1c3e5g7i9b0`, migration confirmed on
+> Postgres) stores each uploaded corrected file inline (append-only); endpoints
+> `POST/GET/GET{id}/DELETE …/low-tag-snapshots` persist and **recompute the diff
+> live** (the Workflow-A loop — apply an override, re-view, the finding resolves
+> — is covered by a test). 845 tests.
+> **Next:** the **report UI** (the remaining half of #8, needs UX shaping), and a
+> real *corrected* export to point it at.
 > **Last updated:** 2026-05-26.
 
 ---
@@ -232,7 +238,8 @@ resolved DB values, every diff is false positives.
 4. ✅ Matching service — cat-no two-pass join + room alignment by membership overlap.
 5. ✅ 2-way field diff + data-driven significance tiering + cosmetic suppression.
 6. ✅ Thin ingestion endpoint `POST /imports/{id}/low-tag-diff` (parse + diff → JSON, dialect-tolerant, no persistence/UI).
-8. Report UI + snapshot persistence — **deferred** until validated against a real corrected LOW file.
+8a. ✅ Snapshot persistence — `low_tag_snapshots` table (migration `k1c3e5g7i9b0`, Docker-verified), inline append-only storage, `POST/GET/GET{id}/DELETE` endpoints with live diff recompute. Workflow-A loop covered by test.
+8b. Report UI — **remaining**, needs UX shaping (placement on the import detail page; two ordered fix-channel tasks; filters). Build when Luke's available.
 
 ### On completion (when this temp doc is deleted)
 

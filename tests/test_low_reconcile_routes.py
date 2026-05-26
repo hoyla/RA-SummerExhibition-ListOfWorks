@@ -7,6 +7,7 @@ import uuid
 from backend.app.models.import_model import Import
 from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
+from backend.app.models.override_model import WorkOverride
 
 
 def _seed(db):
@@ -111,3 +112,75 @@ def test_missing_import_returns_404(client):
         files={"file": ("low.txt", b"<ASCII-MAC>\r", "text/plain")},
     )
     assert r.status_code == 404
+
+
+# --- persisted snapshots -------------------------------------------------------
+
+
+def _post_snapshot(client, import_id, data: bytes, **params):
+    return client.post(
+        f"/imports/{import_id}/low-tag-snapshots",
+        files={"file": ("low.txt", data, "text/plain")},
+        params=params,
+    )
+
+
+def test_create_snapshot_persists_and_returns_diff(client, db_session):
+    imp = _seed(db_session)
+    tags = client.get(f"/imports/{imp.id}/export-tags").content
+    r = _post_snapshot(client, imp.id, tags)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["snapshot"]["id"]
+    assert body["snapshot"]["chars"] > 0
+    assert body["diff"]["counts"]["matched"] == 3
+    assert body["diff"]["findings"] == []
+    # It is persisted.
+    listing = client.get(f"/imports/{imp.id}/low-tag-snapshots").json()
+    assert len(listing) == 1
+    assert listing[0]["id"] == body["snapshot"]["id"]
+
+
+def test_get_snapshot_recomputes_diff(client, db_session):
+    imp = _seed(db_session)
+    tags = client.get(f"/imports/{imp.id}/export-tags").content
+    sid = _post_snapshot(client, imp.id, tags).json()["snapshot"]["id"]
+    r = client.get(f"/imports/{imp.id}/low-tag-snapshots/{sid}")
+    assert r.status_code == 200
+    assert r.json()["diff"]["findings"] == []
+
+
+def test_workflow_a_override_resolves_finding(client, db_session):
+    """Persist a corrected file, see the diff, apply a matching override, then
+    re-view: the resolved disparity disappears (the Workflow A loop)."""
+    imp = _seed(db_session)
+    tags = client.get(f"/imports/{imp.id}/export-tags").content
+    modified = tags.replace(b"Sunset", b"Sunset Revised")  # edit cat 1 title
+
+    body = _post_snapshot(client, imp.id, modified).json()
+    sid = body["snapshot"]["id"]
+    assert any(
+        f["cat_no"] == "1" and f["field"] == "title"
+        for f in body["diff"]["findings"]
+    )
+
+    # Apply the correction as an override on the matching work.
+    work = db_session.query(Work).filter(Work.raw_cat_no == "1").first()
+    db_session.add(WorkOverride(work_id=work.id, title_override="Sunset Revised"))
+    db_session.commit()
+
+    # Re-view the same stored snapshot — diff recomputes against current data.
+    after = client.get(f"/imports/{imp.id}/low-tag-snapshots/{sid}").json()
+    assert not [
+        f for f in after["diff"]["findings"]
+        if f["cat_no"] == "1" and f["field"] == "title"
+    ]
+
+
+def test_delete_snapshot(client, db_session):
+    imp = _seed(db_session)
+    tags = client.get(f"/imports/{imp.id}/export-tags").content
+    sid = _post_snapshot(client, imp.id, tags).json()["snapshot"]["id"]
+    assert client.delete(f"/imports/{imp.id}/low-tag-snapshots/{sid}").status_code == 200
+    assert client.get(f"/imports/{imp.id}/low-tag-snapshots").json() == []
+    assert client.get(f"/imports/{imp.id}/low-tag-snapshots/{sid}").status_code == 404
