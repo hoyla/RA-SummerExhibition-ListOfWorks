@@ -138,3 +138,50 @@ def test_title_cased_override_wins():
     assert ew.title_cased == "What Do Animals Dream OF?"
     # The plain title is unaffected by the cased override.
     assert ew.title == "WHAT DO ANIMALS DREAM OF?"
+
+
+# ---------------------------------------------------------------------------
+# Route level: override round-trip and config exceptions
+# ---------------------------------------------------------------------------
+
+
+def _seed_one_work(db):
+    from backend.app.models.import_model import Import
+    from backend.app.models.section_model import Section
+    from backend.app.models.work_model import Work
+
+    imp = Import(filename="tc.xlsx", product_type="list_of_works")
+    db.add(imp)
+    db.commit()
+    db.refresh(imp)
+    sec = Section(import_id=imp.id, name="G", position=1)
+    db.add(sec)
+    db.commit()
+    db.refresh(sec)
+    work = Work(
+        import_id=imp.id, section_id=sec.id, position_in_section=1,
+        raw_cat_no="1", title="WHAT DO ANIMALS DREAM OF?",
+        title_cased="What Do Animals Dream Of?", artist_name="A",
+        include_in_export=True,
+    )
+    db.add(work)
+    db.commit()
+    db.refresh(work)
+    return imp, work
+
+
+def test_title_cased_override_endpoint_roundtrip(client, db_session):
+    imp, work = _seed_one_work(db_session)
+    r = client.put(
+        f"/imports/{imp.id}/works/{work.id}/override",
+        json={"title_cased_override": "What Do Animals Dream OF?"},
+    )
+    assert r.status_code == 200
+    assert r.json()["title_cased_override"] == "What Do Animals Dream OF?"
+    got = client.get(f"/imports/{imp.id}/works/{work.id}/override").json()
+    assert got["title_cased_override"] == "What Do Animals Dream OF?"
+
+
+def test_config_roundtrips_title_case_exceptions(client):
+    client.put("/config", json={"title_case_exceptions": ["RA", "ZZZ"]})
+    assert "ZZZ" in client.get("/config").json()["title_case_exceptions"]

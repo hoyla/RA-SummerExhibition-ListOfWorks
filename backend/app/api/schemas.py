@@ -41,6 +41,7 @@ class WorkOverrideOut(BaseModel):
     """Embedded override snapshot attached to each WorkOut."""
 
     title_override: str | None = None
+    title_cased_override: str | None = None
     artist_name_override: str | None = None
     artist_honorifics_override: str | None = None
     price_numeric_override: float | None = None
@@ -67,6 +68,7 @@ class WorkOut(BaseModel):
     raw_medium: str | None = None
     # Normalised layer
     title: str | None
+    title_cased: str | None = None
     artist_name: str | None
     artist_honorifics: str | None
     price_text: str | None
@@ -167,6 +169,7 @@ class OverrideIn(BaseModel):
     """Request body for setting work overrides. All fields are optional."""
 
     title_override: str | None = None
+    title_cased_override: str | None = None
     artist_name_override: str | None = None
     artist_honorifics_override: str | None = None
     price_numeric_override: float | None = None
@@ -181,6 +184,7 @@ class OverrideIn(BaseModel):
 class OverrideOut(BaseModel):
     work_id: str
     title_override: str | None
+    title_cased_override: str | None
     artist_name_override: str | None
     artist_honorifics_override: str | None
     price_numeric_override: float | None

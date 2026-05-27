@@ -1134,6 +1134,9 @@ async function renderSettings() {
     : (cfg.honorific_tokens ?? 'RA, PRA, PPRA, HON, HONRA, ELECT, EX, OFFICIO');
   const editionSuppressMax = Number.isInteger(cfg.edition_suppress_max) ? cfg.edition_suppress_max : 0;
   const substRules = Array.isArray(cfg.text_substitutions) ? cfg.text_substitutions : [];
+  const titleCaseExceptionsValue = Array.isArray(cfg.title_case_exceptions)
+    ? cfg.title_case_exceptions.join(', ')
+    : '';
   const editionRuleText = editionSuppressMax === 0
     ? '<code>Edition of 0</code> is suppressed.'
     : `Editions of ${editionSuppressMax} or fewer are suppressed (an &ldquo;edition of 1&rdquo; is the work itself).`;
@@ -1268,6 +1271,20 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
+      <h4 class="panel-subheading">Title casing</h4>
+      <p class="form-hint" style="margin:0 0 10px">A &ldquo;Title Case Title&rdquo; is derived for each work (used by outputs like the LPG; the List of Works keeps its house caps). All-caps input is best-effort &mdash; multi-letter Roman numerals are kept uppercase automatically, and the result is correctable per work via the Title Case Title override.</p>
+      <div class="form-row">
+        <label>Preserve casing for</label>
+        <input id="cfg-title-case-exceptions" type="text" value="${esc(titleCaseExceptionsValue)}"${canAdmin() ? '' : ' readonly'}>
+        <span class="form-hint">Comma-separated acronyms / stylised names kept as written, e.g. &ldquo;RA, USA, MoMA&rdquo;. Matched case-insensitively.</span>
+      </div>
+      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
+        <span id="title-case-status" class="status-msg"></span>
+      </div>`)}
+    </section>
+
+    <section class="panel">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:12px">
         <h4 class="panel-subheading" style="margin:0">Known Artists</h4>
         <div style="display:flex;align-items:center;gap:6px">
@@ -1377,10 +1394,12 @@ function _gatherSubstitutions() {
 function _gatherNormalisationConfig() {
   const rawTokens = document.getElementById('cfg-honorific-tokens')?.value ?? '';
   const editionEl = document.getElementById('cfg-edition-suppress-max');
+  const rawExc = document.getElementById('cfg-title-case-exceptions')?.value ?? '';
   return {
     honorific_tokens: rawTokens.split(',').map(t => t.trim()).filter(Boolean),
     edition_suppress_max: editionEl ? (parseInt(editionEl.value, 10) || 0) : 0,
     text_substitutions: _gatherSubstitutions(),
+    title_case_exceptions: rawExc.split(',').map(t => t.trim()).filter(Boolean),
   };
 }
 
@@ -1401,7 +1420,7 @@ function saveHonorificTokens() {
 
 function saveNormalisationRules() {
   return _saveNormalisationConfig(
-    ['norm-rules-status', 'subst-status'],
+    ['norm-rules-status', 'subst-status', 'title-case-status'],
     '\u2713 Saved \u2014 applies to the next import',
   );
 }
@@ -4080,6 +4099,7 @@ function showOverrideForm(importId, workId, existing) {
   const o   = existing ?? {};
   const cur = {
     title_override:                    o.title_override                    ?? w.title                    ?? '',
+    title_cased_override:              o.title_cased_override              ?? w.title_cased               ?? '',
     artist_name_override:              o.artist_name_override              ?? w.artist_name               ?? '',
     artist_honorifics_override:        o.artist_honorifics_override        ?? w.artist_honorifics          ?? '',
     price_text_override:               o.price_text_override               ?? w.price_text                ?? '',
@@ -4143,6 +4163,9 @@ function showOverrideForm(importId, workId, existing) {
               <div class="form-row"><label>Title</label>
                 ${fills('title_override','title_override','title')}
                 <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
+              <div class="form-row"><label>Title Case Title <span class="muted" style="text-transform:none;font-weight:400">&mdash; used by the LPG</span></label>
+                ${fills('title_cased_override','title_cased_override',null)}
+                <textarea name="title_cased_override" rows="2" placeholder="Title-cased title (auto-derived; correct here if wrong)">${val('title_cased_override')}</textarea></div>
               <div class="form-row"><label>Medium</label>
                 ${fills('medium_override','medium_override','medium')}
                 <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
@@ -4214,7 +4237,7 @@ async function saveOverride(importId, workId) {
   statusEl.className = 'status-msg';
 
   const numFields = new Set(['price_numeric_override','edition_total_override','edition_price_numeric_override','artwork_override']);
-  const allFields = ['title_override','artist_name_override','artist_honorifics_override',
+  const allFields = ['title_override','title_cased_override','artist_name_override','artist_honorifics_override',
     'price_text_override','price_numeric_override','edition_total_override','edition_price_numeric_override',
     'artwork_override','medium_override','notes'];
 
