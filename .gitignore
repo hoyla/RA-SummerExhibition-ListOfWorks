@@ -24,5 +24,9 @@ test*.txt
 
 # Environment
 .env
-test_sample_files/.~lock.Index_2024.xlsx\#
-test_sample_files/.~lock.Index 2025.xlsx\#
+
+# Sample files: only fixtures required by the automated tests are tracked, in
+# the subfolder below. Everything else in test_sample_files/ is disposable /
+# local-only working data and is not committed.
+test_sample_files/*
+!test_sample_files/tracked_samples_for_automated_tests/
