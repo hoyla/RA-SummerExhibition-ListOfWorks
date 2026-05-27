@@ -69,6 +69,7 @@ _FIELD_STYLE_ATTRS: dict[str, str] = {
     "artist": "artist_style",
     "honorifics": "honorifics_style",
     "title": "title_style",
+    "title_cased": "title_cased_style",
     "price": "price_style",
     "medium": "medium_style",
     "artwork": "artwork_style",

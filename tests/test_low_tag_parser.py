@@ -14,8 +14,33 @@ from backend.app.services.export_renderer import (
     ExportConfig,
     ComponentConfig,
 )
-from backend.app.services.low_tag_parser import parse_low_tags
+from backend.app.services.low_tag_parser import (
+    parse_low_tags,
+    recoverable_fields,
+    _FIELD_STYLE_ATTRS,
+)
 from backend.app.services.low_diff import work_display_fields
+
+
+# ---------------------------------------------------------------------------
+# Regression: a template with an enabled "title_cased" component must parse
+# (it previously raised KeyError in _FIELD_STYLE_ATTRS — the LPG seed hit it).
+# ---------------------------------------------------------------------------
+
+
+def test_title_cased_component_does_not_crash_parser():
+    assert "title_cased" in _FIELD_STYLE_ATTRS  # every field maps to a style attr
+    config = ExportConfig(
+        title_cased_style="WorkTitleCased",
+        components=[
+            ComponentConfig("work_number", "tab"),
+            ComponentConfig("title_cased", "none", enabled=True),
+        ],
+    )
+    # Neither helper should raise, and title_cased is recognised as recoverable
+    # because its character style is non-empty.
+    assert "title_cased" in recoverable_fields(config)
+    parse_low_tags("<ASCII-MAC>\r<ParaStyle:CatalogueEntry>1\r", config)  # no raise
 
 
 # ---------------------------------------------------------------------------
