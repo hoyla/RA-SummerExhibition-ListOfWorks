@@ -6,7 +6,8 @@ returns within one paragraph. It is driven by the *same* template/config model
 as the LOW — a template simply gives some components a ``paragraph_style``.
 
 These tests prove the paragraphed render path produces the structure seen in the
-real export ``test_sample_files/RA SE2025 Large Print Guide FULL v1.txt``:
+real export (a small tracked excerpt lives under
+``test_sample_files/tracked_samples_for_automated_tests/``):
 
     <pstyle:LPGTITLE>{n}\t{title}
     <pstyle:LPGARTIST>{artist}[ <cstyle:LPGSMALLCAPS>{hon}<cstyle:>]
@@ -35,7 +36,14 @@ from backend.app.services.export_renderer import (
 
 _REPO = Path(__file__).resolve().parent.parent
 _SEED = _REPO / "backend" / "seed_templates" / "large-print-guide-2026.json"
-_SAMPLE = _REPO / "test_sample_files" / "RA SE2025 Large Print Guide FULL v1.txt"
+# A small, git-tracked excerpt of the real export (the full file is too large to
+# commit). Covers both per-work paragraph-style shapes (with / without edition).
+_SAMPLE = (
+    _REPO
+    / "test_sample_files"
+    / "tracked_samples_for_automated_tests"
+    / "lpg_sample_small.txt"
+)
 
 
 def _lpg_config():
