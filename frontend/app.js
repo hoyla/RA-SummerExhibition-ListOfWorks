@@ -3982,7 +3982,7 @@ function showOverrideForm(importId, workId, existing) {
             <h5 class="ka-section-heading">Pricing &amp; Edition</h5>
             <div class="ka-fields">
               <div class="form-row"><label>Price text</label>
-                ${fills('price_text_override','price_text_override',null)}
+                ${fills('price_text_override','price_text_override','price')}
                 <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
               <div class="form-row"><label>Price numeric</label>
                 ${fills('price_numeric_override','price_numeric_override',null)}
