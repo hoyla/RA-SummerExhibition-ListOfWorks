@@ -4208,7 +4208,7 @@ async function loadReconcileSnapshots(importId, activeId) {
   try {
     const snaps = await api('GET', `/imports/${importId}/low-tag-snapshots`);
     if (!snaps.length) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="muted" style="font-size:12px;margin:8px 0 4px">Uploaded files:</div>
+    el.innerHTML = `<div class="muted" style="font-size:12px;margin:8px 0 4px">Uploaded exports from InDesign:</div>
       <div class="reconcile-history-list">` + snaps.map(s => `
         <span class="recon-snap${s.id === activeId ? ' active' : ''}">
           <a href="#" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(s.id)}');return false" title="Uploaded ${esc(formatDate(s.uploaded_at))}">${esc(s.filename || 'snapshot')}</a>
