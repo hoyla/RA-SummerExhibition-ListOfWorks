@@ -2848,16 +2848,18 @@ async function renderTemplateEdit(id) {
   // components
   const COMP_LABELS = {
     work_number: 'Work Number', artist: 'Artist', title: 'Title',
+    title_cased: 'Title Case Title',
     edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
   };
   const defaultComponents = [
-    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
+    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
+    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
+    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
+    {field:'title_cased',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
+    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
+    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
+    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
+    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
   ];
   const savedComponents = cfg.components ?? defaultComponents;
   const savedFields = new Set(savedComponents.map(c => c.field));
@@ -2875,6 +2877,7 @@ async function renderTemplateEdit(id) {
     const maxChars = c.max_line_chars ?? '';
     const nextPos = c.next_component_position ?? 'end_of_text';
     const balance = c.balance_lines ?? false;
+    const paraStyle = c.paragraph_style ?? '';
     const posDisabled = (maxChars === '' || maxChars === null) ? 'disabled' : '';
     const balDisabled = posDisabled;
     return `
@@ -2885,7 +2888,8 @@ async function renderTemplateEdit(id) {
           <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down"${isBuiltin ? ' disabled' : ''}>▼</button>
         </div>
         <span class="component-label">${esc(label)}</span>
-        <select class="component-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(c.separator_after)}</select>
+        <select class="component-sep"${isBuiltin ? ' disabled' : ''} title="Separator after this element (within its paragraph)">${_sepOpts(c.separator_after)}</select>
+        <label class="component-para" title="Leave blank to keep this element inline (character-styled). Enter a paragraph style to start a NEW paragraph with that element — the LPG model.">¶ <input type="text" class="component-para-style" value="${esc(paraStyle)}" placeholder="inline" style="width:9em"${ro}></label>
         <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}${roCheck}> omit when empty</label>
         <label class="component-toggle" title="Include this component in the export">
           <input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}${roCheck}
@@ -2990,6 +2994,7 @@ async function renderTemplateEdit(id) {
           </div>
         </div>
         <div class="form-row"><label>Title</label><input id="tmpl-title-style" type="text" value="${esc(cfg.title_style ?? '')}"${ro}></div>
+        <div class="form-row"><label>Title Case Title</label><input id="tmpl-title-cased-style" type="text" value="${esc(cfg.title_cased_style ?? '')}"${ro}></div>
         <div class="form-row"><label>Price</label><input id="tmpl-price-style" type="text" value="${esc(cfg.price_style ?? '')}"${ro}></div>
         <div class="form-row"><label>Medium</label><input id="tmpl-medium-style" type="text" value="${esc(cfg.medium_style ?? '')}"${ro}></div>
         <div class="form-row"><label>Artwork number</label><input id="tmpl-artwork-style" type="text" value="${esc(cfg.artwork_style ?? '')}"${ro}></div>
@@ -3014,7 +3019,7 @@ async function renderTemplateEdit(id) {
 
     <h3 class="settings-group-heading">Entry Layout</h3>
     <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Drag to reorder. Separator fires after each non-empty component. Right-align tab = <code>\y</code>, soft return = <code>\n</code>.</p>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Reorder with ▲▼. The separator fires after each non-empty element <em>within its paragraph</em>. The <strong>¶ paragraph style</strong> field is the key choice: leave it blank to keep the element inline (character-styled, like the List of Works); enter a paragraph style to start a <strong>new paragraph</strong> for that element (the Large Print Guide model). Character styles for inline elements are set above.</p>
       <div class="form-row" style="margin-bottom:12px">
         <label>Leading separator</label>
         <select id="tmpl-leading-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(cfg.leading_separator ?? 'none')}</select>
@@ -3048,6 +3053,7 @@ async function saveTemplate(id) {
     document.querySelectorAll('#tmpl-components .component-row')
   ).map(row => {
     const rawMax = row.querySelector('.component-max-chars')?.value;
+    const paraStyle = (row.querySelector('.component-para-style')?.value ?? '').trim();
     return {
       field: row.dataset.field,
       separator_after: row.querySelector('.component-sep')?.value ?? 'none',
@@ -3056,6 +3062,7 @@ async function saveTemplate(id) {
       max_line_chars: rawMax ? parseInt(rawMax, 10) : null,
       next_component_position: row.querySelector('.component-next-pos')?.value ?? 'end_of_text',
       balance_lines: row.querySelector('.component-balance')?.checked ?? false,
+      paragraph_style: paraStyle || null,
     };
   });
 
@@ -3075,6 +3082,7 @@ async function saveTemplate(id) {
     honorifics_style:    (document.getElementById('tmpl-honorifics-style')?.value   ?? '').trim(),
     honorifics_lowercase: document.getElementById('tmpl-honorifics-lowercase')?.checked ?? false,
     title_style:         (document.getElementById('tmpl-title-style')?.value        ?? '').trim(),
+    title_cased_style:   (document.getElementById('tmpl-title-cased-style')?.value  ?? '').trim(),
     price_style:         (document.getElementById('tmpl-price-style')?.value        ?? '').trim(),
     medium_style:        (document.getElementById('tmpl-medium-style')?.value       ?? '').trim(),
     artwork_style:       (document.getElementById('tmpl-artwork-style')?.value      ?? '').trim(),

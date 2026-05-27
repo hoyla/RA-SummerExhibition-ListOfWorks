@@ -200,6 +200,32 @@ def test_get_template_404_for_unknown_id(client):
     assert r.status_code == 404
 
 
+def test_template_roundtrips_paragraph_style_and_title_cased(client):
+    """The editor's unified per-element controls — a per-component paragraph
+    style and the Title Case Title component/style — must persist through
+    POST then GET."""
+    body = _minimal_template_body(
+        name="LPG-like",
+        title_cased_style="LPGTITLE",
+        components=[
+            {"field": "work_number", "separator_after": "tab"},
+            {"field": "title_cased", "separator_after": "none"},
+            {"field": "artist", "separator_after": "none", "paragraph_style": "LPGARTIST"},
+            {"field": "price", "separator_after": "none", "paragraph_style": "LPGPRICE"},
+        ],
+    )
+    tid = client.post("/templates", json=body).json()["id"]
+    got = client.get(f"/templates/{tid}").json()
+
+    assert got["title_cased_style"] == "LPGTITLE"
+    comps = {c["field"]: c for c in got["components"]}
+    assert comps["title_cased"]["field"] == "title_cased"
+    assert comps["artist"]["paragraph_style"] == "LPGARTIST"
+    assert comps["price"]["paragraph_style"] == "LPGPRICE"
+    # Inline elements keep paragraph_style null.
+    assert comps["title_cased"].get("paragraph_style") is None
+
+
 # ---------------------------------------------------------------------------
 # PUT /templates/{id}
 # ---------------------------------------------------------------------------
