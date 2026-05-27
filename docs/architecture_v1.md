@@ -87,6 +87,9 @@ case (the LPG) while the LOW keeps house caps. See §4.
 
 ### WorkOverride
 
+<img width="100%" alt="complex work with overrides" src="https://github.com/user-attachments/assets/33e1dbe9-a3f1-4f1e-950c-bb09da0190ba" />
+
+
 Optional editorial corrections for a single work. `None` means "use Work value".
 
 - `title_override`, `title_cased_override`, `artist_name_override`, `artist_honorifics_override`
@@ -108,6 +111,9 @@ uploaded *corrected* LOW Tagged Text file (`import_id`, `template_id`,
 live from it against current data; the raw upload is never mutated.
 
 ### ValidationWarning
+
+<img width="100%" alt="Picture 366" src="https://github.com/user-attachments/assets/bb80ba22-a49e-4e40-ba49-27bdb644e535" />
+
 
 Recorded during import when a normalisation event occurs or a data quality
 issue is suspected.
@@ -271,6 +277,8 @@ Principles: deterministic, idempotent, raw data never mutated.
 
 #### Configurable normalisation rules
 
+<img width="100%" alt="general normalisation rules" src="https://github.com/user-attachments/assets/a8fab51f-e90e-464e-acb4-2e8f1c9c5b4c" />
+
 Some normalisation steps are **editorial judgments**, not objective facts, so
 they're admin-configurable — stored in the global normalisation `Ruleset`
 (`config_type="normalisation"`), surfaced read-only/editable at `GET`/`PUT
@@ -405,6 +413,8 @@ Before importing, the header row is validated:
 ---
 
 ## 4.2 Known artists
+
+<img width="100%" alt="Picture 375" src="https://github.com/user-attachments/assets/f2a16022-7541-4aa0-b4cc-971ebdf848eb" />
 
 `backend/app/models/known_artist_model.py`  
 `backend/app/api/known_artists.py`
