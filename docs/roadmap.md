@@ -518,9 +518,47 @@ opens in a new tab.
 
 ---
 
+## Phase 24 – LPG, reconciliation, configurable normalisation & editor redesign ✅
+
+The Large Print Guide (LPG) as a second output of the List of Works data, the
+machinery to keep it in sync with last-minute downstream edits, and the editorial
+controls and editor UX around it.
+
+- **LOW → LPG reconciliation** — parse a corrected InDesign LOW export back in
+  (`low_tag_parser.py`), 2-way diff it against the DB with data-driven
+  significance tiers and cosmetic suppression (`low_diff.py`), route findings by
+  fix channel, persist uploads as append-only snapshots with live diff recompute.
+  Validated against the real 2025 export (1729/1729, 0 findings). See
+  [`reconcile.md`](./reconcile.md).
+- **LPG output from the shared template model** — `paragraph_style` per component
+  lets one template/renderer produce both the single-paragraph LOW and the
+  paragraph-styled LPG; per-room (per-section) export with template + gallery-name
+  filenames.
+- **Title Case Title** — derived `title_cased` field + `title_cased_override`,
+  best-effort title-casing with admin-editable acronym/numeral exceptions; the
+  LPG uses it while the LOW keeps house caps.
+- **Configurable normalisation rules** — edition-suppression threshold, literal
+  text substitutions, title-case exceptions (and a fix so the honorific-token
+  config actually reaches imports).
+- **Entry Layout editor redesign** (from a Claude Design handoff) — character
+  styles moved onto each element row, paragraph-block grouping with an
+  inline/new-paragraph toggle, and a live sample-entry + Tagged-Text preview.
+- Documentation consolidated; the temporary reconciliation roadmap retired into
+  permanent docs ([`reconcile.md`](./reconcile.md), `export_spec_v1.md`,
+  `architecture_v1.md`).
+
+### Test count
+
+- 900 tests across 37 test files
+
+---
+
 ## Future considerations
 
-- Advanced title casing rules (LPG eccentricities)
+- Bidirectional LPG / multi-paragraph LOW reconciliation (parser would map by
+  paragraph style and stitch multi-paragraph entries — see the fragility boundary
+  in [`reconcile.md`](./reconcile.md))
+- Per-gallery catalogue-number styles in the LOW template (numerals vs text)
 - Undo / revision history for overrides
 - Bulk override import from Excel
 - Multi-user conflict resolution (optimistic locking)

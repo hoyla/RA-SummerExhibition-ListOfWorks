@@ -46,7 +46,7 @@ Excel Upload
 | Frontend   | Vanilla JS SPA, served by FastAPI       |
 | Deployment | Docker, ECS Fargate, GitHub Actions     |
 | Storage    | Local disk / Amazon S3                  |
-| Testing    | pytest (775 tests across 31 test files) |
+| Testing    | pytest (900 tests across 37 test files) |
 
 ---
 
@@ -74,22 +74,38 @@ One catalogue entry. Ordered by `(section_id, position_in_section)`.
 
 **Normalised fields** (computed by normalisation service):
 
-- `title`, `artist_name`, `artist_honorifics`
+- `title`, `title_cased`, `artist_name`, `artist_honorifics`
 - `price_numeric`, `price_text`
 - `edition_total`, `edition_price_numeric`
 - `artwork` (integer — number of pieces)
 - `medium`
 - `include_in_export` (boolean)
 
+`title_cased` is the best-effort Title-Case form of `title`, derived at import
+alongside the (possibly all-caps) source title — used by outputs that want title
+case (the LPG) while the LOW keeps house caps. See §4.
+
 ### WorkOverride
 
 Optional editorial corrections for a single work. `None` means "use Work value".
 
-- `title_override`, `artist_name_override`, `artist_honorifics_override`
+- `title_override`, `title_cased_override`, `artist_name_override`, `artist_honorifics_override`
 - `price_numeric_override`, `price_text_override`
 - `edition_total_override`, `edition_price_numeric_override`
 - `artwork_override`, `medium_override`
 - `notes` — human-readable explanation of why the override exists
+
+`title_cased_override` corrects the derived Title-Case title independently of
+`title_override`, so an acronym/numeral the auto-conversion gets wrong is a
+one-field fix.
+
+### LowTagSnapshot
+
+Append-only provenance for the LOW → LPG reconciliation feature
+([`reconcile.md`](./reconcile.md)). One immutable, timestamped copy of each
+uploaded *corrected* LOW Tagged Text file (`import_id`, `template_id`,
+`filename`, `encoding`, inline `raw_text`, `uploaded_at`). The diff is recomputed
+live from it against current data; the raw upload is never mutated.
 
 ### ValidationWarning
 
@@ -106,21 +122,23 @@ issue is suspected.
 | Type                        | Trigger                                                        |
 | --------------------------- | -------------------------------------------------------------- |
 | `whitespace_trimmed`        | Leading/trailing whitespace removed from fields                |
-| `zero_edition_suppressed`   | Edition was explicitly of 0 (suppressed in export)             |
+| `zero_edition_suppressed`   | "Edition of 0" suppressed                                      |
+| `edition_suppressed`        | Edition of 1..threshold suppressed (the work itself)           |
 
 "Suspected" warnings (may need human review):
 
-| Type                        | Trigger                                                        |
-| --------------------------- | -------------------------------------------------------------- |
-| `missing_title`             | Work has no title after normalisation                          |
-| `missing_artist`            | Work has no artist name after normalisation                    |
-| `missing_price`             | Price is blank or placeholder                                  |
-| `unrecognised_price`        | Raw price present but could not be parsed                      |
-| `edition_anomaly`           | Raw edition present but could not be parsed                    |
-| `non_ascii_characters`      | Normalised fields contain chars outside ASCII-128              |
-| `duplicate_filename`        | A previous import with the same filename exists                |
-| `empty_spreadsheet`         | Column headers present but no data rows                        |
-| `missing_column`            | An optional column is absent from the spreadsheet              |
+| Type                          | Trigger                                                        |
+| ----------------------------- | -------------------------------------------------------------- |
+| `missing_title`               | Work has no title after normalisation                          |
+| `missing_artist`              | Work has no artist name after normalisation                    |
+| `missing_price`               | Price is blank or placeholder                                  |
+| `unrecognised_price`          | Raw price present but could not be parsed                      |
+| `edition_anomaly`             | Raw edition present but could not be parsed                    |
+| `edition_suppressed_no_price` | **High:** a suppressed edition was the work's only price — restore it via an override |
+| `non_ascii_characters`        | Normalised fields contain chars outside ASCII-128              |
+| `duplicate_filename`          | A previous import with the same filename exists                |
+| `empty_spreadsheet`           | Column headers present but no data rows                        |
+| `missing_column`              | An optional column is absent from the spreadsheet              |
 
 #### Index warning types
 
@@ -240,13 +258,41 @@ Validation warnings recorded during Index import.
 
 `backend/app/services/normalisation_service.py`
 
-- **Price**: strips currency symbols, parses decimals; passes through `NFS`, `_`, blank
-- **Edition**: parses `X` or `X at £Y` patterns; edition of 0 is suppressed in export
+- **Price**: strips currency symbols, parses decimals; passes through `NFS`, `_`; blank/missing → `*`
+- **Edition**: parses `Edition of N` / `Edition of N at £Y`; suppressed when the total is ≤ the threshold (see below)
 - **Artwork**: parses integer number of pieces from `raw_artwork`
 - **Medium**: trimmed, passed through as-is
-- **Honorifics**: split from artist name using known suffix list (RA, Hon RA, etc.)
+- **Honorifics**: split from artist name using the recognised-token list (RA, Hon RA, etc.)
+- **Title Case Title**: derives `title_cased` from the title (best-effort; see below)
 
 Principles: deterministic, idempotent, raw data never mutated.
+
+#### Configurable normalisation rules
+
+Some normalisation steps are **editorial judgments**, not objective facts, so
+they're admin-configurable — stored in the global normalisation `Ruleset`
+(`config_type="normalisation"`), surfaced read-only/editable at `GET`/`PUT
+/config`, and applied on the *next* import. The single resolver
+(`load_normalisation_settings`) feeds both the API and the import pipeline, so a
+saved setting is exactly what an import applies. (Fixing that wiring closed a
+latent bug where saved honorific tokens never reached imports.)
+
+- **`honorific_tokens`** — suffixes split off the artist name.
+- **`edition_suppress_max`** — suppress editions of N or fewer (default 0 = only
+  "Edition of 0"; 1 also drops "Edition of 1", which is the work itself, not a
+  distinct copy). Suppressing an edition that carried the work's *only* price
+  raises a high-severity validation warning so the price can be restored via an
+  override.
+- **`text_substitutions`** — ordered literal find→replace per chosen field
+  (spaces significant), e.g. `... → …` on title + medium.
+- **`title_case_exceptions`** — tokens whose casing is preserved when
+  title-casing (acronyms / stylised names, e.g. `RA`, `USA`, `MoMA`).
+
+**Title-casing** (`to_title_case`) uses the `titlecase` library plus a callback
+that keeps the exceptions list verbatim and uppercases multi-letter Roman
+numerals (`VIII`). It's lossy for all-caps input by nature, so `title_cased` is a
+derived field corrected per work via `title_cased_override` — not an export-time
+transform. The LOW keeps source caps; the LPG uses `title_cased`.
 
 ### Artists Index normalisation
 
@@ -529,7 +575,7 @@ Controls all export behaviour:
 
 - `currency_symbol`, `thousands_separator`, `decimal_places`
 - `section_style`, `entry_style` — InDesign paragraph style names
-- `cat_no_style`, `artist_style`, `honorifics_style`, `title_style`, `price_style`, `medium_style`, `artwork_style`, `edition_style` — character style names
+- `cat_no_style`, `artist_style`, `honorifics_style`, `title_style`, `title_cased_style`, `price_style`, `medium_style`, `artwork_style`, `edition_style` — character style names
 - `honorifics_lowercase`
 - `leading_separator`, `trailing_separator`
 - `components` — ordered list of `ComponentConfig`
@@ -538,14 +584,25 @@ Controls all export behaviour:
 
 Each component in the entry layout:
 
-- `field` — one of: `work_number`, `artist`, `title`, `edition`, `artwork`, `price`, `medium`
+- `field` — one of: `work_number`, `artist`, `title`, `title_cased`, `edition`, `artwork`, `price`, `medium`
 - `separator_after` — `none`, `space`, `tab`, `right_tab`, `soft_return`, `hard_return`
-- `omit_sep_when_empty` — suppress separator when field is empty (default `True`)
-- `enabled` — `False` excludes the component entirely (artwork defaults to `False`)
-- `max_line_chars` — wrap long values onto continuation lines at this width (`null` = no wrap)
-- `balance_lines` — distribute wrapped lines evenly when `max_line_chars` is set
-- `next_component_position` — where the next component starts after a wrapped field:
-  `'end_of_text'` (after all wrapped lines) or `'end_of_first_line'` (on the same first line)
+- `paragraph_style` — when set, the component **opens a new paragraph** in that
+  style (the LPG model); blank keeps it inline (the LOW model). This single field
+  picks the layout — see "Two layout models" in [`export_spec_v1.md`](./export_spec_v1.md).
+- `omit_sep_when_empty` — suppress separator (and, for a paragraph-opener, the
+  whole paragraph) when empty
+- `enabled` — `False` excludes the component entirely
+- `max_line_chars`, `balance_lines`, `next_component_position` — in-paragraph
+  wrapping (LOW only)
+
+### One template model, two outputs (LOW + LPG)
+
+The same template/renderer produces both the single-paragraph **List of Works**
+and the paragraph-styled **Large Print Guide** — the LPG is just a template whose
+elements carry `paragraph_style`. The renderer auto-selects the paragraphed path
+when any component declares one. The LPG is exported **per room** (section-scoped
+export with a gallery-name download filename). Full details and an example in
+[`export_spec_v1.md`](./export_spec_v1.md).
 
 ### JSON export
 
@@ -594,6 +651,7 @@ Routes are split across focused modules under `backend/app/api/`:
 - `low_imports.py` — upload, re-import, list, sections, preview, warnings, delete
 - `low_overrides.py` — per-work override CRUD and exclude toggle
 - `low_exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
+- `low_reconcile.py` — LOW → LPG reconciliation: diff a corrected LOW export against the DB, persist snapshots (see [`reconcile.md`](./reconcile.md))
 - `low_templates.py` — LoW export template CRUD and duplication
 - `normalisation_config.py` — global normalisation config
 - `known_artists.py` — Known Artists CRUD and seed
@@ -636,6 +694,12 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | GET    | `/imports/{id}/sections/{sid}/export-json` | Export single section as JSON             |
 | GET    | `/imports/{id}/sections/{sid}/export-xml`  | Export single section as XML              |
 | GET    | `/imports/{id}/sections/{sid}/export-csv`  | Export single section as CSV              |
+| POST   | `/imports/{id}/low-tag-diff`               | Diff a corrected LOW export vs the DB (transient) |
+| POST   | `/imports/{id}/low-tag-snapshots`          | Persist a corrected LOW upload + return its diff  |
+| GET    | `/imports/{id}/low-tag-snapshots`          | List stored corrected-LOW snapshots       |
+| GET    | `/imports/{id}/low-tag-snapshots/{sid}`    | Recompute a snapshot's diff vs current data |
+| DELETE | `/imports/{id}/low-tag-snapshots/{sid}`    | Delete a stored snapshot                   |
+| GET    | `/reconcile-config`                        | Read-only reconciliation policy (tiers, fix channels) |
 | GET    | `/config`                                  | Get global normalisation config           |
 | PUT    | `/config`                                  | Save global normalisation config          |
 | GET    | `/templates`                               | List non-archived LoW export templates    |

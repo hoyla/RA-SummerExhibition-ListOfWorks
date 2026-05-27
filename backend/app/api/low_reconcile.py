@@ -7,7 +7,7 @@ they can be carried into the Large Print Guide.
 Detection only: these endpoints parse corrected-LOW Tagged Text and return
 classified disparities. They never apply changes. Resolution happens via the
 existing channels — a corrected-spreadsheet re-import (structural changes) and
-then per-work overrides (text changes). See docs/low-tag-reimport-diff-roadmap.md.
+then per-work overrides (text changes). See docs/reconcile.md.
 
 Two endpoint families:
 - ``POST /imports/{id}/low-tag-diff`` — transient quick check (no persistence).

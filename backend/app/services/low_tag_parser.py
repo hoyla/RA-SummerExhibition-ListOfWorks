@@ -1,7 +1,7 @@
 """Parse corrected List of Works InDesign Tagged Text back into structured
 field display-strings, for diffing against the database (the source of truth).
 
-See ``docs/low-tag-reimport-diff-roadmap.md`` for the design and rationale.
+See ``docs/reconcile.md`` for the design and rationale.
 
 Detection-only: we recover each field's *display string* (what appears in
 print), keyed by catalogue number and grouped by section. The diff compares

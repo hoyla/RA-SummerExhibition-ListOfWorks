@@ -12,7 +12,7 @@ class LowTagSnapshot(Base):
     Kept verbatim and append-only (one row per upload) so its diff against the
     import's *current* resolved data can be recomputed on demand — as the editor
     applies overrides or re-imports a corrected spreadsheet, re-viewing shows the
-    resolved disparities drop off. See docs/low-tag-reimport-diff-roadmap.md.
+    resolved disparities drop off. See docs/reconcile.md.
 
     The tag content is stored inline (TEXT) rather than via the file-storage
     service: snapshots are few and modest, recompute needs the content every
