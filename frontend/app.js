@@ -3492,8 +3492,8 @@ function _buildWorkDetailTable(w) {
   const hasOvr = !!w.override;
   const o = w.override || {};
 
-  // "Most Recent InDesign Export" column — only when a reconcile snapshot is
-  // selected for THIS import, and only for works present in that export.
+  // "Selected InDesign Export" column — shows the snapshot currently selected
+  // in Tools for THIS import, and only for works present in that export.
   const cat = String(w.raw_cat_no ?? '');
   const diff = (_reconState && _reconState.diff
     && _reconState.importId === _currentLowImportId) ? _reconState.diff : null;
@@ -3511,7 +3511,7 @@ function _buildWorkDetailTable(w) {
     return `<td class="${cls}">${esc(low[field] ?? '')}</td>`;
   }
 
-  const headLow = showLow ? '<th>Most Recent InDesign Export</th>' : '';
+  const headLow = showLow ? '<th>Selected InDesign Export</th>' : '';
   const thead = hasOvr
     ? `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th><th>Override</th>${headLow}</tr></thead>`
     : `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th>${headLow}</tr></thead>`;
