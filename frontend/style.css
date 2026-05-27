@@ -1122,6 +1122,12 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   white-space: nowrap;
 }
 
+/* Title-cased title shown beneath the title for quick-scan review (Preview setting) */
+.title-cased-scan {
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 .status-msg        { font-size: 12px; color: var(--muted); }
 .status-msg.success { color: var(--success); }
 .status-msg.error   { color: var(--danger); }
