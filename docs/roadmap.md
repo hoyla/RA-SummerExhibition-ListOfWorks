@@ -558,6 +558,30 @@ controls and editor UX around it.
 - Bidirectional LPG / multi-paragraph LOW reconciliation (parser would map by
   paragraph style and stitch multi-paragraph entries — see the fragility boundary
   in [`reconcile.md`](./reconcile.md))
+- **One-off: learn from a corrected Artists Index.** Apply the reconcile insight
+  — *diff what humans changed against what the tool produced, then promote the
+  systematic corrections upstream into normalisation* — to the Index, as a
+  **one-off analysis, not a standing pipeline**. The Index needs no recurring
+  reconcile because (unlike the LOW→LPG pair) it has no downstream output to keep
+  in sync; the value here is purely the learning. The corrections we'd find are
+  the *residual* error after the existing index normalisation (multi-artist split,
+  quals extraction, RA detection, company detection, dedupe), so they point
+  straight at where those rules fall short. A **null result is itself useful**: if
+  corrections are mostly idiosyncratic one-offs, the finding is "don't automate
+  the Index further."
+  - *Join key:* match corrected ↔ original on each entry's **cat-number set**
+    (`index_cat_numbers`), **not the name** — the name is the field being
+    corrected, so it's a circular key, whereas an artist's set of works is
+    correction-stable. Use set **overlap, not equality**, so merges and splits
+    (`duplicate_name_merged`, multi-artist) surface in the partial-overlap
+    residue — likely where the richest systematic patterns hide.
+  - *Precondition:* a matched pair — raw input **and** a human-corrected index for
+    the *same* dataset. Effort depends on the corrected file's form: a spreadsheet
+    is a near-trivial column diff; an InDesign export / PDF needs a small parser
+    for the published "Lastname, Firstname QUALS … 123, 456" format.
+  - *Deliverable:* a throwaway script + short findings doc categorising
+    corrections by type, ranked by frequency, splitting systematic (→ a
+    normalisation rule) from idiosyncratic (→ leave it). No new infrastructure.
 - Per-gallery catalogue-number styles in the LOW template (numerals vs text)
 - Undo / revision history for overrides
 - Bulk override import from Excel
