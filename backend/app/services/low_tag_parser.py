@@ -183,17 +183,22 @@ def _assign_spans(
             continue
         # Colliding style used by several components. They may arrive as separate
         # spans OR as one span with the inter-component tab(s) embedded (InDesign
-        # collapses adjacent runs of the same character style). Split on tab and
-        # drop empties so both layouts reduce to one piece per component.
+        # collapses adjacent runs of the same character style). Split on tab,
+        # clean each piece, and keep only those with real content — so ANY local
+        # modification (inline tag, control char, stray whitespace), wherever it
+        # sits in the run, is ignored and the cat number is the first real piece.
         pieces: list[str] = []
         for v in values:
-            pieces.extend(p for p in v.split("\t") if p != "")
+            for p in v.split("\t"):
+                c = _clean(p)
+                if c.strip():
+                    pieces.append(c)
         for i, fld in enumerate(fields[:-1]):
             if i < len(pieces):
-                out[fld] = _clean(pieces[i])
+                out[fld] = pieces[i]
         rest = pieces[len(fields) - 1 :]
         if rest:
-            out[fields[-1]] = _clean("".join(rest))
+            out[fields[-1]] = "".join(rest)
     return out
 
 

@@ -287,3 +287,21 @@ def test_parses_indesign_short_dialect():
     assert e.section_name == "Gallery I"
     assert e.fields["artist"] == "Jane Doe"
     assert e.fields["title"] == "A Quiet Work"
+
+
+def test_local_style_modifications_ignored_anywhere():
+    """Local overrides anywhere inside a colliding cat-no/title run — a leading
+    control char, a leading leading-override <cl:>, mid-run kerning <ck:> — must
+    not pollute the cat number or title (not just a leading change)."""
+    config = ExportConfig(
+        section_style="Sec", entry_style="Entry",
+        cat_no_style="WNN", title_style="WNN",
+        components=[ComponentConfig("work_number", "tab"),
+                    ComponentConfig("title", "tab")],
+    )
+    body = ("<CharStyle:WNN>\x03<cl:9.150000>\t405\t"
+            "CHILDREN<0x2019>S <ck:-10>GAMES\t<cl:><CharStyle:>")
+    doc = f"<ASCII-MAC>\r<ParaStyle:Sec>Room\r<ParaStyle:Entry>{body}\r"
+    e = parse_low_tags(doc, config)[0]
+    assert e.cat_no == "405"
+    assert e.fields["title"] == "CHILDREN’S GAMES"
