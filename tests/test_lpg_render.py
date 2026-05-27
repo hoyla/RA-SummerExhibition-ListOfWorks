@@ -132,6 +132,57 @@ def test_low_template_still_renders_inline(db_session):
     assert "LPGARTIST" not in out
 
 
+def _seed_lpg_template(db):
+    import hashlib
+
+    from backend.app.models.ruleset_model import Ruleset
+
+    cfg = json.loads(_SEED.read_text(encoding="utf-8"))
+    cfg.pop("_name", None)
+    rs = Ruleset(
+        name="Large Print Guide 2026",
+        config=cfg,
+        config_hash=hashlib.sha256(
+            json.dumps(cfg, sort_keys=True).encode()
+        ).hexdigest(),
+        config_type="template",
+        is_builtin=False,
+        slug="lpg-test",
+    )
+    db.add(rs)
+    db.commit()
+    db.refresh(rs)
+    return rs
+
+
+def test_section_export_filename_embeds_template_and_gallery(client, db_session):
+    imp = _seed(db_session)
+    sec = db_session.query(Section).filter(Section.import_id == imp.id).first()
+    rs = _seed_lpg_template(db_session)
+    r = client.get(
+        f"/imports/{imp.id}/sections/{sec.id}/export-tags?template_id={rs.id}"
+    )
+    assert r.status_code == 200
+    cd = r.headers.get("content-disposition", "")
+    assert "Large-Print-Guide-2026" in cd
+    assert "Gallery-I" in cd  # the room, so per-gallery files are distinguishable
+
+
+def test_full_export_filename_uses_template_name(client, db_session):
+    imp = _seed(db_session)
+    rs = _seed_lpg_template(db_session)
+    r = client.get(f"/imports/{imp.id}/export-tags?template_id={rs.id}")
+    cd = r.headers.get("content-disposition", "")
+    assert 'filename="Large-Print-Guide-2026.txt"' in cd
+
+
+def test_full_export_filename_falls_back_without_template(client, db_session):
+    imp = _seed(db_session)
+    r = client.get(f"/imports/{imp.id}/export-tags")
+    cd = r.headers.get("content-disposition", "")
+    assert 'filename="catalogue.txt"' in cd
+
+
 def test_lpg_paragraph_style_sequence_matches_real_sample():
     """Tie the structure to the real export: the per-work paragraph-style sequence
     our template produces (TITLE, ARTIST, MEDIUM, [EDITION], PRICE) is exactly the

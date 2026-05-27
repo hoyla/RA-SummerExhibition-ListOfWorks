@@ -4731,13 +4731,24 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
       + String(now.getHours()).padStart(2, '0')
       + String(now.getMinutes()).padStart(2, '0')
       + String(now.getSeconds()).padStart(2, '0');
-    // Use section name for section exports, "catalogue" for full exports
-    const slug = sectionName
-      ? sectionName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      : 'catalogue';
+    // Prefer the server-supplied name (embeds template + gallery for tag exports).
+    const cd = res.headers.get('Content-Disposition') || '';
+    const cdMatch = /filename="?([^";]+)"?/.exec(cd);
+    const _slug = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    let filename;
+    if (cdMatch) {
+      // Insert a timestamp before the extension for versioned downloads.
+      filename = cdMatch[1].replace(/(\.[a-z0-9]+)$/i, `_${ts}$1`);
+    } else {
+      // Fallback (json/xml/csv): template + gallery + timestamp.
+      const parts = [_slug(templateName) || 'catalogue'];
+      if (sectionName) parts.push(_slug(sectionName));
+      parts.push(ts);
+      filename = `${parts.join('_')}.${ext}`;
+    }
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${slug}-${importId.slice(0, 8)}-${ts}.${ext}`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

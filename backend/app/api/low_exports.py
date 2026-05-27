@@ -5,12 +5,15 @@ Also contains _ruleset_to_export_config which converts a Ruleset DB row
 into an ExportConfig dataclass.
 """
 
+import re
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from uuid import UUID
 
 from backend.app.api.deps import get_db
+from backend.app.models.section_model import Section
 from backend.app.services.export_renderer import (
     render_import_as_tagged_text,
     render_import_as_json,
@@ -29,6 +32,36 @@ from backend.app.services.export_diff_service import (
 )
 
 router = APIRouter(tags=["exports"])
+
+
+# ---------------------------------------------------------------------------
+# Download filenames
+# ---------------------------------------------------------------------------
+
+
+def _slug_part(s: str) -> str:
+    """Filesystem-safe slug: alphanumerics kept, everything else collapsed to
+    single hyphens."""
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", (s or "").strip()).strip("-")
+    return cleaned or "export"
+
+
+def _tags_filename(ruleset, section_name: str | None = None) -> str:
+    """Build a download filename embedding the template and (for per-room
+    exports) the gallery, so individual gallery files are distinguishable on
+    disk — e.g. ``Large-Print-Guide-2026_Gallery-III.txt``."""
+    base = _slug_part(ruleset.name) if ruleset else "catalogue"
+    if section_name:
+        return f"{base}_{_slug_part(section_name)}.txt"
+    return f"{base}.txt"
+
+
+def _attachment(content: bytes, filename: str) -> Response:
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -143,12 +176,13 @@ def export_indesign_tags(
     template_id: UUID | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    config = _ruleset_to_export_config(resolve_export_config(db, template_id))
+    ruleset = resolve_export_config(db, template_id)
+    config = _ruleset_to_export_config(ruleset)
     output = render_import_as_tagged_text(import_id, db, config)
     save_export_snapshot(import_id, template_id, db)
-    return Response(
-        content=escape_for_mac_roman(output).encode("mac_roman"),
-        media_type="text/plain",
+    return _attachment(
+        escape_for_mac_roman(output).encode("mac_roman"),
+        _tags_filename(ruleset),
     )
 
 
@@ -159,13 +193,21 @@ def export_section_indesign_tags(
     template_id: UUID | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Export InDesign Tagged Text for a single section only."""
-    config = _ruleset_to_export_config(resolve_export_config(db, template_id))
+    """Export InDesign Tagged Text for a single section only. The gallery name is
+    embedded in the download filename so per-room exports are distinguishable on
+    disk."""
+    ruleset = resolve_export_config(db, template_id)
+    config = _ruleset_to_export_config(ruleset)
     output = render_import_as_tagged_text(import_id, db, config, section_id=section_id)
+    section = (
+        db.query(Section)
+        .filter(Section.id == section_id, Section.import_id == import_id)
+        .first()
+    )
     # Section-level exports don't snapshot (full-import only)
-    return Response(
-        content=escape_for_mac_roman(output).encode("mac_roman"),
-        media_type="text/plain",
+    return _attachment(
+        escape_for_mac_roman(output).encode("mac_roman"),
+        _tags_filename(ruleset, section.name if section else None),
     )
 
 
