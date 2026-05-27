@@ -1132,6 +1132,11 @@ async function renderSettings() {
   const honorificTokensValue = Array.isArray(cfg.honorific_tokens)
     ? cfg.honorific_tokens.join(', ')
     : (cfg.honorific_tokens ?? 'RA, PRA, PPRA, HON, HONRA, ELECT, EX, OFFICIO');
+  const editionSuppressMax = Number.isInteger(cfg.edition_suppress_max) ? cfg.edition_suppress_max : 0;
+  const substRules = Array.isArray(cfg.text_substitutions) ? cfg.text_substitutions : [];
+  const editionRuleText = editionSuppressMax === 0
+    ? '<code>Edition of 0</code> is suppressed.'
+    : `Editions of ${editionSuppressMax} or fewer are suppressed (an &ldquo;edition of 1&rdquo; is the work itself).`;
 
   app.innerHTML = `
     <h2 class="page-heading">Settings</h2>
@@ -1224,13 +1229,42 @@ async function renderSettings() {
         <thead><tr><th>Field</th><th>Rule</th></tr></thead>
         <tbody>
           <tr><td>Price</td><td>Currency symbols and separators stripped to a number. A value with no parseable number (e.g. <code>NFS</code>, <code>_</code>) is kept as-is; a blank or missing price becomes <code>*</code>.</td></tr>
-          <tr><td>Edition</td><td>Parsed from <code>Edition of N</code> or <code>Edition of N at &pound;Y</code>; <code>Edition of 0</code> is suppressed.</td></tr>
+          <tr><td>Edition</td><td>Parsed from <code>Edition of N</code> or <code>Edition of N at &pound;Y</code>. ${editionRuleText} <span class="muted">Configurable below.</span></td></tr>
           <tr><td>Honorifics</td><td>Recognised tokens (above) are split from the end of the artist name into a separate field.</td></tr>
           <tr><td>Whitespace</td><td>Leading/trailing whitespace trimmed from every field (flagged on the work).</td></tr>
           <tr><td>Artwork</td><td>Parsed to an integer number of pieces.</td></tr>
-          <tr><td>Title, Medium</td><td>Trimmed; otherwise preserved verbatim.</td></tr>
+          <tr><td>Title, Medium</td><td>Trimmed; otherwise preserved verbatim (plus any text substitutions below).</td></tr>
         </tbody>
       </table>
+    </section>
+
+    <section class="panel">
+      <h4 class="panel-subheading">Editions</h4>
+      <p class="form-hint" style="margin:0 0 10px">An &ldquo;edition of 1&rdquo; is the work itself, not a distinct copy &mdash; whether to drop it is an editorial choice, so it&rsquo;s configurable.</p>
+      <div class="form-row">
+        <label>Suppress editions of</label>
+        <input id="cfg-edition-suppress-max" type="number" min="0" max="10" value="${editionSuppressMax}" style="max-width:70px"${canAdmin() ? '' : ' disabled'}>
+        <span class="form-hint">or fewer. <strong>0</strong> drops only &ldquo;Edition of 0&rdquo;; <strong>1</strong> also drops &ldquo;Edition of 1&rdquo;. If suppressing one removes a work&rsquo;s only price, that&rsquo;s flagged for review.</span>
+      </div>
+      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
+        <span id="norm-rules-status" class="status-msg"></span>
+      </div>`)}
+    </section>
+
+    <section class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        <h4 class="panel-subheading" style="margin:0">Text substitutions</h4>
+        ${ifAdmin('<button class="btn btn-sm" onclick="addSubstRule()">+ Add rule</button>')}
+      </div>
+      <p class="form-hint" style="margin:0 0 12px">Literal find &rarr; replace on the chosen fields, applied in order. Spaces count (shown as <span class="ws-hint">&middot;</span>), so <code><span class="ws-hint">&middot;</span>-<span class="ws-hint">&middot;</span></code> changes a spaced hyphen but never the hyphen in &ldquo;double-barrelled&rdquo;.</p>
+      <div id="subst-rules">
+        ${substRules.map(r => _substRuleRow(r)).join('')}
+      </div>
+      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
+        <span id="subst-status" class="status-msg"></span>
+      </div>`)}
     </section>
 
     <section class="panel">
@@ -1283,21 +1317,93 @@ function savePreviewSettings() {
   }
 }
 
-async function saveHonorificTokens() {
+// --- Normalisation config (honorifics + edition threshold + substitutions) ---
+// PUT /config is a full replace, so every save sends the *whole* config gathered
+// from the DOM \u2014 otherwise saving one panel would wipe the others.
+
+const _SUBST_FIELDS = [['title', 'Title'], ['medium', 'Medium'], ['artist', 'Artist']];
+
+// Render a value with spaces shown as the \u00b7 whitespace hint used elsewhere.
+function _visSpaces(s) {
+  return esc(s ?? '').replace(/ /g, '<span class="ws-hint">&middot;</span>');
+}
+
+function _substRuleRow(rule) {
+  const r = rule || { find: '', replace: '', fields: ['title', 'medium'] };
+  const disabled = canAdmin() ? '' : ' disabled';
+  const checks = _SUBST_FIELDS.map(([key, label]) =>
+    `<label class="inline-check" style="text-transform:none;font-weight:normal;margin-right:10px">
+       <input type="checkbox" class="subst-field" data-field="${key}"${(r.fields || []).includes(key) ? ' checked' : ''}${disabled}> ${label}
+     </label>`).join('');
+  return `<div class="subst-row">
+    <div class="subst-inputs">
+      <input type="text" class="subst-find" value="${esc(r.find)}" placeholder="find" oninput="_updateSubstPreview(this)"${disabled}>
+      <span class="subst-arrow">&rarr;</span>
+      <input type="text" class="subst-replace" value="${esc(r.replace)}" placeholder="replace" oninput="_updateSubstPreview(this)"${disabled}>
+      ${ifAdmin('<button type="button" class="btn btn-sm subst-remove" onclick="removeSubstRule(this)" title="Remove rule">&times;</button>')}
+    </div>
+    <div class="subst-fields">${checks}</div>
+    <div class="subst-preview"><code>${_visSpaces(r.find)}</code> &rarr; <code>${_visSpaces(r.replace)}</code></div>
+  </div>`;
+}
+
+function _updateSubstPreview(inputEl) {
+  const row = inputEl.closest('.subst-row');
+  if (!row) return;
+  const find = row.querySelector('.subst-find').value;
+  const replace = row.querySelector('.subst-replace').value;
+  row.querySelector('.subst-preview').innerHTML =
+    `<code>${_visSpaces(find)}</code> &rarr; <code>${_visSpaces(replace)}</code>`;
+}
+
+function addSubstRule() {
+  const list = document.getElementById('subst-rules');
+  if (list) list.insertAdjacentHTML('beforeend', _substRuleRow(null));
+}
+
+function removeSubstRule(btn) {
+  btn.closest('.subst-row')?.remove();
+}
+
+function _gatherSubstitutions() {
+  return [...document.querySelectorAll('#subst-rules .subst-row')].map(row => ({
+    // Spaces are significant \u2014 never trim find/replace.
+    find: row.querySelector('.subst-find').value,
+    replace: row.querySelector('.subst-replace').value,
+    fields: [...row.querySelectorAll('.subst-field')].filter(c => c.checked).map(c => c.dataset.field),
+  })).filter(s => s.find !== '');  // drop blank-find rows (backend rejects them)
+}
+
+function _gatherNormalisationConfig() {
   const rawTokens = document.getElementById('cfg-honorific-tokens')?.value ?? '';
-  const honorific_tokens = rawTokens.split(',').map(t => t.trim()).filter(Boolean);
-  const statusEl = document.getElementById('honorific-status');
-  if (!statusEl) return;
-  statusEl.textContent = 'Saving\u2026';
-  statusEl.className = 'status-msg';
+  const editionEl = document.getElementById('cfg-edition-suppress-max');
+  return {
+    honorific_tokens: rawTokens.split(',').map(t => t.trim()).filter(Boolean),
+    edition_suppress_max: editionEl ? (parseInt(editionEl.value, 10) || 0) : 0,
+    text_substitutions: _gatherSubstitutions(),
+  };
+}
+
+async function _saveNormalisationConfig(statusIds, okMsg) {
+  const els = statusIds.map(id => document.getElementById(id)).filter(Boolean);
+  els.forEach(el => { el.textContent = 'Saving\u2026'; el.className = 'status-msg'; });
   try {
-    await api('PUT', '/config', { honorific_tokens });
-    statusEl.textContent = '\u2713 Saved';
-    statusEl.className = 'status-msg success';
+    await api('PUT', '/config', _gatherNormalisationConfig());
+    els.forEach(el => { el.textContent = okMsg; el.className = 'status-msg success'; });
   } catch (e) {
-    statusEl.textContent = `Error: ${esc(e.message)}`;
-    statusEl.className = 'status-msg error';
+    els.forEach(el => { el.textContent = `Error: ${esc(e.message)}`; el.className = 'status-msg error'; });
   }
+}
+
+function saveHonorificTokens() {
+  return _saveNormalisationConfig(['honorific-status'], '\u2713 Saved');
+}
+
+function saveNormalisationRules() {
+  return _saveNormalisationConfig(
+    ['norm-rules-status', 'subst-status'],
+    '\u2713 Saved \u2014 applies to the next import',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -3344,6 +3450,9 @@ const _LOW_WARNING_LABELS = {
   // Changed: normalisation engine modified data
   whitespace_trimmed:     'Whitespace trimmed',
   zero_edition_suppressed: 'Edition stripped',
+  edition_suppressed:      'Edition stripped',
+  // High severity: needs a decision
+  edition_suppressed_no_price: 'Edition price lost',
   // Info: data quality issues needing review
   missing_title:        'Missing title',
   missing_artist:       'Missing artist',
@@ -3356,11 +3465,22 @@ const _LOW_WARNING_LABELS = {
   empty_spreadsheet:    'Empty spreadsheet',
 };
 const _LOW_CHANGED_TYPES = new Set([
-  'whitespace_trimmed', 'zero_edition_suppressed',
+  'whitespace_trimmed', 'zero_edition_suppressed', 'edition_suppressed',
+]);
+// High-severity warnings rendered in red — they signal data loss, not a benign change.
+const _LOW_HIGH_SEVERITY_TYPES = new Set([
+  'edition_suppressed_no_price',
 ]);
 
 function _lowWarnLabel(type) {
   return _LOW_WARNING_LABELS[type] || type;
+}
+
+// Badge colour for a LoW warning type: red (high) / blue (benign change) / yellow (review).
+function _lowWarnBadgeClass(type) {
+  if (_LOW_HIGH_SEVERITY_TYPES.has(type)) return 'badge-removed';
+  if (_LOW_CHANGED_TYPES.has(type)) return 'badge-info';
+  return 'badge-warning';
 }
 
 function _buildWarningsPanel() {
@@ -3381,8 +3501,7 @@ function _buildWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenWarningTypes.has(type);
-      const isChanged = _LOW_CHANGED_TYPES.has(type);
-      const badgeClass = isChanged ? 'badge badge-info warning-filter-btn' : 'badge badge-warning warning-filter-btn';
+      const badgeClass = `badge ${_lowWarnBadgeClass(type)} warning-filter-btn`;
       return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_lowWarnLabel(type))}: ${n}</button>`;
     }).join('');
 
@@ -3394,7 +3513,7 @@ function _buildWarningsPanel() {
       ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(w.work_id)}')">${esc(who)}</button>`
       : (esc(who) || '\u2014');
     return `<tr>
-      <td><span class="badge ${_LOW_CHANGED_TYPES.has(w.warning_type) ? 'badge-info' : 'badge-warning'}">${esc(_lowWarnLabel(w.warning_type))}</span></td>
+      <td><span class="badge ${_lowWarnBadgeClass(w.warning_type)}">${esc(_lowWarnLabel(w.warning_type))}</span></td>
       <td>${esc(w.message)}</td>
       <td class="muted col-work">${workCell}</td>
     </tr>`;
@@ -3703,7 +3822,7 @@ function _workWarningsBadges(workId) {
   const warns = (_warningsByWorkId[workId] || []).filter(w => !_LOW_CHANGED_TYPES.has(w.warning_type));
   if (!warns.length) return '';
   const badges = warns.map(w => {
-    return `<span class="badge badge-warning" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
+    return `<span class="badge ${_lowWarnBadgeClass(w.warning_type)}" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
   }).join(' ');
   // Collect detailed explanations for warning types that benefit from inline detail
   const details = warns
@@ -3830,7 +3949,7 @@ function workRowHTML(importId, w, cfg) {
   if (wWarns && wWarns.length) {
     const warnTypes = [...new Set(wWarns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
     for (const wt of warnTypes) {
-      flags.push(`<span class="badge badge-warning" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
+      flags.push(`<span class="badge ${_lowWarnBadgeClass(wt)}" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
     }
   }
 

@@ -17,7 +17,8 @@ uploads/*
 test*.txt
 ~$*
 
-# InDesign lock files
+# InDesign documents and lock files (binaries; not committed)
+*.indd
 *.idlk
 ~*.idlk
 

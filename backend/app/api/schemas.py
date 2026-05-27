@@ -204,6 +204,38 @@ class OverrideOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+_SUBSTITUTABLE_FIELDS = {"title", "medium", "artist"}
+
+
+class TextSubstitutionIn(BaseModel):
+    """A literal find→replace rule scoped to one or more derived fields.
+
+    Spaces in find/replace are significant and preserved (so " - " only matches a
+    spaced hyphen). find must be non-empty."""
+
+    find: str
+    replace: str = ""
+    fields: list[str] = ["title", "medium"]
+
+    @field_validator("find")
+    @classmethod
+    def _find_not_blank(cls, v: str) -> str:
+        if not v:
+            raise ValueError("substitution 'find' must not be empty")
+        return v
+
+    @field_validator("fields")
+    @classmethod
+    def _known_fields(cls, v: list[str]) -> list[str]:
+        bad = [f for f in v if f not in _SUBSTITUTABLE_FIELDS]
+        if bad:
+            raise ValueError(
+                f"unknown substitution field(s): {bad}; "
+                f"allowed: {sorted(_SUBSTITUTABLE_FIELDS)}"
+            )
+        return v
+
+
 class NormalisationIn(BaseModel):
     honorific_tokens: list[str] = [
         "RA",
@@ -215,6 +247,18 @@ class NormalisationIn(BaseModel):
         "EX",
         "OFFICIO",
     ]
+    # Suppress editions whose total is <= this (0 = drop only "Edition of 0").
+    edition_suppress_max: int = 0
+    text_substitutions: list[TextSubstitutionIn] = [
+        TextSubstitutionIn(find="...", replace="…", fields=["title", "medium"]),
+    ]
+
+    @field_validator("edition_suppress_max")
+    @classmethod
+    def _sane_threshold(cls, v: int) -> int:
+        if v < 0 or v > 10:
+            raise ValueError("edition_suppress_max must be between 0 and 10")
+        return v
 
 
 # ---------------------------------------------------------------------------

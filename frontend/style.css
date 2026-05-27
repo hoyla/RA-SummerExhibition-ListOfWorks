@@ -1974,3 +1974,39 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .cmp-nav-link:hover { color: #1a73e8; border-bottom-color: #1a73e8; }
 .cmp-diffs-cell { max-width: 260px; }
 .cmp-diffs-cell .badge { margin: 1px 2px; }
+
+/* --- Text-substitution rule editor (Settings → Normalisation) --- */
+.subst-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border, #e5e5e5);
+}
+.subst-row:first-child { padding-top: 0; }
+.subst-row:last-child { border-bottom: none; }
+.subst-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.subst-inputs input[type="text"] {
+  flex: 1 1 180px;
+  min-width: 120px;
+  padding: 5px 8px;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 4px;
+  font-family: inherit;
+}
+.subst-arrow { color: var(--muted, #888); font-weight: bold; }
+.subst-remove { color: #b00; }
+.subst-fields { margin-top: 6px; font-size: 0.85rem; }
+.subst-preview {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--muted, #777);
+}
+.subst-preview code {
+  background: #f5f5f5;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: pre-wrap;
+}
