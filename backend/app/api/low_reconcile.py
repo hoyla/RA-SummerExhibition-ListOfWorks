@@ -110,6 +110,10 @@ def _diff_payload(
         "counts": result.counts,
         "findings": [asdict(f) for f in result.findings],
         "cosmetic": [asdict(f) for f in result.cosmetic],
+        # Full parsed LOW field values per catalogue number, so the per-work
+        # detail panel can show a "Most Recent InDesign Export" column with
+        # grey-for-unchanged consistency (not just the differing fields).
+        "low_by_cat": {e.cat_no: e.fields for e in parsed},
     }
 
 

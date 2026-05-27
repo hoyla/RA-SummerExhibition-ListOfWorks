@@ -3492,44 +3492,52 @@ function _buildWorkDetailTable(w) {
   const hasOvr = !!w.override;
   const o = w.override || {};
 
-  const thead = hasOvr
-    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th><th>Override</th></tr></thead>'
-    : '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th></tr></thead>';
+  // "Most Recent InDesign Export" column — only when a reconcile snapshot is
+  // selected for THIS import, and only for works present in that export.
+  const cat = String(w.raw_cat_no ?? '');
+  const diff = (_reconState && _reconState.diff
+    && _reconState.importId === _currentLowImportId) ? _reconState.diff : null;
+  const low = (diff && diff.low_by_cat && cat) ? diff.low_by_cat[cat] : null;
+  const showLow = !!low;
+  // Significant (black) vs cosmetic/unchanged (grey): a field is black only if
+  // it's a significant finding for this catalogue number.
+  const sigSet = showLow
+    ? new Set((diff.findings || []).filter(f => f.field).map(f => `${f.cat_no}|${f.field}`))
+    : null;
 
-  function row(label, rawVal, normVal, ovrVal) {
+  function lowCell(field) {
+    if (!showLow) return '';
+    const cls = sigSet.has(`${cat}|${field}`) ? 'val-changed' : 'val-unchanged';
+    return `<td class="${cls}">${esc(low[field] ?? '')}</td>`;
+  }
+
+  const headLow = showLow ? '<th>Most Recent InDesign Export</th>' : '';
+  const thead = hasOvr
+    ? `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th><th>Override</th>${headLow}</tr></thead>`
+    : `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th>${headLow}</tr></thead>`;
+
+  function row(label, field, rawVal, normVal, ovrVal) {
     const raw  = rawVal  ?? '';
     const norm = normVal ?? '';
     const ovr  = ovrVal  ?? '';
-    if (hasOvr) {
-      return `<tr>
-        <td>${esc(label)}</td>
-        <td>${_normRawCell(raw, norm)}</td>
-        <td class="${_valClass(raw, norm)}">${esc(norm)}</td>
-        <td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>
-      </tr>`;
-    }
+    const ovrCell = hasOvr ? `<td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>` : '';
     return `<tr>
       <td>${esc(label)}</td>
       <td>${_normRawCell(raw, norm)}</td>
       <td class="${_valClass(raw, norm)}">${esc(norm)}</td>
+      ${ovrCell}${lowCell(field)}
     </tr>`;
   }
 
-  function derivedRow(label, normVal, ovrVal) {
+  function derivedRow(label, field, normVal, ovrVal) {
     const norm = normVal ?? '';
     const ovr  = ovrVal  ?? '';
-    if (hasOvr) {
-      return `<tr>
-        <td>${esc(label)}</td>
-        <td class="muted">&mdash;</td>
-        <td>${esc(norm)}</td>
-        <td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>
-      </tr>`;
-    }
+    const ovrCell = hasOvr ? `<td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>` : '';
     return `<tr>
       <td>${esc(label)}</td>
       <td class="muted">&mdash;</td>
       <td>${esc(norm)}</td>
+      ${ovrCell}${lowCell(field)}
     </tr>`;
   }
 
@@ -3542,18 +3550,19 @@ function _buildWorkDetailTable(w) {
   const ovrEd  = [o.edition_total_override ? String(o.edition_total_override) : '', o.edition_price_numeric_override ? `at ${o.edition_price_numeric_override}` : ''].filter(Boolean).join(' ');
 
   const rows = [
-    row('Artist',    w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
-    derivedRow('Honorifics',        w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
-    row('Title',     w.raw_title,   w.title ?? '',        o.title_override ?? ''),
-    row('Price',     w.raw_price,   normPrice,            ovrPrice),
-    row('Edition',   w.raw_edition, normEd,               ovrEd),
-    row('Artwork',   w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
-    row('Medium',    w.raw_medium,  w.medium ?? '',       o.medium_override ?? ''),
+    row('Artist',  'artist',     w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
+    derivedRow('Honorifics', 'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
+    row('Title',   'title',      w.raw_title,   w.title ?? '',        o.title_override ?? ''),
+    row('Price',   'price',      w.raw_price,   normPrice,            ovrPrice),
+    row('Edition', 'edition',    w.raw_edition, normEd,               ovrEd),
+    row('Artwork', 'artwork',    w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
+    row('Medium',  'medium',     w.raw_medium,  w.medium ?? '',       o.medium_override ?? ''),
   ];
 
   // Notes — override-only field; only show when set
   if (hasOvr && o.notes) {
-    rows.push(`<tr><td>Notes</td><td class="muted">&mdash;</td><td class="muted">&mdash;</td><td>${esc(o.notes)}</td></tr>`);
+    const lowBlank = showLow ? '<td class="muted">&mdash;</td>' : '';
+    rows.push(`<tr><td>Notes</td><td class="muted">&mdash;</td><td class="muted">&mdash;</td><td>${esc(o.notes)}</td>${lowBlank}</tr>`);
   }
 
   return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
