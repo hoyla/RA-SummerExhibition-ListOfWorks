@@ -17,6 +17,10 @@ uploads/*
 test*.txt
 ~$*
 
+# InDesign lock files
+*.idlk
+~*.idlk
+
 # Environment
 .env
 test_sample_files/.~lock.Index_2024.xlsx\#

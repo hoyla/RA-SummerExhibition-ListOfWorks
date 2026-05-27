@@ -56,6 +56,10 @@ _TAG_RE = re.compile(r"<[^>]*>")
 # InDesign escapes special characters with a backslash, in both content and
 # style names (e.g. "Work Number\/Name", "\<", "\\").
 _BACKSLASH_RE = re.compile(r"\\(.)", re.DOTALL)
+# Control characters InDesign embeds (soft returns, \x08/\x03 around headings).
+_CONTROL_RE = re.compile(r"[\x00-\x1f]")
+# A catalogue-number range that appears in gallery titles, e.g. "works 200-286".
+_WORKS_RANGE_RE = re.compile(r"\bworks?\s+\d+\s*[-–—]\s*\d+", re.IGNORECASE)
 
 # Field name -> the ExportConfig attribute that holds its character-style name.
 _FIELD_STYLE_ATTRS: dict[str, str] = {
@@ -88,14 +92,20 @@ def _decode(s: str) -> str:
 
 
 def _clean(value: str) -> str:
-    """Decode escapes, drop soft returns, NFC-normalise a field value.
+    """Recover a field value from a character-style span.
 
-    Order matters: decode ``<0x000A>`` to ``\\n`` *before* deleting newlines, so
-    both literal soft returns and escaped ones are removed. Deleting ``\\n`` is
-    the exact inverse of the renderer's wrapping because the breaking space is
-    kept on the preceding line.
+    Order matters: decode ``<0x####>`` escapes first (so ``£`` etc. survive),
+    then strip inline formatting tags InDesign leaves *inside* a styled run
+    (``<ccase:…>``, ``<cs:…>``, kerning, …), then unescape content backslashes,
+    then drop control characters (soft returns become ``<0x000A>``→newline and
+    are removed here — the breaking space is kept on the previous line, so this
+    inverts the renderer's wrapping).
     """
-    return unicodedata.normalize("NFC", _decode(value).replace("\n", ""))
+    value = _HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), value)
+    value = _TAG_RE.sub("", value)
+    value = _BACKSLASH_RE.sub(r"\1", value)
+    value = _CONTROL_RE.sub("", value)
+    return unicodedata.normalize("NFC", value)
 
 
 def _unescape_name(name: str) -> str:
@@ -161,10 +171,17 @@ def _assign_spans(
         if len(fields) == 1:
             out[fields[0]] = _clean("".join(values))
             continue
+        # Colliding style used by several components. They may arrive as separate
+        # spans OR as one span with the inter-component tab(s) embedded (InDesign
+        # collapses adjacent runs of the same character style). Split on tab and
+        # drop empties so both layouts reduce to one piece per component.
+        pieces: list[str] = []
+        for v in values:
+            pieces.extend(p for p in v.split("\t") if p != "")
         for i, fld in enumerate(fields[:-1]):
-            if i < len(values):
-                out[fld] = _clean(values[i])
-        rest = values[len(fields) - 1 :]
+            if i < len(pieces):
+                out[fld] = _clean(pieces[i])
+        rest = pieces[len(fields) - 1 :]
         if rest:
             out[fields[-1]] = _clean("".join(rest))
     return out
@@ -182,11 +199,13 @@ def parse_low_tags(
     entries: list[ParsedEntry] = []
     current_section = ""
 
-    # Native dialect uses CR for paragraphs and LF for soft returns (kept inside
-    # spans and removed by _clean). The InDesign short dialect uses line breaks
-    # for paragraphs, so split on either there.
+    # Split into paragraphs. The InDesign short dialect marks every paragraph
+    # with <pstyle:…>, so split on that marker — a gallery heading and the
+    # following entry can share one physical line (separated by special break
+    # chars, not a newline), and splitting on line breaks alone loses those
+    # entries. The native (renderer) dialect uses CR per paragraph.
     if _INDESIGN_HINT.search(text):
-        paragraphs = re.split(r"[\r\n]+", text)
+        paragraphs = re.split(r"(?=<pstyle:)", text)
     else:
         paragraphs = text.split("\r")
 
@@ -198,9 +217,13 @@ def parse_low_tags(
         body = para[m.end() :]
 
         if para_style == config.section_style:
-            # Decode escapes first, then strip any residual tags, so a room name
-            # containing escaped characters isn't lost with the tags.
-            name = _TAG_RE.sub("", _decode(body)).replace("\n", " ")
+            # Decode escapes, strip inline tags, replace control chars, drop any
+            # "works N-NN" catalogue-range suffix, and collapse whitespace to get
+            # the clean gallery name.
+            name = _TAG_RE.sub("", _decode(body))
+            name = _CONTROL_RE.sub(" ", name)
+            name = _WORKS_RANGE_RE.sub("", name)
+            name = re.sub(r"\s+", " ", name)
             current_section = unicodedata.normalize("NFC", name).strip()
             continue
         if para_style != config.entry_style:

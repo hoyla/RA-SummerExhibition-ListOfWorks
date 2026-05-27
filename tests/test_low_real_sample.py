@@ -25,6 +25,10 @@ _SAMPLES = os.path.join(_REPO, "test_sample_files")
 _TXT = os.path.join(_SAMPLES, "Sample 26-05-26 with edition cstyle.txt")
 _XLSX = os.path.join(_SAMPLES, "Catalogue List 2025_renamed.xlsx")
 _SEED = os.path.join(_REPO, "backend", "seed_templates", "list-of-works-2026.json")
+# A heavily hand-edited *final* InDesign LoW export: merged cat-no/title runs,
+# inline <ccase:>/kerning tags, headings sharing lines with entries, "works N-NN"
+# in gallery titles. Exercises the messy-real-file parsing path.
+_FINAL = os.path.join(_SAMPLES, "LoW 2025 final with edition style 1.txt")
 
 pytestmark = pytest.mark.skipif(
     not (os.path.exists(_TXT) and os.path.exists(_XLSX)),
@@ -75,3 +79,23 @@ def test_real_export_diffs_clean_against_source(db_session):
     assert result.counts["db_only"] == 0
     assert result.counts["low_only"] == 0
     assert result.findings == []
+
+
+@pytest.mark.skipif(not os.path.exists(_FINAL), reason="final LoW sample not present")
+def test_final_low_export_parses_cleanly():
+    """The messy final export must parse: clean cat numbers (not merged with
+    titles), inline formatting tags stripped from values, clean gallery names."""
+    with open(_FINAL, encoding="mac_roman") as fh:
+        parsed = parse_low_tags(fh.read(), _config_2026())
+
+    assert len(parsed) >= 1700
+    by_cat = {e.cat_no: e for e in parsed}
+    assert "1" in by_cat  # cat 1 was previously lost (heading shared its line)
+    # Cat numbers are clean digits, not "2\tHOW MUCH IS A LOT?".
+    assert all(e.cat_no.isdigit() for e in parsed[:100])
+    # Inline <ccase:>/<cs:>/kerning tags are stripped from field values.
+    blob = " ".join(v for e in parsed for v in e.fields.values())
+    assert "<ccase" not in blob and "<cstyle" not in blob and "<cs:" not in blob
+    # Gallery names are clean — no residual tags or "works N-NN" range.
+    assert all("<" not in (e.section_name or "") for e in parsed)
+    assert all("works " not in (e.section_name or "").lower() for e in parsed)
