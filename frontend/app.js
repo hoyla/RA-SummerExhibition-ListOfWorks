@@ -1203,6 +1203,14 @@ async function renderSettings() {
           </label>
           <span class="form-hint">The field remains editable in the override form regardless of this setting.</span>
         </div>
+        <div class="form-row">
+          <label>Title case under title</label>
+          <label class="inline-check" style="text-transform:none;font-weight:normal">
+            <input type="checkbox" id="disp-show-title-cased"${dispCfg.show_title_cased ? ' checked' : ''}>
+            Show the title-cased title beneath each title in the List of Works
+          </label>
+          <span class="form-hint">A quick-scan aid for spotting title-casing mistakes. The all-caps title sits above its title-cased form.</span>
+        </div>
       </div>
       <div class="form-actions" style="margin-top:12px">
         <button class="btn btn-primary btn-sm" onclick="savePreviewSettings()">Save Preview Settings</button>
@@ -1327,6 +1335,7 @@ function savePreviewSettings() {
       (document.getElementById('disp-edition-prefix')?.value ?? '').trim() || 'edition of',
       document.getElementById('disp-edition-brackets')?.checked ?? true,
       document.getElementById('disp-show-artwork')?.checked ?? true,
+      document.getElementById('disp-show-title-cased')?.checked ?? false,
     );
     if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
   } catch (e) {
@@ -3683,15 +3692,16 @@ function _getDisplayCfg() {
       edition_prefix:      d.edition_prefix      ?? 'edition of',
       edition_brackets:    d.edition_brackets    ?? true,
       show_artwork_column: d.show_artwork_column  ?? false,
+      show_title_cased:    d.show_title_cased     ?? false,
     };
   } catch {
-    return { currency_symbol: '\u00a3', thousands_separator: ',', decimal_places: 0, edition_prefix: 'edition of', edition_brackets: true, show_artwork_column: false };
+    return { currency_symbol: '\u00a3', thousands_separator: ',', decimal_places: 0, edition_prefix: 'edition of', edition_brackets: true, show_artwork_column: false, show_title_cased: false };
   }
 }
 
-function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets, show_artwork_column) {
+function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets, show_artwork_column, show_title_cased) {
   localStorage.setItem('ra_display_cfg', JSON.stringify(
-    { currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets, show_artwork_column }
+    { currency_symbol, thousands_separator, decimal_places, edition_prefix, edition_brackets, show_artwork_column, show_title_cased }
   ));
 }
 
@@ -4384,6 +4394,7 @@ function workRowHTML(importId, w, cfg) {
   const o = w.override;
   const eff = {
     title:                o?.title_override           ?? w.title,
+    title_cased:          o?.title_cased_override     ?? w.title_cased,
     artist_name:          o?.artist_name_override     ?? w.artist_name,
     artist_honorifics:    o?.artist_honorifics_override ?? w.artist_honorifics,
     price_numeric:        o?.price_numeric_override   ?? w.price_numeric,
@@ -4415,7 +4426,7 @@ function workRowHTML(importId, w, cfg) {
       onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">
       <td class="col-no">${esc(w.raw_cat_no ?? '')}</td>
       <td class="${hasOverride && o?.artist_name_override ? 'cell-overridden' : ''}">${esc(eff.artist_name ?? '')}${honorifics}</td>
-      <td class="${hasOverride && o?.title_override ? 'cell-overridden' : ''}">${esc(eff.title ?? '')}</td>
+      <td class="${hasOverride && o?.title_override ? 'cell-overridden' : ''}">${esc(eff.title ?? '')}${cfg.show_title_cased && eff.title_cased ? `<div class="title-cased-scan">${esc(eff.title_cased)}</div>` : ''}</td>
       <td class="${hasOverride && (o?.price_numeric_override || o?.price_text_override) ? 'cell-overridden' : ''}">${esc(priceDisplay)}</td>
       <td class="${hasOverride && (o?.edition_total_override || o?.edition_price_numeric_override) ? 'cell-overridden' : ''}">${esc(editionDisplay)}</td>
       ${cfg.show_artwork_column ? `<td class="${hasOverride && o?.artwork_override ? 'cell-overridden' : ''}">${w.artwork != null ? esc(String(w.artwork)) : ''}</td>` : ''}
