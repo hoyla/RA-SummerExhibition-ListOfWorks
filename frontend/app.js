@@ -4217,13 +4217,23 @@ async function loadReconcileSnapshots(importId, activeId) {
   try {
     const snaps = await api('GET', `/imports/${importId}/low-tag-snapshots`);
     if (!snaps.length) { el.innerHTML = ''; return; }
+    const clearLink = activeId
+      ? `<a href="#" class="recon-clear" title="Hide the InDesign export column and findings" onclick="clearReconcileSelection('${esc(importId)}');return false">Clear selection</a>`
+      : '';
     el.innerHTML = `<div class="muted" style="font-size:12px;margin:8px 0 4px">Uploaded exports from InDesign:</div>
       <div class="reconcile-history-list">` + snaps.map(s => `
         <span class="recon-snap${s.id === activeId ? ' active' : ''}">
           <a href="#" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(s.id)}');return false" title="Uploaded ${esc(formatDate(s.uploaded_at))}">${esc(s.filename || 'snapshot')}</a>
           ${ifEditor(`<button class="recon-snap-del" title="Delete" onclick="deleteReconcileSnapshot('${esc(importId)}','${esc(s.id)}')">×</button>`)}
-        </span>`).join('') + `</div>`;
+        </span>`).join('') + `</div>` + clearLink;
   } catch (e) { el.innerHTML = ''; }
+}
+
+function clearReconcileSelection(importId) {
+  _reconState = { importId: null, snapshot: null, diff: null, sevFilter: 'all', text: '' };
+  const res = document.getElementById('reconcile-results');
+  if (res) res.innerHTML = '';
+  loadReconcileSnapshots(importId);  // re-render chips with none active
 }
 
 async function viewReconcileSnapshot(importId, sid) {
