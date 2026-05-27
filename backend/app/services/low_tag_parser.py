@@ -58,8 +58,10 @@ _TAG_RE = re.compile(r"<[^>]*>")
 _BACKSLASH_RE = re.compile(r"\\(.)", re.DOTALL)
 # Control characters InDesign embeds (soft returns, \x08/\x03 around headings).
 _CONTROL_RE = re.compile(r"[\x00-\x1f]")
-# A catalogue-number range that appears in gallery titles, e.g. "works 200-286".
-_WORKS_RANGE_RE = re.compile(r"\bworks?\s+\d+\s*[-–—]\s*\d+", re.IGNORECASE)
+# A catalogue-number range in gallery titles, e.g. "works 200-286" or
+# "works 287-431." — consume an optional trailing full stop too (it's the
+# annotation's punctuation, not part of the gallery name).
+_WORKS_RANGE_RE = re.compile(r"\bworks?\s+\d+\s*[-–—]\s*\d+\s*\.?", re.IGNORECASE)
 
 # Field name -> the ExportConfig attribute that holds its character-style name.
 _FIELD_STYLE_ATTRS: dict[str, str] = {

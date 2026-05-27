@@ -96,8 +96,11 @@ def test_final_low_export_parses_cleanly():
     assert all(str(n) in by_cat for n in range(405, 413))
     # Cat numbers are clean digits, not "2\tHOW MUCH IS A LOT?".
     assert all(e.cat_no.isdigit() for e in parsed[:100])
-    # Roman-numeral galleries ("Gallery Roman") are recognised as sections too.
-    assert "IX" in {e.section_name for e in parsed}
+    # Roman-numeral galleries ("Gallery Roman") are recognised as sections too,
+    # with the "works N-NN." annotation (incl. its trailing dot) stripped out.
+    sections = {e.section_name for e in parsed}
+    assert "IX" in sections and "VIII" in sections
+    assert not any(s.endswith(".") or "works " in s.lower() for s in sections)
     # Inline <ccase:>/<cs:>/kerning tags are stripped from field values.
     blob = " ".join(v for e in parsed for v in e.fields.values())
     assert "<ccase" not in blob and "<cstyle" not in blob and "<cs:" not in blob
