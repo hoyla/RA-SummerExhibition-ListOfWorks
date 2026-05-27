@@ -1041,6 +1041,11 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 
 /* Reconcile corrected LOW */
 .recon-cosmetic { margin-top: 16px; }
+/* Reconcile compares two candidate values (either may be the correct one), so
+   colour alone — no strike-through, which would wrongly imply the data value is
+   being deleted. (The export-diff panel keeps strike-through for its genuine
+   before→after supersession.) */
+#reconcile-results .diff-old { text-decoration: none; }
 /* Show whitespace / line-break differences that are otherwise invisible in HTML */
 .recon-cosmetic .diff-old, .recon-cosmetic .diff-new { white-space: pre-wrap; }
 .reconcile-history-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
