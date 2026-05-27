@@ -22,8 +22,14 @@
 > `POST/GET/GET{id}/DELETE …/low-tag-snapshots` persist and **recompute the diff
 > live** (the Workflow-A loop — apply an override, re-view, the finding resolves
 > — is covered by a test). 845 tests.
-> **Next:** the **report UI** (the remaining half of #8, needs UX shaping), and a
-> real *corrected* export to point it at.
+> **Report UI built (#8b):** a "Reconcile corrected LOW" panel on the import
+> detail page — upload + template picker, snapshot history, the two ordered
+> fix-channel task groups (① spreadsheet re-import → ② overrides), severity +
+> text filters, and a "Re-check against current data" button (the Workflow-A
+> loop). Backend-proven; pending Luke's visual review/iteration (can't
+> auto-screenshot a Docker-served full-stack app). 845 tests.
+> **Next:** Luke's UI review, then the consolidated docs pass (see below), and a
+> real *corrected* export to exercise it for real.
 > **Last updated:** 2026-05-26.
 
 ---
@@ -239,7 +245,7 @@ resolved DB values, every diff is false positives.
 5. ✅ 2-way field diff + data-driven significance tiering + cosmetic suppression.
 6. ✅ Thin ingestion endpoint `POST /imports/{id}/low-tag-diff` (parse + diff → JSON, dialect-tolerant, no persistence/UI).
 8a. ✅ Snapshot persistence — `low_tag_snapshots` table (migration `k1c3e5g7i9b0`, Docker-verified), inline append-only storage, `POST/GET/GET{id}/DELETE` endpoints with live diff recompute. Workflow-A loop covered by test.
-8b. Report UI — **remaining**, needs UX shaping (placement on the import detail page; two ordered fix-channel tasks; filters). Build when Luke's available.
+8b. ✅ Report UI — "Reconcile corrected LOW" panel on the LoW import detail page: upload + template picker, snapshot history (view/delete), two ordered fix-channel task groups (① spreadsheet re-import → ② overrides), severity + text filters, "Re-check against current data" button. Pending Luke's visual review.
 
 ### On completion (when this temp doc is deleted)
 

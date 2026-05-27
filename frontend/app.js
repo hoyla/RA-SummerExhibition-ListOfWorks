@@ -3136,6 +3136,19 @@ async function renderDetail(importId) {
       <h3>Export</h3>
       <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
     </section>
+    ${ifEditor(`<section class="panel" id="reconcile-panel">
+      <h3>Reconcile corrected LOW</h3>
+      <p class="muted" style="font-size:12px;margin-bottom:10px">Upload a corrected InDesign LOW tags export to find data changes made downstream that aren\u2019t yet in this data. Detection only \u2014 nothing is changed automatically.</p>
+      <form id="reconcile-form" class="upload-form">
+        <input type="file" id="reconcile-file" accept=".txt" required>
+        <label class="export-template-label">Template</label>
+        <select id="reconcile-tmpl"></select>
+        <button type="submit" class="btn btn-primary">Reconcile</button>
+      </form>
+      <p id="reconcile-status" class="status-msg" style="margin-top:6px"></p>
+      <div id="reconcile-history" class="reconcile-history"></div>
+      <div id="reconcile-results"></div>
+    </section>`)}
     <section class="panel" id="warnings-panel"><p class="loading">Loading flagged issues\u2026</p></section>
     <section class="panel">
       <h3>Works</h3>
@@ -3218,6 +3231,8 @@ async function renderDetail(importId) {
   // Persist template choice on change
   const _tmplSel = document.getElementById(`tmpl-select-${importId}`);
   if (_tmplSel) _tmplSel.addEventListener('change', () => localStorage.setItem(_lastTmplKey, _tmplSel.value));
+
+  if (canEdit()) initReconcilePanel(importId, templates);
 
   renderWarningsPanel(warnings);
 
@@ -4117,6 +4132,202 @@ function _renderDiffPanel(diff) {
 
   parts.push('</div>');
   return parts.join('');
+}
+
+// ---------------------------------------------------------------------------
+// Reconcile corrected LOW (LOW → LPG reconciliation)
+// ---------------------------------------------------------------------------
+
+let _reconState = { importId: null, snapshot: null, diff: null, sevFilter: 'all', text: '' };
+
+const _RECON_KIND_LABEL = {
+  field_change: 'Changed',
+  entry_added: 'Added (in LOW only)',
+  entry_removed: 'Removed (in data only)',
+  room_move: 'Moved room',
+  section_rename: 'Room renamed',
+};
+const _RECON_SEV_BADGE = { high: 'badge-removed', medium: 'badge-changed', info: 'badge-unchanged' };
+
+function initReconcilePanel(importId, templates) {
+  const sel = document.getElementById('reconcile-tmpl');
+  if (sel) {
+    const last = localStorage.getItem('catalogue_last_template') || '';
+    sel.innerHTML = (templates && templates.length)
+      ? templates.map(t => `<option value="${esc(t.id)}"${t.id === last ? ' selected' : ''}>${esc(t.name)}</option>`).join('')
+      : '<option value="">Default config</option>';
+  }
+  document.getElementById('reconcile-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('reconcile-file').files[0];
+    if (file) await handleReconcileUpload(importId, file);
+  });
+  loadReconcileSnapshots(importId);
+}
+
+async function handleReconcileUpload(importId, file) {
+  const statusEl = document.getElementById('reconcile-status');
+  const btn = document.querySelector('#reconcile-form .btn-primary');
+  const restore = btnLoading(btn, 'Reconciling');
+  const tid = document.getElementById('reconcile-tmpl')?.value || '';
+  if (tid) localStorage.setItem('catalogue_last_template', tid);
+  statusEl.textContent = 'Uploading & reconciling…';
+  statusEl.className = 'status-msg';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    let path = `/imports/${importId}/low-tag-snapshots`;
+    if (tid) path += `?template_id=${encodeURIComponent(tid)}`;
+    const res = await fetch(path, { method: 'POST', body: form, headers: _apiHeaders() });
+    if (res.status === 401) { renderLogin('Your session has expired. Please log in again.'); return; }
+    if (!res.ok) { const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    statusEl.textContent = '';
+    document.getElementById('reconcile-file').value = '';
+    showToast('Reconciled', 'success', 2500);
+    await loadReconcileSnapshots(importId, data.snapshot.id);
+    _renderReconcileResults(importId, data.snapshot, data.diff);
+  } catch (err) {
+    statusEl.textContent = `Reconcile failed: ${err.message}`;
+    statusEl.className = 'status-msg error';
+  } finally {
+    restore();
+  }
+}
+
+async function loadReconcileSnapshots(importId, activeId) {
+  const el = document.getElementById('reconcile-history');
+  if (!el) return;
+  try {
+    const snaps = await api('GET', `/imports/${importId}/low-tag-snapshots`);
+    if (!snaps.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="muted" style="font-size:12px;margin:8px 0 4px">Uploaded files:</div>
+      <div class="reconcile-history-list">` + snaps.map(s => `
+        <span class="recon-snap${s.id === activeId ? ' active' : ''}">
+          <a href="#" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(s.id)}');return false" title="Uploaded ${esc(formatDate(s.uploaded_at))}">${esc(s.filename || 'snapshot')}</a>
+          ${ifEditor(`<button class="recon-snap-del" title="Delete" onclick="deleteReconcileSnapshot('${esc(importId)}','${esc(s.id)}')">×</button>`)}
+        </span>`).join('') + `</div>`;
+  } catch (e) { el.innerHTML = ''; }
+}
+
+async function viewReconcileSnapshot(importId, sid) {
+  const results = document.getElementById('reconcile-results');
+  if (results) results.innerHTML = '<p class="loading">Recomputing…</p>';
+  try {
+    const data = await api('GET', `/imports/${importId}/low-tag-snapshots/${sid}`);
+    await loadReconcileSnapshots(importId, sid);
+    _renderReconcileResults(importId, data.snapshot, data.diff);
+  } catch (e) {
+    if (results) results.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
+}
+
+async function deleteReconcileSnapshot(importId, sid) {
+  if (!confirm('Delete this reconciliation snapshot?')) return;
+  try {
+    await api('DELETE', `/imports/${importId}/low-tag-snapshots/${sid}`);
+    showToast('Snapshot deleted', 'success', 2000);
+    if (_reconState.snapshot && _reconState.snapshot.id === sid) {
+      document.getElementById('reconcile-results').innerHTML = '';
+      _reconState = { importId: null, snapshot: null, diff: null, sevFilter: 'all', text: '' };
+    }
+    await loadReconcileSnapshots(importId);
+  } catch (e) { showToast(`Delete failed: ${e.message}`, 'error'); }
+}
+
+function _renderReconcileResults(importId, snapshot, diff) {
+  _reconState = { importId, snapshot, diff, sevFilter: 'all', text: '' };
+  _paintReconcile();
+}
+
+function setReconSevFilter(sev) { _reconState.sevFilter = sev; _paintReconcile(); }
+function setReconTextFilter(v) { _reconState.text = v || ''; _paintReconGroups(); }
+
+function _paintReconcile() {
+  const el = document.getElementById('reconcile-results');
+  if (!el || !_reconState.diff) return;
+  const { diff, snapshot, importId, sevFilter, text } = _reconState;
+  const all = diff.findings || [];
+  const counts = diff.counts || {};
+
+  const parts = ['<div class="diff-result" style="margin-top:14px">'];
+  (diff.warnings || []).forEach(w =>
+    parts.push(`<p class="status-msg warning" style="margin:0 0 8px">⚠ ${esc(w)}</p>`));
+
+  const summary = `${counts.matched ?? 0} matched · ${all.length} difference${all.length === 1 ? '' : 's'}`
+    + (counts.suppressed_cosmetic ? ` · ${counts.suppressed_cosmetic} cosmetic hidden` : '')
+    + ` · parsed ${diff.parsed_entries}/${diff.db_entries}`;
+  parts.push(`<p class="diff-summary" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span>${esc(summary)}</span>
+    <button class="btn btn-xs btn-secondary" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(snapshot.id)}')">Re-check against current data</button>
+  </p>`);
+
+  if (!all.length) {
+    parts.push('<div class="diff-ok" style="padding:10px 12px;border-radius:6px;margin-top:6px"><p style="margin:0">✓ No outstanding differences — this data matches the corrected LOW.</p></div></div>');
+    el.innerHTML = parts.join('');
+    return;
+  }
+
+  const sevCounts = { high: 0, medium: 0, info: 0 };
+  all.forEach(f => { sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1; });
+  const sevBtn = (key, label) =>
+    `<button class="recon-filter${sevFilter === key ? ' active' : ''}" onclick="setReconSevFilter('${key}')">${label}${key !== 'all' ? ` (${sevCounts[key] || 0})` : ''}</button>`;
+  parts.push(`<div class="recon-filters">
+    ${sevBtn('all', 'All')}${sevBtn('high', 'High')}${sevBtn('medium', 'Medium')}${sevBtn('info', 'Info')}
+    <input type="text" id="recon-text-filter" class="works-filter-input" placeholder="Filter by cat no / field / room…" oninput="setReconTextFilter(this.value)" value="${esc(text)}">
+  </div>`);
+  parts.push('<div id="recon-groups"></div></div>');
+  el.innerHTML = parts.join('');
+  _paintReconGroups();
+}
+
+function _paintReconGroups() {
+  const host = document.getElementById('recon-groups');
+  if (!host || !_reconState.diff) return;
+  const { diff, sevFilter, text } = _reconState;
+  const t = (text || '').toLowerCase();
+  const filtered = (diff.findings || []).filter(f => {
+    if (sevFilter !== 'all' && f.severity !== sevFilter) return false;
+    if (t) {
+      const hay = `${f.cat_no || ''} ${f.field || ''} ${f.section || ''} ${f.db_value || ''} ${f.low_value || ''}`.toLowerCase();
+      if (!hay.includes(t)) return false;
+    }
+    return true;
+  });
+  if (!filtered.length) {
+    host.innerHTML = '<p class="muted" style="margin:8px 0">No differences match the current filter.</p>';
+    return;
+  }
+  const structural = filtered.filter(f => f.fix_channel === 'spreadsheet');
+  const textual = filtered.filter(f => f.fix_channel === 'override');
+  host.innerHTML =
+    _reconTaskGroup('1', 'Fix in the source spreadsheet, then re-import',
+      'Work numbers, gallery moves and added/removed works can’t be set as overrides — correct them in the spreadsheet and use Update Import above.', structural)
+    + _reconTaskGroup('2', 'Apply as per-work overrides',
+      'Text changes — open the work below and set the override. Best done after the re-import is settled.', textual);
+}
+
+function _reconTaskGroup(num, title, hint, findings) {
+  if (!findings.length) return '';
+  const rows = findings.map(f => {
+    const what = f.field ? `<code>${esc(f.field)}</code>` : esc(_RECON_KIND_LABEL[f.kind] || f.kind);
+    const sevBadge = `<span class="badge ${_RECON_SEV_BADGE[f.severity] || 'badge-unchanged'}">${esc(f.severity)}</span>`;
+    const dbv = (f.db_value != null && f.db_value !== '') ? `<span class="diff-old">${esc(String(f.db_value))}</span>` : '<span class="muted">—</span>';
+    const lowv = (f.low_value != null && f.low_value !== '') ? `<span class="diff-new">${esc(String(f.low_value))}</span>` : '<span class="muted">—</span>';
+    return `<tr>
+      <td class="diff-catno">${esc(f.cat_no ?? '—')}</td>
+      <td>${what}</td>
+      <td>${dbv}</td>
+      <td>${lowv}</td>
+      <td>${esc(f.section ?? '')}</td>
+      <td>${sevBadge}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="recon-task">
+    <h4 class="diff-heading"><span class="recon-task-num">${num}</span> ${esc(title)} <span class="muted">(${findings.length})</span></h4>
+    <p class="muted" style="font-size:12px;margin:0 0 6px">${hint}</p>
+    <table class="data-table diff-table"><thead><tr><th>Cat No</th><th>What</th><th>In data</th><th>In LOW</th><th>Room</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+  </div>`;
 }
 
 // ---------------------------------------------------------------------------

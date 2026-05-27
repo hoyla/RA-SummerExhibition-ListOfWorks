@@ -1019,6 +1019,20 @@ details.section-block[open] > .section-summary::before {
 .diff-row-added td { background: #f0faf0; }
 .diff-row-removed td { background: #fde8e8; text-decoration: line-through; color: #999; }
 
+/* Reconcile corrected LOW */
+.reconcile-history-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.recon-snap { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid #ddd; border-radius: 12px; background: #fafafa; font-size: 12px; }
+.recon-snap.active { background: #eef5ff; border-color: #a4c3f5; }
+.recon-snap a { text-decoration: none; }
+.recon-snap-del { border: none; background: none; color: #a31515; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+.recon-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+.recon-filter { font-size: 12px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 12px; background: #fff; cursor: pointer; }
+.recon-filter:hover { background: #f0f0f0; }
+.recon-filter.active { background: #1a56db; color: #fff; border-color: #1a56db; }
+.recon-filters .works-filter-input { margin-left: auto; max-width: 260px; }
+.recon-task { margin-top: 14px; }
+.recon-task-num { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; background: #1a56db; color: #fff; border-radius: 50%; font-size: 12px; }
+
 /* RA surname indicator — shows that the surname word will be set in
    the "RA Member Cap Surname" character style in the exported file */
 .idx-ra-styled {
