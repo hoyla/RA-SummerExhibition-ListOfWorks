@@ -41,6 +41,12 @@ class ComponentConfig:
     )
     next_component_position: str = "end_of_text"  # "end_of_text" | "end_of_first_line"
     balance_lines: bool = False  # narrow column to equalise line lengths
+    # When set, this component opens a NEW paragraph with this paragraph style
+    # (the LPG model: one element per paragraph). When empty/None it stays inline
+    # in the current paragraph using separator_after (the LOW model). Choosing a
+    # paragraph style *is* the hard return before the element — the two are one
+    # decision. A component may still carry a character style (per-field) as well.
+    paragraph_style: Optional[str] = None
 
 
 DEFAULT_COMPONENTS: List[ComponentConfig] = [
@@ -96,6 +102,7 @@ class ExportConfig:
                 c.max_line_chars,
                 c.next_component_position,
                 c.balance_lines,
+                c.paragraph_style,
             )
             for c in DEFAULT_COMPONENTS
         ]
@@ -440,66 +447,126 @@ def _fmt_price(amount, config: "ExportConfig") -> str:
 # ---------------------------------------------------------------------------
 
 
+def _compute_component_values(w: dict, config: "ExportConfig") -> dict:
+    """Pre-compute the styled tagged-text value for every component field of a
+    work. Shared by both the inline (LOW) and paragraphed (LPG) render paths so
+    formatting — honorifics, price, edition brackets — is identical across
+    layouts."""
+    artist = _cs(config.artist_style, w["artist"])
+    if w["honorifics"]:
+        hon_text = (
+            w["honorifics"].lower() if config.honorifics_lowercase else w["honorifics"]
+        )
+        artist += " " + _cs(config.honorifics_style, hon_text)
+
+    if w["price_numeric"]:
+        raw_price = _fmt_price(w["price_numeric"], config)
+    elif w["price_text"]:
+        raw_price = w["price_text"]
+    else:
+        raw_price = ""
+
+    edition_display = ""
+    if w["edition_total"] and w["edition_price_numeric"]:
+        inner = (
+            f"{config.edition_prefix} {w['edition_total']}"
+            f" at {_fmt_price(w['edition_price_numeric'], config)}"
+        )
+        edition_display = f"({inner})" if config.edition_brackets else inner
+    elif w["edition_total"]:
+        inner = f"{config.edition_prefix} {w['edition_total']}"
+        edition_display = f"({inner})" if config.edition_brackets else inner
+
+    return {
+        "work_number": _cs(config.cat_no_style, w["number"] or ""),
+        "artist": artist,
+        "title": _cs(config.title_style, w["title"]),
+        "edition": _cs(config.edition_style, edition_display),
+        "artwork": _cs(
+            config.artwork_style, str(w["artwork"]) if w["artwork"] else ""
+        ),
+        "price": _cs(config.price_style, raw_price),
+        "medium": _cs(config.medium_style, w["medium"] or ""),
+    }
+
+
+def _render_entry_paragraphed(
+    enabled_comps: List[ComponentConfig], comp_values: dict, config: "ExportConfig"
+) -> str:
+    """Render one work as a sequence of paragraphs (the LPG model).
+
+    Components are grouped into paragraphs: the first component, and any
+    component carrying a ``paragraph_style``, opens a new paragraph; components
+    without one continue the current paragraph (separated by the previous
+    component's ``separator_after``). A paragraph whose every component is empty
+    and omit-when-empty is dropped entirely (e.g. the conditional edition line).
+    Character styles still come from the per-field style, so honorifics remain
+    an inline run inside the artist paragraph.
+    """
+    # Group into [(para_style, [components])].
+    groups: list[tuple[str, list[ComponentConfig]]] = []
+    for comp in enabled_comps:
+        if comp.paragraph_style or not groups:
+            groups.append((comp.paragraph_style or config.entry_style, []))
+        groups[-1][1].append(comp)
+
+    paragraphs: list[str] = []
+    for para_style, comps in groups:
+        body = ""
+        any_content = False
+        for i, comp in enumerate(comps):
+            if i > 0:
+                body += _sep(comps[i - 1].separator_after, para_style)
+            val = comp_values.get(comp.field, "")
+            if val:
+                body += val
+                any_content = True
+        # Drop a paragraph that has no content and is entirely optional.
+        if not any_content and all(c.omit_sep_when_empty for c in comps):
+            continue
+        paragraphs.append(f"<ParaStyle:{para_style}>{body}")
+
+    return "\r".join(paragraphs)
+
+
 def render_import_as_tagged_text(
     import_id, db: Session, config: ExportConfig = DEFAULT_CONFIG, section_id=None
 ) -> str:
     """
     Render a full Import (or single section) as InDesign Tagged Text.
     Component order and separators are driven by config.components.
+
+    Two layouts share this one config model:
+      - inline (LOW): all components in one ``entry_style`` paragraph, separated
+        by tabs / soft returns and wrapped in character styles;
+      - paragraphed (LPG): each element in its own paragraph style. Selected
+        automatically when any component declares a ``paragraph_style``.
     """
     sections = _collect_export_data(import_id, db, section_id=section_id)
     lines = ["<ASCII-MAC>\r"]
+    paragraphed = any(c.paragraph_style for c in config.components if c.enabled)
 
     for sec_idx, section in enumerate(sections):
-        lines.append(f"<ParaStyle:{config.section_style}>{section['section_name']}")
-        lines.append("\r")
+        # A blank section_style suppresses the heading (LPG per-room files have none).
+        if config.section_style:
+            lines.append(
+                f"<ParaStyle:{config.section_style}>{section['section_name']}"
+            )
+            lines.append("\r")
 
         for w in section["works"]:
-            # Pre-compute the value for every possible component field
-            artist = _cs(config.artist_style, w["artist"])
-            if w["honorifics"]:
-                hon_text = (
-                    w["honorifics"].lower()
-                    if config.honorifics_lowercase
-                    else w["honorifics"]
-                )
-                artist += " " + _cs(config.honorifics_style, hon_text)
+            comp_values = _compute_component_values(w, config)
+            enabled_comps = [c for c in config.components if c.enabled]
 
-            if w["price_numeric"]:
-                raw_price = _fmt_price(w["price_numeric"], config)
-            elif w["price_text"]:
-                raw_price = w["price_text"]
-            else:
-                raw_price = ""
+            if paragraphed:
+                lines.append(_render_entry_paragraphed(enabled_comps, comp_values, config))
+                lines.append("\r")
+                continue
 
-            edition_display = ""
-            if w["edition_total"] and w["edition_price_numeric"]:
-                inner = (
-                    f"{config.edition_prefix} {w['edition_total']}"
-                    f" at {_fmt_price(w['edition_price_numeric'], config)}"
-                )
-                edition_display = f"({inner})" if config.edition_brackets else inner
-            elif w["edition_total"]:
-                inner = f"{config.edition_prefix} {w['edition_total']}"
-                edition_display = f"({inner})" if config.edition_brackets else inner
-
-            comp_values: dict[str, str] = {
-                "work_number": _cs(config.cat_no_style, w["number"] or ""),
-                "artist": artist,
-                "title": _cs(config.title_style, w["title"]),
-                "edition": _cs(config.edition_style, edition_display),
-                "artwork": _cs(
-                    config.artwork_style, str(w["artwork"]) if w["artwork"] else ""
-                ),
-                "price": _cs(config.price_style, raw_price),
-                "medium": _cs(config.medium_style, w["medium"] or ""),
-            }
-
-            # Build entry from ordered components
+            # Build entry from ordered components (inline LOW model)
             entry = f"<ParaStyle:{config.entry_style}>"
             entry += _sep(config.leading_separator, config.entry_style)
 
-            enabled_comps = [c for c in config.components if c.enabled]
             skip_fields = set()
 
             # Pre-compute separator override: when the last component is omitted,

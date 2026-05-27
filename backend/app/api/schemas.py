@@ -274,6 +274,9 @@ class ComponentConfigIn(BaseModel):
     max_line_chars: int | None = None
     next_component_position: str = "end_of_text"
     balance_lines: bool = False
+    # When set, this component opens a new paragraph with this paragraph style
+    # (LPG model). Empty/None keeps it inline (LOW model).
+    paragraph_style: str | None = None
 
 
 class TemplateBodyIn(BaseModel):

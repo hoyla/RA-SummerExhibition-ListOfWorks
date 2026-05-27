@@ -52,6 +52,7 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
                 "max_line_chars": c.max_line_chars,
                 "next_component_position": c.next_component_position,
                 "balance_lines": c.balance_lines,
+                "paragraph_style": c.paragraph_style,
             }
             for c in DEFAULT_COMPONENTS
         ],
@@ -82,6 +83,9 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
                 c.get("balance_lines", False)
                 if isinstance(c, dict)
                 else c.balance_lines
+            ),
+            paragraph_style=(
+                c.get("paragraph_style") if isinstance(c, dict) else c.paragraph_style
             ),
         )
         for c in raw_components
