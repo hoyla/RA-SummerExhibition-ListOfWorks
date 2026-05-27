@@ -1020,11 +1020,24 @@ details.section-block[open] > .section-summary::before {
 .diff-row-removed td { background: #fde8e8; text-decoration: line-through; color: #999; }
 
 /* Tools panel (collapsed by default to keep the Works list near the top) */
-.tools-panel > .section-summary h3 { margin: 0; }
-.tools-panel[open] > .section-summary::before { transform: rotate(90deg); }
-.tools-body { margin-top: 14px; }
-.tool-block + .tool-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid #eee; }
-.tool-block h4 { margin: 0 0 8px; }
+details.tools-panel[open] > .section-summary::before { transform: rotate(90deg); }
+.tools-body {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.tool-block {
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  padding: 14px;
+  background: #fcfcfc;
+}
+.tool-block h4 { margin: 0 0 10px; font-size: 14px; }
+/* Reconcile results span the full width below the three tool cards */
+.tool-output { grid-column: 1 / -1; }
+.tool-output:empty { display: none; }
 
 /* Reconcile corrected LOW */
 .reconcile-history-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }

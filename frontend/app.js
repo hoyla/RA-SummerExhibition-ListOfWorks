@@ -3123,7 +3123,7 @@ async function renderDetail(importId) {
     <div class="breadcrumb"><a href="#/">\u2190 All Imports</a></div>
     <h2 class="page-heading" id="detail-heading">Loading\u2026</h2>
     <details class="panel tools-panel">
-      <summary class="section-summary"><h3>Tools</h3><span class="muted" style="font-size:12px">Export \u00b7 Update import \u00b7 Reconcile</span></summary>
+      <summary class="section-summary"><span class="section-name">Tools</span></summary>
       <div class="tools-body">
         <section class="tool-block">
           <h4>Export</h4>
@@ -3149,9 +3149,11 @@ async function renderDetail(importId) {
             <button type="submit" class="btn btn-primary">Reconcile</button>
           </form>
           <p id="reconcile-status" class="status-msg" style="margin-top:6px"></p>
+        </section>`)}
+        ${ifEditor(`<div class="tool-output">
           <div id="reconcile-history" class="reconcile-history"></div>
           <div id="reconcile-results"></div>
-        </section>`)}
+        </div>`)}
       </div>
     </details>
     <section class="panel" id="warnings-panel"><p class="loading">Loading flagged issues\u2026</p></section>
