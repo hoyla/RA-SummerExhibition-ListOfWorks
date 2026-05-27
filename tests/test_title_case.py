@@ -12,6 +12,7 @@ import pytest
 from backend.app.services.normalisation_service import (
     DEFAULT_TITLE_CASE_EXCEPTIONS,
     normalise_work,
+    title_case_preserved_tokens,
     to_title_case,
 )
 from backend.app.services.override_service import resolve_effective_work
@@ -59,6 +60,45 @@ def test_intentional_mixed_case_preserved():
 def test_empty_and_none_pass_through():
     assert to_title_case("") == ""
     assert to_title_case(None) is None
+
+
+# ---------------------------------------------------------------------------
+# title_case_preserved_tokens (the false-positive detector)
+# ---------------------------------------------------------------------------
+
+
+def test_preserved_tokens_classifies_roman():
+    assert title_case_preserved_tokens("DIALOGUE II") == [("II", "roman_numeral")]
+
+
+def test_preserved_tokens_classifies_exception():
+    out = title_case_preserved_tokens("NYC SKYLINE", ["NYC"])
+    assert out == [("NYC", "exception")]
+
+
+def test_preserved_tokens_emits_canonical_exception_casing():
+    # The emitted token uses the exception's stored form, not the input's.
+    out = title_case_preserved_tokens("THE MoMA SHOW", ["MoMA"])
+    assert out == [("MoMA", "exception")]
+
+
+def test_preserved_tokens_dedupes_within_title():
+    assert title_case_preserved_tokens("WAVE II AND WAVE II") == [
+        ("II", "roman_numeral")
+    ]
+
+
+def test_preserved_tokens_empty_for_clean_title():
+    assert title_case_preserved_tokens("THE POSSIBILITY OF AN ISLAND") == []
+
+
+def test_preserved_tokens_skips_roman_denylist():
+    assert title_case_preserved_tokens("THE MIX") == []
+
+
+def test_preserved_tokens_none_and_empty():
+    assert title_case_preserved_tokens("") == []
+    assert title_case_preserved_tokens(None) == []
 
 
 # ---------------------------------------------------------------------------

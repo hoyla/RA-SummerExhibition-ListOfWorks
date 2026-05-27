@@ -208,6 +208,53 @@ def _looks_roman(core: str) -> bool:
     )
 
 
+def _title_token_reason(word: str, canon: dict) -> Tuple[str, Optional[str]]:
+    """Classify a single word for title-casing.
+
+    Returns ``(core, reason)`` where ``core`` is the word stripped of leading/
+    trailing punctuation and ``reason`` is ``"exception"`` (matched the curated
+    exceptions list), ``"roman_numeral"`` (matched the Roman pattern), or
+    ``None`` (no rule applies — let titlecase decide). ``canon`` maps an
+    upper-cased exception to its emitted form.
+
+    Single source of truth shared by :func:`to_title_case` (which acts on the
+    result) and :func:`title_case_preserved_tokens` (which reports it), so the
+    two can never drift.
+    """
+    core = re.sub(r"^[^0-9A-Za-z]+|[^0-9A-Za-z]+$", "", word)
+    if not core:
+        return "", None
+    if core.upper() in canon:
+        return core, "exception"
+    if _looks_roman(core):
+        return core, "roman_numeral"
+    return core, None
+
+
+def title_case_preserved_tokens(
+    text, exceptions: Optional[List[str]] = None
+) -> List[Tuple[str, str]]:
+    """Tokens that :func:`to_title_case` keeps uppercase, as ``(token, reason)``.
+
+    ``reason`` is ``"exception"`` or ``"roman_numeral"``. Order-preserving and
+    de-duplicated within the string. Used to flag potential false positives
+    (a real word matching the Roman pattern, or a stray exception hit like the
+    article "la" matching an "LA" exception) without re-implementing the rule.
+    """
+    if not text:
+        return []
+    canon = {e.upper(): e for e in (exceptions or []) if e}
+    out: List[Tuple[str, str]] = []
+    seen: Set[str] = set()
+    for word in str(text).split():
+        core, reason = _title_token_reason(word, canon)
+        if reason and core.upper() not in seen:
+            seen.add(core.upper())
+            display = canon[core.upper()] if reason == "exception" else core.upper()
+            out.append((display, reason))
+    return out
+
+
 def to_title_case(text, exceptions: Optional[List[str]] = None):
     """Best-effort Title Case for a display string.
 
@@ -230,12 +277,10 @@ def to_title_case(text, exceptions: Optional[List[str]] = None):
     canon = {e.upper(): e for e in (exceptions or []) if e}
 
     def _callback(word, **kwargs):
-        core = re.sub(r"^[^0-9A-Za-z]+|[^0-9A-Za-z]+$", "", word)
-        if not core:
-            return None
-        if core.upper() in canon:
+        core, reason = _title_token_reason(word, canon)
+        if reason == "exception":
             return word.replace(core, canon[core.upper()])
-        if _looks_roman(core):
+        if reason == "roman_numeral":
             return word.replace(core, core.upper())
         return None  # let titlecase decide
 
@@ -310,11 +355,14 @@ def normalise_work(
 
 
 def collect_work_warnings(
-    work, edition_suppress_max: int = DEFAULT_EDITION_SUPPRESS_MAX
+    work,
+    edition_suppress_max: int = DEFAULT_EDITION_SUPPRESS_MAX,
+    title_case_exceptions: Optional[List[str]] = None,
 ) -> List[Tuple[str, str]]:
     """
     Inspect a normalised Work and return a list of (warning_type, message) tuples.
-    Must be called after normalise_work() with the *same* edition_suppress_max.
+    Must be called after normalise_work() with the *same* edition_suppress_max
+    and title_case_exceptions.
 
     Warning types:
       whitespace_trimmed     – leading/trailing whitespace removed from fields
@@ -328,6 +376,10 @@ def collect_work_warnings(
       edition_suppressed_no_price – HIGH: a suppressed edition was the work's only
                                 price; its value should be restored via an override
       non_ascii_characters    – normalised fields contain chars outside ASCII-128
+      title_case_roman        – title-casing kept a token uppercase as a Roman
+                                numeral (review: it might be a real word)
+      title_case_exception    – title-casing kept a token uppercase via the
+                                exceptions list (review for false positives)
     """
     warnings: List[Tuple[str, str]] = []
 
@@ -447,5 +499,37 @@ def collect_work_warnings(
                 + "; ".join(non_ascii_hits),
             )
         )
+
+    # Title-case preservations — tokens the title-casing rule kept uppercase in
+    # the derived title_cased field. Surfaced (split by reason) so staff can spot
+    # false positives: a real word that matched the Roman-numeral pattern, or a
+    # stray exceptions-list hit such as the article "la" matching an "LA" entry.
+    if getattr(work, "title", None):
+        tc_exceptions = (
+            title_case_exceptions
+            if title_case_exceptions is not None
+            else DEFAULT_TITLE_CASE_EXCEPTIONS
+        )
+        preserved = title_case_preserved_tokens(work.title, tc_exceptions)
+        roman = [t for t, r in preserved if r == "roman_numeral"]
+        exc = [t for t, r in preserved if r == "exception"]
+        if roman:
+            warnings.append(
+                (
+                    "title_case_roman",
+                    "Title case kept as a Roman numeral: "
+                    + ", ".join(roman)
+                    + " — review in case it is a word.",
+                )
+            )
+        if exc:
+            warnings.append(
+                (
+                    "title_case_exception",
+                    "Title case kept uppercase via the exceptions list: "
+                    + ", ".join(exc)
+                    + " — review for false positives.",
+                )
+            )
 
     return warnings

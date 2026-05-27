@@ -215,7 +215,9 @@ def import_excel(
 
         # Collect and store work-level validation warnings
         for warning_type, message in collect_work_warnings(
-            work, edition_suppress_max=edition_suppress_max
+            work,
+            edition_suppress_max=edition_suppress_max,
+            title_case_exceptions=title_case_exceptions,
         ):
             db.add(
                 ValidationWarning(
@@ -440,7 +442,9 @@ def reimport_excel(
 
         # Work-level validation warnings
         for warning_type, message in collect_work_warnings(
-            work, edition_suppress_max=edition_suppress_max
+            work,
+            edition_suppress_max=edition_suppress_max,
+            title_case_exceptions=title_case_exceptions,
         ):
             db.add(
                 ValidationWarning(
