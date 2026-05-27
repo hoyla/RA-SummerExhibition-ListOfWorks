@@ -1055,14 +1055,59 @@ async function renderAuditLog() {
 // Settings page
 // ---------------------------------------------------------------------------
 
+// Read-only "Reconciliation" settings panel, rendered from the actual
+// LowDiffConfig defaults (via /reconcile-config) so the surfaced rules can't
+// drift from what the diff does. Not yet editable.
+function _reconcileRulesPanel(rc) {
+  const sevBadge = (s) => `<span class="badge ${_RECON_SEV_BADGE[s] || 'badge-unchanged'}">${esc(s)}</span>`;
+  const chan = (c) => c === 'override' ? 'Per-work override'
+    : c === 'spreadsheet' ? 'Spreadsheet re-import' : esc(c || '');
+  const sev = (rc && rc.severity) || {};
+  const fc  = (rc && rc.fix_channel) || {};
+  const rows = [
+    ['Text field changed',            sev.field_change_default || 'medium', fc.field_change   || 'override'],
+    ['Added (in LOW, not in data)',   sev.entry_added          || 'high',   fc.entry_added    || 'spreadsheet'],
+    ['Removed (in data, not in LOW)', sev.entry_removed        || 'high',   fc.entry_removed  || 'spreadsheet'],
+    ['Moved to another room',         sev.room_move            || 'high',   fc.room_move      || 'spreadsheet'],
+    ['Room renamed',                  sev.section_rename       || 'info',   fc.section_rename || 'spreadsheet'],
+  ];
+  const cosmetic = rc ? rc.suppress_cosmetic : true;
+  const fold     = rc ? rc.fold_typographic : true;
+  return `
+    <h3 class="settings-group-heading">Reconciliation</h3>
+    <p class="settings-group-desc">How a corrected InDesign export is compared with the data when you reconcile a List of Works import. Read-only for now.</p>
+    <section class="panel">
+      <h4 class="panel-subheading">Matching</h4>
+      <ul class="form-hint" style="margin:0;padding-left:18px;line-height:1.7">
+        <li>Entries are matched by <strong>catalogue number</strong>.</li>
+        <li>Rooms are aligned by <strong>shared catalogue numbers</strong>, not heading text &mdash; so a renamed gallery doesn&rsquo;t read as every work moving.</li>
+        <li>A renumbered work appears as one <em>removed</em> plus one <em>added</em>.</li>
+      </ul>
+    </section>
+    <section class="panel">
+      <h4 class="panel-subheading">Significance &amp; routing</h4>
+      <table class="data-table">
+        <thead><tr><th>Difference</th><th>Severity</th><th>Resolve via</th></tr></thead>
+        <tbody>
+          ${rows.map(([label, s, c]) => `<tr><td>${esc(label)}</td><td>${sevBadge(s)}</td><td>${chan(c)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h4 class="panel-subheading">Cosmetic differences</h4>
+      <p class="form-hint" style="margin:0">Differences that vanish after normalisation are ${cosmetic ? 'hidden by default (but viewable)' : 'shown'}: collapsed whitespace and line breaks${fold ? ', plus smart vs straight quotes treated as equal' : ''}. They are never counted as significant findings.</p>
+    </section>`;
+}
+
 async function renderSettings() {
   const app = document.getElementById('app');
   app.innerHTML = '<p class="loading" style="padding:40px 0">Loading settings&hellip;</p>';
-  let cfg, knownArtists;
+  let cfg, knownArtists, reconcileCfg;
   try {
-    [cfg, knownArtists] = await Promise.all([
+    [cfg, knownArtists, reconcileCfg] = await Promise.all([
       api('GET', '/config'),
       api('GET', '/known-artists'),
+      api('GET', '/reconcile-config').catch(() => null),
     ]);
   } catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
 
@@ -1173,6 +1218,22 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
+      <h4 class="panel-subheading">What&rsquo;s normalised automatically</h4>
+      <p class="form-hint" style="margin:0 0 10px">Deterministic rules applied to every imported value. The raw spreadsheet value is always preserved alongside the normalised one.</p>
+      <table class="data-table">
+        <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td>Price</td><td>Currency symbols and separators stripped to a number. A value with no parseable number (e.g. <code>NFS</code>, <code>_</code>) is kept as-is; a blank or missing price becomes <code>*</code>.</td></tr>
+          <tr><td>Edition</td><td>Parsed from <code>Edition of N</code> or <code>Edition of N at &pound;Y</code>; <code>Edition of 0</code> is suppressed.</td></tr>
+          <tr><td>Honorifics</td><td>Recognised tokens (above) are split from the end of the artist name into a separate field.</td></tr>
+          <tr><td>Whitespace</td><td>Leading/trailing whitespace trimmed from every field (flagged on the work).</td></tr>
+          <tr><td>Artwork</td><td>Parsed to an integer number of pieces.</td></tr>
+          <tr><td>Title, Medium</td><td>Trimmed; otherwise preserved verbatim.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:12px">
         <h4 class="panel-subheading" style="margin:0">Known Artists</h4>
         <div style="display:flex;align-items:center;gap:6px">
@@ -1187,7 +1248,8 @@ async function renderSettings() {
         ${knownArtists.map(ka => _knownArtistCard(ka)).join('')}
       </div>
       <span id="known-artists-status" class="status-msg" style="display:block;margin-top:8px"></span>
-    </section>`;
+    </section>
+    ${_reconcileRulesPanel(reconcileCfg)}`;
 
   // Populate Index Name previews now that the DOM is ready
   _refreshAllKaPreviews();

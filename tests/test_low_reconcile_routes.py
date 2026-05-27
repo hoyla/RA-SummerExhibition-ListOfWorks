@@ -184,3 +184,15 @@ def test_delete_snapshot(client, db_session):
     assert client.delete(f"/imports/{imp.id}/low-tag-snapshots/{sid}").status_code == 200
     assert client.get(f"/imports/{imp.id}/low-tag-snapshots").json() == []
     assert client.get(f"/imports/{imp.id}/low-tag-snapshots/{sid}").status_code == 404
+
+
+def test_reconcile_config_endpoint(client):
+    """The reconciliation policy is exposed read-only for the Settings page."""
+    r = client.get("/reconcile-config")
+    assert r.status_code == 200
+    cfg = r.json()
+    assert cfg["severity"]["entry_added"] == "high"
+    assert cfg["severity"]["field_change_default"] == "medium"
+    assert cfg["fix_channel"]["field_change"] == "override"
+    assert cfg["fix_channel"]["room_move"] == "spreadsheet"
+    assert cfg["suppress_cosmetic"] is True

@@ -33,9 +33,17 @@ from backend.app.services.export_renderer import (
     resolve_export_config,
 )
 from backend.app.services.low_tag_parser import parse_low_tags
-from backend.app.services.low_diff import diff_low
+from backend.app.services.low_diff import diff_low, LowDiffConfig
 
 router = APIRouter(tags=["reconcile"])
+
+
+@router.get("/reconcile-config")
+def get_reconcile_config():
+    """The reconciliation policy — significance tiers, fix channels, and cosmetic
+    suppression — for read-only display in Settings. Reflects the actual defaults
+    the diff uses, so the surfaced rules can't drift from behaviour."""
+    return asdict(LowDiffConfig())
 
 
 # ---------------------------------------------------------------------------
