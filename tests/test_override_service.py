@@ -100,6 +100,24 @@ def test_price_text_override_replaces_price_text():
     assert ew.price_text == "NFS"
 
 
+def test_price_text_override_suppresses_source_numeric():
+    """A non-empty price-text override wins for display: the source numeric is
+    suppressed so a footnoted price like "£60,000*" is what gets rendered."""
+    work = _make_work(price_numeric=Decimal("60000"), price_text="")
+    override = _make_override(price_text_override="£60,000*")
+    ew = resolve_effective_work(work, override)
+    assert ew.price_text == "£60,000*"
+    assert ew.price_numeric is None  # suppressed so the text renders
+
+
+def test_empty_price_text_override_does_not_suppress_numeric():
+    """Clearing the price text ("") must NOT suppress the numeric."""
+    work = _make_work(price_numeric=Decimal("1000"))
+    override = _make_override(price_text_override="")
+    ew = resolve_effective_work(work, override)
+    assert ew.price_numeric == Decimal("1000")
+
+
 def test_edition_total_override_replaces_edition():
     work = _make_work()
     override = _make_override(edition_total_override=10)
