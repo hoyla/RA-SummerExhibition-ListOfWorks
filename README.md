@@ -18,6 +18,8 @@ Supports two data products:
 
 ### List of Works
 
+<img width="100%" alt="Picture 370" src="https://github.com/user-attachments/assets/06b8670f-f297-47ed-bcca-8c61bc992af9" />
+
 - Excel upload and structured import model (Import → Section → Work)
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
 - **Admin-configurable normalisation rules**: honorific tokens, edition-suppression
@@ -39,6 +41,8 @@ Supports two data products:
   provenance — see [`docs/reconcile.md`](docs/reconcile.md)
 
 ### Artists Index
+
+<img width="100%" alt="index" src="https://github.com/user-attachments/assets/2d0fdfa4-75f5-4550-9e64-8a687641342a" />
 
 - Excel upload with automatic artist parsing and normalisation
 - RA member detection from qualifications

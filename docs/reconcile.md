@@ -9,6 +9,8 @@ this feature reads are documented in [`export_spec_v1.md`](./export_spec_v1.md);
 the services, endpoints, and data model are in
 [`architecture_v1.md`](./architecture_v1.md).
 
+<img width="100%" alt="reconciliation report" src="https://github.com/user-attachments/assets/551271df-5882-4d0c-8c11-821e330b2e9b" />
+
 ---
 
 ## 1. Why this exists
@@ -48,6 +50,9 @@ surface the data corrections, fold them in, then print the LPG.
 
 **Detection only.** The MVP identifies differences; it never auto-merges. A human
 resolves each one through the existing channels.
+
+<img width="100%" alt="work showing overrides and downstream indesign changes" src="https://github.com/user-attachments/assets/8ff93ed7-f8ed-49b4-8121-3fa83ddeabcb" />
+
 
 ## 3. Design decisions
 

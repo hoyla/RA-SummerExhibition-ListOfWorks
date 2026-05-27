@@ -38,6 +38,8 @@ Sections are separated by a blank line (bare `\r`).
 
 ## Component layout
 
+<img width="100%" alt="Picture 364" src="https://github.com/user-attachments/assets/38ddaa21-300a-439f-a8c0-637fb28f30ab" />
+
 The field order, separators, character styles, and **paragraph grouping** are all
 configurable via `ExportConfig`. One template model serves two layouts (see
 "Two layout models" below).
