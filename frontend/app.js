@@ -2801,247 +2801,561 @@ async function saveIndexTemplate(id) {
 // Template edit page
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Template editor — Entry Layout redesign (Claude Design handoff, ported to
+// vanilla JS). State-driven: the components list + entry-level config live in
+// `_te`; structural changes re-render the editor + live preview. Formatting /
+// section / honorifics stay as DOM inputs in disclosures, read on save.
+// ---------------------------------------------------------------------------
+
+const _TE_FIELD_LABEL = {
+  work_number: 'Work Number', artist: 'Artist', title: 'Title',
+  title_cased: 'Title Case Title', edition: 'Edition info',
+  artwork: 'Artwork number', price: 'Price', medium: 'Medium',
+};
+const _TE_FIELD_HINT = {
+  work_number: 'e.g. 1, 42, 117', artist: 'Honorifics + surname',
+  title: 'As supplied by the artist', title_cased: 'Forced to Title Case',
+  edition: 'e.g. edition of 10 at £500', artwork: 'Internal artwork no.',
+  price: '£1,500 / NFS / POA', medium: 'mixed media, oil on canvas…',
+};
+// Per-field character style lives in a flat config slot (unchanged data model).
+const _TE_CHAR_KEY = {
+  work_number: 'cat_no_style', artist: 'artist_style', title: 'title_style',
+  title_cased: 'title_cased_style', edition: 'edition_style',
+  artwork: 'artwork_style', price: 'price_style', medium: 'medium_style',
+};
+const _TE_SEPARATORS = [
+  { v: 'none',        glyph: '·', label: 'none' },
+  { v: 'space',       glyph: '·', label: 'space' },
+  { v: 'tab',         glyph: '→', label: 'tab' },
+  { v: 'right_tab',   glyph: '⇥', label: 'right-tab' },
+  { v: 'soft_return', glyph: '↵', label: 'soft return' },
+  { v: 'hard_return', glyph: '¶', label: 'hard return' },
+];
+const _TE_SAMPLES = {
+  standard:   { work_number:'1',  artist:'Nicola Turner', title:'The Meddling Fiend', title_cased:'The Meddling Fiend', edition:'(edition of 10 at £500)', price:'£5,000', medium:'mixed media', artwork:'RA-2025-0001' },
+  long_title: { work_number:'117', artist:'Sir Anish Kapoor RA', title:'Untitled (after the long shadow of an October afternoon, IV)', title_cased:'Untitled (After the Long Shadow of an October Afternoon, IV)', edition:'', price:'£42,000', medium:'pigment on aluminium, mounted in a poplar shadow-box', artwork:'RA-2025-0117' },
+  nfs:        { work_number:'42', artist:'Rana Begum', title:'No. 1124', title_cased:'No. 1124', edition:'', price:'NFS', medium:'powder-coated aluminium', artwork:'RA-2025-0042' },
+  empty_fields:{ work_number:'8', artist:'Eileen Cooper RA', title:'', title_cased:'', edition:'', price:'£3,200', medium:'charcoal on paper', artwork:'' },
+};
+const _TE_DEFAULT_COMPONENTS = [
+  { field:'work_number', separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'artist',      separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'title',       separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'title_cased', separator_after:'tab',  omit_sep_when_empty:true, enabled:false, max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'edition',     separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'artwork',     separator_after:'tab',  omit_sep_when_empty:true, enabled:false, max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'price',       separator_after:'none', omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'medium',      separator_after:'none', omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+];
+
+let _te = null;  // editor state (module-level so inline handlers can reach it)
+
+function _teAutoParaStyle(field) {
+  const m = { artist:'LPGARTIST', medium:'LPGMEDIUM', edition:'LPGEDITION', price:'LPGPRICE',
+              title:'LPGTITLE', title_cased:'LPGTITLE', work_number:'LPGTITLE', artwork:'LPGARTWORK' };
+  return m[field] || 'ParaStyle';
+}
+
+// Walk components; the first opens paragraph 1, any later one with a
+// paragraph_style opens a new paragraph, others append to the current.
+function _teComputeParagraphs(components) {
+  const groups = [];
+  let cur = null;
+  components.forEach((c, idx) => {
+    const opens = idx === 0 || !!c.paragraph_style;
+    if (opens) { cur = { paragraph_style: c.paragraph_style || null, items: [] }; groups.push(cur); }
+    cur.items.push({ comp: c, idx });
+  });
+  return groups;
+}
+
+// entry_style consolidation: a legacy first-element paragraph_style migrates
+// into entry_style (the single source of truth for paragraph 1's style).
+function _teNormalize() {
+  const first = _te.components[0];
+  if (first && first.paragraph_style) {
+    if (!_te.entry_style) _te.entry_style = first.paragraph_style;
+    first.paragraph_style = '';
+  }
+}
+
 async function renderTemplateEdit(id) {
   const app = document.getElementById('app');
   app.innerHTML = '<p class="loading" style="padding:40px 0">Loading&hellip;</p>';
-
   const isNew = id === 'new';
   let cfg = {};
   let isBuiltin = false;
-
   if (!isNew) {
     try { cfg = await api('GET', `/templates/${id}`); }
     catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
     isBuiltin = cfg.is_builtin ?? false;
   }
 
-  // helpers
-  const _sepOpts = (val) => [
-    ['none',         'none'],
-    ['space',        'space'],
-    ['tab',          'tab'],
-    ['right_tab',    'right-indent tab (uses tab stop)'],
-    ['soft_return',  'soft return (\\n)'],
-    ['hard_return',  'hard return'],
-  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
+  const saved = cfg.components ?? _TE_DEFAULT_COMPONENTS;
+  const savedFields = new Set(saved.map(c => c.field));
+  const merged = [...saved, ..._TE_DEFAULT_COMPONENTS.filter(c => !savedFields.has(c.field))];
+  const components = merged.map(c => ({
+    field: c.field,
+    separator_after: c.separator_after ?? 'none',
+    omit_sep_when_empty: c.omit_sep_when_empty ?? true,
+    enabled: c.enabled ?? true,
+    max_line_chars: c.max_line_chars ?? null,
+    next_component_position: c.next_component_position ?? 'end_of_text',
+    balance_lines: c.balance_lines ?? false,
+    paragraph_style: c.paragraph_style || '',
+    char_style: cfg[_TE_CHAR_KEY[c.field]] ?? '',
+  }));
 
-  const _sectionSepOpts = (val) => [
-    ['paragraph',    'Paragraph return (blank line)'],
-    ['column_break', 'Column break'],
-    ['frame_break',  'Frame break'],
-    ['page_break',   'Page break'],
-    ['none',         'None (continuous)'],
-  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
-
-  const sepOpts = (val) => [
-    [',', ', &nbsp; 1,000'],
-    ['.', '. &nbsp; 1.000'],
-    [' ', 'space &nbsp; 1 000'],
-    ['',  'none &nbsp; 1000'],
-  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
-
-  const dpOpts = (val) => [
-    ['0', '0 &mdash; 1,500'],
-    ['2', '2 &mdash; 1,500.00'],
-  ].map(([v, label]) => `<option value="${v}"${String(val) === v ? ' selected' : ''}>${label}</option>`).join('');
-
-  // components
-  const COMP_LABELS = {
-    work_number: 'Work Number', artist: 'Artist', title: 'Title',
-    title_cased: 'Title Case Title',
-    edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
+  _te = {
+    id, isNew, isBuiltin,
+    name: cfg.name ?? '',
+    entry_style: cfg.entry_style ?? 'CatalogueEntry',
+    section_style: cfg.section_style ?? 'SectionTitle',
+    section_styles: cfg.section_styles ?? [],
+    section_separator: cfg.section_separator ?? 'paragraph',
+    section_separator_style: cfg.section_separator_style ?? '',
+    leading_separator: cfg.leading_separator ?? 'none',
+    trailing_separator: cfg.trailing_separator ?? 'none',
+    final_sep_from_last_component: cfg.final_sep_from_last_component ?? false,
+    currency_symbol: cfg.currency_symbol ?? '£',
+    thousands_separator: cfg.thousands_separator ?? ',',
+    decimal_places: cfg.decimal_places ?? 0,
+    edition_prefix: cfg.edition_prefix ?? 'edition of',
+    edition_brackets: cfg.edition_brackets !== false,
+    honorifics_style: cfg.honorifics_style ?? '',
+    honorifics_lowercase: cfg.honorifics_lowercase ?? false,
+    components,
+    activeTab: 'preview',
+    sampleVariant: 'standard',
+    wrapOpen: new Set(),
   };
-  const defaultComponents = [
-    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-    {field:'title_cased',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false,paragraph_style:null},
-  ];
-  const savedComponents = cfg.components ?? defaultComponents;
-  const savedFields = new Set(savedComponents.map(c => c.field));
-  const mergedComponents = [
-    ...savedComponents,
-    ...defaultComponents.filter(c => !savedFields.has(c.field)),
-  ];
+  _teNormalize();
 
-  const ro = isBuiltin ? ' readonly disabled' : '';
-  const roCheck = isBuiltin ? ' disabled' : '';
-
-  const componentRowsHTML = mergedComponents.map(c => {
-    const label = COMP_LABELS[c.field] ?? c.field;
-    const enabled = c.enabled ?? true;
-    const maxChars = c.max_line_chars ?? '';
-    const nextPos = c.next_component_position ?? 'end_of_text';
-    const balance = c.balance_lines ?? false;
-    const paraStyle = c.paragraph_style ?? '';
-    const posDisabled = (maxChars === '' || maxChars === null) ? 'disabled' : '';
-    const balDisabled = posDisabled;
-    return `
-    <div class="component-row" data-field="${esc(c.field)}" style="opacity:${enabled ? 1 : 0.45}">
-      <div class="component-main">
-        <div class="component-handle">
-          <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up"${isBuiltin ? ' disabled' : ''}>▲</button>
-          <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down"${isBuiltin ? ' disabled' : ''}>▼</button>
-        </div>
-        <span class="component-label">${esc(label)}</span>
-        <select class="component-sep"${isBuiltin ? ' disabled' : ''} title="Separator after this element (within its paragraph)">${_sepOpts(c.separator_after)}</select>
-        <label class="component-para" title="Leave blank to keep this element inline (character-styled). Enter a paragraph style to start a NEW paragraph with that element — the LPG model.">¶ <input type="text" class="component-para-style" value="${esc(paraStyle)}" placeholder="inline" style="width:9em"${ro}></label>
-        <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}${roCheck}> omit when empty</label>
-        <label class="component-toggle" title="Include this component in the export">
-          <input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}${roCheck}
-            onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> include
-        </label>
-      </div>
-      <div class="component-wrap-opts">
-        <label>max chars/line <input type="number" class="component-max-chars" min="1" style="width:4.5em"
-          value="${maxChars}" placeholder="none"${ro}
-          oninput="const r=this.closest('.component-row');r.querySelector('.component-next-pos').disabled=!this.value;r.querySelector('.component-balance').disabled=!this.value"></label>
-        <label>next component at
-          <select class="component-next-pos" ${posDisabled}${isBuiltin ? ' disabled' : ''}>
-            <option value="end_of_text" ${nextPos==='end_of_text'?'selected':''}>end of text</option>
-            <option value="end_of_first_line" ${nextPos==='end_of_first_line'?'selected':''}>end of first line</option>
-          </select>
-        </label>
-        <label class="inline-check"><input type="checkbox" class="component-balance" ${balance?'checked':''}${roCheck} ${balDisabled}> balance lines</label>
-      </div>
-    </div>`;
-  }).join('');
-
-  const backLink = `<a href="#/templates" style="font-size:13px;color:var(--muted)">&larr; Back to templates</a>`;
-  const heading = isNew ? 'New Template' : esc(cfg.name ?? 'Edit Template');
-  const builtinNote = isBuiltin
-    ? `<div class="info-banner" style="margin-bottom:16px;padding:10px 14px;background:var(--bg-alt);border-radius:6px;font-size:13px;color:var(--muted)">
-        <strong>Built-in template</strong> &mdash; read-only. <button class="btn btn-sm" onclick="duplicateTemplate('${esc(id)}',this)">Duplicate to edit</button>
-       </div>`
-    : '';
-  const saveBtn = isBuiltin
-    ? ''
-    : `<button class="btn btn-primary" onclick="saveTemplate('${isNew ? 'new' : esc(id)}')">Save Template</button>`;
+  const ro = isBuiltin;
+  const roAttr = ro ? ' disabled' : '';
+  const heading = isNew ? 'New Template' : esc(_te.name || 'Edit Template');
+  const sepSel = (val, cls, oninput) =>
+    `<select class="${cls}"${roAttr} ${oninput}>` +
+    _TE_SEPARATORS.map(s => `<option value="${s.v}"${val === s.v ? ' selected' : ''}>${s.label}</option>`).join('') +
+    `</select>`;
 
   app.innerHTML = `
-    <div style="margin-bottom:4px">${backLink}</div>
-    <h2 class="page-heading">${heading}</h2>
-    ${builtinNote}
-
-    ${isNew ? `<section class="panel"><div class="settings-form"><div class="form-row">
-      <label>Template name</label>
-      <input id="tmpl-name" type="text" placeholder="e.g. Summer Exhibition 2025">
-    </div></div></section>` : ''}
-    ${!isNew ? `<section class="panel"><div class="settings-form"><div class="form-row">
-      <label>Template name</label>
-      <input id="tmpl-name" type="text" value="${esc(cfg.name ?? '')}"${ro}>
-    </div></div></section>` : ''}
-
-    <h3 class="settings-group-heading">Formatting</h3>
-    <section class="panel">
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Currency symbol</label>
-          <input id="tmpl-currency" type="text" value="${esc(cfg.currency_symbol ?? '\u00a3')}" style="max-width:80px"${ro}>
-        </div>
-        <div class="form-row">
-          <label>Thousands separator</label>
-          <select id="tmpl-thousands-sep"${isBuiltin ? ' disabled' : ''}>${sepOpts(cfg.thousands_separator ?? ',')}</select>
-        </div>
-        <div class="form-row">
-          <label>Decimal places</label>
-          <select id="tmpl-decimal-places"${isBuiltin ? ' disabled' : ''}>${dpOpts(cfg.decimal_places ?? 0)}</select>
-        </div>
-        <div class="form-row">
-          <label>Edition prefix</label>
-          <input id="tmpl-edition-prefix" type="text" value="${esc(cfg.edition_prefix ?? 'edition of')}"${ro}>
-          <span class="form-hint">e.g. &ldquo;edition of&rdquo; &rarr; &ldquo;edition of 10 at &pound;500&rdquo;</span>
-        </div>
-        <div class="form-row">
-          <label>Edition brackets</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" id="tmpl-edition-brackets"${cfg.edition_brackets !== false ? ' checked' : ''}${roCheck}>
-            Wrap edition info in brackets
-          </label>
-        </div>
+    <div style="margin-bottom:4px"><a href="#/templates" style="font-size:13px;color:var(--muted)">&larr; Back to templates</a></div>
+    <header class="page__head" style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:18px">
+      <div>
+        <h2 class="page-heading" style="margin:0;display:flex;align-items:center;gap:12px">${heading}${ro ? ' <span class="badge-builtin">Built-in &middot; read-only</span>' : ''}</h2>
+        <p style="font-size:13px;color:var(--muted-2);margin:6px 0 0">How one catalogue entry is laid out for InDesign Tagged Text export.</p>
       </div>
-    </section>
-
-    <h3 class="settings-group-heading">InDesign Paragraph Styles</h3>
-    <section class="panel">
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Section heading</label>
-          <input id="tmpl-section-style" type="text" value="${esc(cfg.section_style ?? 'SectionTitle')}"${ro}>
-        </div>
-        <div class="form-row">
-          <label>Entry paragraph</label>
-          <input id="tmpl-entry-style" type="text" value="${esc(cfg.entry_style ?? 'CatalogueEntry')}"${ro}>
-        </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        ${ro ? `<button class="btn btn-sm" onclick="duplicateTemplate('${esc(id)}',this)">Duplicate to edit</button>` : ''}
+        ${ro ? '' : `<button class="btn btn-primary" onclick="saveTemplate('${isNew ? 'new' : esc(id)}')">Save template</button>`}
+        <span id="tmpl-status" class="status-msg"></span>
       </div>
-    </section>
+    </header>
 
-    <h3 class="settings-group-heading">InDesign Character Styles</h3>
-    <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Leave blank to output plain text for that field.</p>
-      <div class="settings-form">
-        <div class="form-row"><label>Cat number</label><input id="tmpl-cat-no-style" type="text" value="${esc(cfg.cat_no_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Artist name</label><input id="tmpl-artist-style" type="text" value="${esc(cfg.artist_style ?? '')}"${ro}></div>
-        <div class="form-row">
-          <label>Honorifics</label>
-          <div class="form-row-controls">
-            <input id="tmpl-honorifics-style" type="text" value="${esc(cfg.honorifics_style ?? '')}"${ro}>
-            <label class="inline-check"><input id="tmpl-honorifics-lowercase" type="checkbox" ${cfg.honorifics_lowercase ? 'checked' : ''}${roCheck}> force lowercase</label>
+    ${ro ? `<div class="info-banner" style="margin-bottom:16px"><strong>Built-in template</strong> &mdash; this template ships with the tool and can&rsquo;t be edited. Duplicate it to make changes.</div>` : ''}
+
+    <section class="panel" style="margin-bottom:18px"><div class="settings-form"><div class="form-row">
+      <label>Template name</label>
+      <input id="tmpl-name" type="text" value="${esc(_te.name)}" placeholder="e.g. Summer Exhibition 2026"${roAttr}>
+    </div></div></section>
+
+    <div class="te-layout">
+      <div class="te-editor">
+        <div class="sectionhead"><h3>Entry layout</h3><span class="sectionhead__count" id="te-count"></span></div>
+        <p class="editor__intro">Each catalogue entry is built from the elements below, in order. An element either stays <em>inline</em> in the current paragraph (character-styled) or <em>opens a new paragraph</em> in a chosen paragraph style. The structure on the right updates as you edit.</p>
+        <div id="te-layout"></div>
+        ${_teSurroundingHTML(sepSel, roAttr)}
+      </div>
+
+      <aside class="te-rightcol">
+        <div class="te-rightcol__sticky">
+          <div class="te-rightcol__tabs">
+            <button class="tabbtn${_te.activeTab === 'preview' ? ' is-on' : ''}" id="te-tab-preview" onclick="_teTab('preview')">Sample entry</button>
+            <button class="tabbtn${_te.activeTab === 'tagged' ? ' is-on' : ''}" id="te-tab-tagged" onclick="_teTab('tagged')">Tagged Text</button>
+          </div>
+          <div class="te-rightcol__sub">
+            Showing one entry &middot; sample:
+            <select onchange="_teSample(this.value)">
+              <option value="standard">Standard</option>
+              <option value="long_title">Long title + RA artist</option>
+              <option value="nfs">NFS (no price)</option>
+              <option value="empty_fields">Sparse data (omits)</option>
+            </select>
+          </div>
+          <div id="te-preview"></div>
+        </div>
+      </aside>
+    </div>`;
+
+  _teRender();
+}
+
+// --- Surrounding settings (disclosures; inputs always in DOM, read on save) --
+function _teSurroundingHTML(sepSel, roAttr) {
+  const t = _te;
+  const thOpts = (val) => [[',', ',   1,000'],['.', '.   1.000'],[' ', 'space   1 000'],['', 'none   1000']]
+    .map(([v, l]) => `<option value="${v}"${t.thousands_separator === v ? ' selected' : ''}>${l}</option>`).join('');
+  const dpOpts = (val) => [['0','0 — 1,500'],['2','2 — 1,500.00']]
+    .map(([v, l]) => `<option value="${v}"${String(t.decimal_places) === v ? ' selected' : ''}>${l}</option>`).join('');
+  const secSepOpts = [['paragraph','Paragraph return (blank line)'],['column_break','Column break'],['frame_break','Frame break'],['page_break','Page break'],['none','None (continuous)']]
+    .map(([v, l]) => `<option value="${v}"${t.section_separator === v ? ' selected' : ''}>${l}</option>`).join('');
+  return `
+    <div class="surrounding">
+      <div class="disc">
+        <button type="button" class="disc__head" onclick="_teToggleDisc(this)">
+          <span class="disc__chev">&#9656;</span><span class="disc__title">Number formatting</span>
+          <span class="disc__preview">${esc(t.currency_symbol)} &middot; ${t.thousands_separator || 'none'} &middot; ${t.decimal_places} dp</span>
+        </button>
+        <div class="disc__body" style="display:none">
+          <div class="te-grid2">
+            <label class="fld"><span class="fld__lbl">Currency symbol</span><input id="tmpl-currency" type="text" value="${esc(t.currency_symbol)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Thousands separator</span><select id="tmpl-thousands-sep"${roAttr}>${thOpts()}</select></label>
+            <label class="fld"><span class="fld__lbl">Decimal places</span><select id="tmpl-decimal-places"${roAttr}>${dpOpts()}</select></label>
+            <label class="fld"><span class="fld__lbl">Edition prefix</span><input id="tmpl-edition-prefix" type="text" value="${esc(t.edition_prefix)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Edition brackets</span><label class="ck"><input id="tmpl-edition-brackets" type="checkbox"${t.edition_brackets ? ' checked' : ''}${roAttr}> wrap edition info in brackets</label></label>
           </div>
         </div>
-        <div class="form-row"><label>Title</label><input id="tmpl-title-style" type="text" value="${esc(cfg.title_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Title Case Title</label><input id="tmpl-title-cased-style" type="text" value="${esc(cfg.title_cased_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Price</label><input id="tmpl-price-style" type="text" value="${esc(cfg.price_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Medium</label><input id="tmpl-medium-style" type="text" value="${esc(cfg.medium_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Artwork number</label><input id="tmpl-artwork-style" type="text" value="${esc(cfg.artwork_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Edition</label><input id="tmpl-edition-style" type="text" value="${esc(cfg.edition_style ?? '')}"${ro}></div>
       </div>
-    </section>
 
-    <h3 class="settings-group-heading">Section Separator</h3>
-    <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">What to insert between gallery sections in the export.</p>
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Between sections</label>
-          <select id="tmpl-section-sep"${isBuiltin ? ' disabled' : ''}>${_sectionSepOpts(cfg.section_separator ?? 'paragraph')}</select>
-        </div>
-        <div class="form-row">
-          <label>Separator style</label>
-          <input id="tmpl-section-sep-style" value="${esc(cfg.section_separator_style ?? '')}"${isBuiltin ? ' disabled' : ''} placeholder="(none)">
+      <div class="disc">
+        <button type="button" class="disc__head" onclick="_teToggleDisc(this)">
+          <span class="disc__chev">&#9656;</span><span class="disc__title">Section headings &amp; separator</span>
+          <span class="disc__preview">${esc(t.section_style || '(none)')}</span>
+        </button>
+        <div class="disc__body" style="display:none">
+          <div class="te-grid2">
+            <label class="fld"><span class="fld__lbl">Section heading style</span><input id="tmpl-section-style" type="text" value="${esc(t.section_style)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Between gallery sections</span><select id="tmpl-section-sep"${roAttr}>${secSepOpts}</select></label>
+            <label class="fld"><span class="fld__lbl">Section separator style</span><input id="tmpl-section-sep-style" type="text" value="${esc(t.section_separator_style)}" placeholder="(none)"${roAttr}></label>
+          </div>
+          <p class="disc__footnote">The entry&rsquo;s own paragraph style is set on the <strong>first element</strong> in the entry layout above (the &ldquo;&para; opens entry paragraph&rdquo; field).</p>
         </div>
       </div>
-    </section>
 
-    <h3 class="settings-group-heading">Entry Layout</h3>
-    <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Reorder with ▲▼. The separator fires after each non-empty element <em>within its paragraph</em>. The <strong>¶ paragraph style</strong> field is the key choice: leave it blank to keep the element inline (character-styled, like the List of Works); enter a paragraph style to start a <strong>new paragraph</strong> for that element (the Large Print Guide model). Character styles for inline elements are set above.</p>
-      <div class="form-row" style="margin-bottom:12px">
-        <label>Leading separator</label>
-        <select id="tmpl-leading-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(cfg.leading_separator ?? 'none')}</select>
+      <div class="disc">
+        <button type="button" class="disc__head" onclick="_teToggleDisc(this)">
+          <span class="disc__chev">&#9656;</span><span class="disc__title">Honorifics</span>
+          <span class="disc__preview">${esc(t.honorifics_style || '(none)')} &middot; lowercase: ${t.honorifics_lowercase ? 'on' : 'off'}</span>
+        </button>
+        <div class="disc__body" style="display:none">
+          <div class="te-grid2">
+            <label class="fld"><span class="fld__lbl">Honorifics character style</span><input id="tmpl-honorifics-style" type="text" value="${esc(t.honorifics_style)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Force lowercase</span><label class="ck"><input id="tmpl-honorifics-lowercase" type="checkbox"${t.honorifics_lowercase ? ' checked' : ''}${roAttr}> e.g. &ldquo;RA&rdquo; &rarr; &ldquo;ra&rdquo;</label></label>
+          </div>
+          <p class="disc__footnote">The honorific suffix is attached to the artist element; it isn&rsquo;t a separate element of its own.</p>
+        </div>
       </div>
-      <div id="tmpl-components" class="component-list">${componentRowsHTML}</div>
-      <div class="form-row" style="margin-top:12px">
-        <label>Trailing separator</label>
-        <select id="tmpl-trailing-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(cfg.trailing_separator ?? 'none')}</select>
+    </div>`;
+}
+
+function _teToggleDisc(head) {
+  const disc = head.closest('.disc');
+  const body = disc.querySelector('.disc__body');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  disc.classList.toggle('is-open', open);
+  head.querySelector('.disc__chev').innerHTML = open ? '&#9662;' : '&#9656;';
+}
+
+// --- Render the editor layout + preview from state ------------------------
+function _teRender() {
+  const layoutEl = document.getElementById('te-layout');
+  if (!layoutEl) return;
+  layoutEl.innerHTML = _teLayoutHTML();
+  const countEl = document.getElementById('te-count');
+  if (countEl) {
+    const n = _teComputeParagraphs(_te.components).length;
+    countEl.textContent = `${n} paragraph block${n === 1 ? '' : 's'}`;
+  }
+  _teRenderPreview();
+}
+
+function _teLayoutHTML() {
+  const groups = _teComputeParagraphs(_te.components);
+  const total = _te.components.length;
+  let html = `<div class="paragroups">`;
+  html += _teEdgeBandHTML('leading', _te.leading_separator, 'paragraph 1');
+  groups.forEach((g, gi) => {
+    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
+    const enabledCount = g.items.filter(i => i.comp.enabled).length;
+    html += `<div class="paragroup">
+      <div class="paragroup__head">
+        <span class="paragroup__chip">&para;</span>
+        <span class="paragroup__title">Paragraph ${gi + 1}</span>
+        <span class="paragroup__divider"></span>
+        <span class="paragroup__style">${styleName
+          ? `<span class="paragroup__style-lbl">style:</span> <code>${esc(styleName)}</code>`
+          : `<span class="paragroup__style-default">uses default entry style</span>`}</span>
+        <span class="paragroup__count">${enabledCount} of ${g.items.length} elements</span>
       </div>
-      <div class="form-row" style="margin-top:8px">
-        <label class="inline-check" style="text-transform:none;font-size:13px">
-          <input type="checkbox" id="tmpl-final-sep-from-last"
-            ${(cfg.final_sep_from_last_component ?? false) ? 'checked' : ''}${roCheck}>
-          When last component is omitted, adopt its separator for the final non-empty field
+      <div class="paragroup__body">
+        ${g.items.map((it, pos) => _teCardHTML(it.comp, it.idx, total, pos === g.items.length - 1)).join('')}
+      </div>
+    </div>`;
+  });
+  const trailingCtx = groups.length > 1 ? `paragraph ${groups.length}` : 'the entry paragraph';
+  html += _teEdgeBandHTML('trailing', _te.trailing_separator, trailingCtx);
+  html += `</div>`;
+  return html;
+}
+
+function _teSepPickerHTML(value, onpick, disabled) {
+  return `<div class="seppicker${disabled ? ' is-disabled' : ''}">` +
+    _TE_SEPARATORS.map(s =>
+      `<button type="button" class="seppicker__btn${s.v === value ? ' is-on' : ''}"${disabled ? ' disabled' : ''} title="${s.label}" onclick="${onpick}('${s.v}')">` +
+      `<span class="seppicker__glyph">${s.glyph}</span><span class="seppicker__label">${s.label}</span></button>`
+    ).join('') + `</div>`;
+}
+
+function _teCardHTML(comp, idx, total, isLastInGroup) {
+  const ro = _te.isBuiltin;
+  const roAttr = ro ? ' disabled' : '';
+  const opensPara = idx === 0 || !!comp.paragraph_style;
+  const greyed = !comp.enabled;
+  const label = _TE_FIELD_LABEL[comp.field] ?? comp.field;
+  const hint = _TE_FIELD_HINT[comp.field] ?? '';
+  const ctrlDisabled = ro || !comp.enabled;
+
+  // ParaToggle
+  let paraHTML;
+  if (idx === 0) {
+    paraHTML = `<div class="paratoggle paratoggle--locked" title="The first element always opens the entry paragraph.">
+      <span class="paratoggle__pill">&para; opens entry paragraph</span>
+      <input type="text" class="paratoggle__style" value="${esc(_te.entry_style)}" placeholder="(uses default entry style)"
+             spellcheck="false"${roAttr} oninput="_teSetEntryStyle(this.value)">
+    </div>`;
+  } else {
+    const opens = !!comp.paragraph_style;
+    paraHTML = `<div class="paratoggle ${opens ? 'is-opens' : 'is-inline'}">
+      <div class="paratoggle__seg" role="tablist">
+        <button type="button" role="tab" class="paratoggle__btn" aria-selected="${!opens}"${roAttr} onclick="_teSetParaMode(${idx},'inline')"><span class="paratoggle__btn-icon">&#8617;</span>inline</button>
+        <button type="button" role="tab" class="paratoggle__btn" aria-selected="${opens}"${roAttr} onclick="_teSetParaMode(${idx},'new')"><span class="paratoggle__btn-icon">&para;</span>new paragraph</button>
+      </div>
+      ${opens ? `<input type="text" class="paratoggle__style" value="${esc(comp.paragraph_style)}" placeholder="paragraph style name" spellcheck="false"${roAttr} oninput="_teSetParaStyle(${idx}, this.value)">` : ''}
+    </div>`;
+  }
+
+  // wrap options (only when not last in paragraph — nothing to flow into otherwise)
+  let wrapHTML = '';
+  if (!isLastInGroup) {
+    const open = _te.wrapOpen.has(idx);
+    const setBadge = (comp.max_line_chars || comp.balance_lines) && !open ? `<span class="el-card__more-badge">set</span>` : '';
+    wrapHTML = `<button type="button" class="el-card__more" onclick="_teToggleWrap(${idx})">${open ? '&#9662;' : '&#9656;'} wrap options${setBadge}</button>`;
+  }
+  let advHTML = '';
+  if (!isLastInGroup && _te.wrapOpen.has(idx)) {
+    advHTML = `<div class="el-card__advanced">
+      <span class="adv-note">Only used by single-paragraph (List of Works) exports for in-paragraph wrapping.</span>
+      <div class="adv-controls">
+        <label>max chars per line <input type="number" min="1" style="width:64px" value="${comp.max_line_chars ?? ''}" placeholder="none"${roAttr} oninput="_teSetMaxChars(${idx}, this.value)"></label>
+        <label>next element at <select${ro || !comp.max_line_chars ? ' disabled' : ''} onchange="_teSetNextPos(${idx}, this.value)">
+          <option value="end_of_text"${comp.next_component_position === 'end_of_text' ? ' selected' : ''}>end of text</option>
+          <option value="end_of_first_line"${comp.next_component_position === 'end_of_first_line' ? ' selected' : ''}>end of first line</option>
+        </select></label>
+        <label class="ck"><input type="checkbox"${comp.balance_lines ? ' checked' : ''}${ro || !comp.max_line_chars ? ' disabled' : ''} onchange="_teToggleBalance(${idx}, this.checked)"> balance lines</label>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="el-card${opensPara ? ' el-card--opener' : ''}${greyed ? ' el-card--off' : ''}">
+    <div class="el-card__rail" aria-hidden="true">${opensPara ? '<span class="el-card__pilcrow">&para;</span>' : ''}</div>
+    <div class="el-card__body">
+      <div class="el-card__row el-card__row--top">
+        <div class="el-card__handle">
+          <button type="button" class="iconbtn" title="Move up"${ro || idx === 0 ? ' disabled' : ''} onclick="_teMove(${idx},-1)">&#9650;</button>
+          <button type="button" class="iconbtn" title="Move down"${ro || idx === total - 1 ? ' disabled' : ''} onclick="_teMove(${idx},1)">&#9660;</button>
+        </div>
+        <div class="el-card__name">
+          <label class="toggle ${comp.enabled ? 'is-on' : 'is-off'}" title="${comp.enabled ? 'Included' : 'Excluded — click to include'}">
+            <input type="checkbox"${comp.enabled ? ' checked' : ''}${roAttr} onchange="_teToggleEnabled(${idx}, this.checked)"><span class="toggle__dot"></span>
+          </label>
+          <div class="el-card__name-text">
+            <div class="el-card__field">${esc(label)}</div>
+            <div class="el-card__hint">${esc(hint)}</div>
+          </div>
+        </div>
+        <div class="el-card__charstyle">
+          <span class="lbl">character style</span>
+          <div class="char-input-wrap">
+            <input type="text" value="${esc(comp.char_style)}" placeholder="plain text" spellcheck="false"${ctrlDisabled ? ' disabled' : ''} oninput="_teSetChar(${idx}, this.value)">
+            ${comp.char_style ? '<span class="char-chip">cs</span>' : ''}
+          </div>
+          ${!comp.char_style && comp.enabled ? '<span class="el-card__charstyle-hint">Blank exports as plain text.</span>' : ''}
+        </div>
+        <label class="el-card__omit" title="Skip this element AND its separator if its value is empty">
+          <input type="checkbox"${comp.omit_sep_when_empty ? ' checked' : ''}${ctrlDisabled ? ' disabled' : ''} onchange="_teToggleOmit(${idx}, this.checked)"><span>omit if empty</span>
         </label>
       </div>
-    </section>
+      <div class="el-card__row el-card__row--bottom">
+        ${paraHTML}
+        <div class="el-card__sep"><span class="lbl">then</span>${_teSepPickerHTML(comp.separator_after, `_teSetSepCb(${idx})`, ctrlDisabled)}</div>
+        ${wrapHTML}
+      </div>
+      ${advHTML}
+    </div>
+  </div>`;
+}
 
-    <div class="form-actions" style="padding-bottom:20px">
-      ${saveBtn}
-      <span id="tmpl-status" class="status-msg"></span>
-    </div>`;
+function _teEdgeBandHTML(position, value, ctx) {
+  const ro = _te.isBuiltin;
+  const icon = position === 'leading' ? '&#8627;' : '&#8626;';
+  const title = position === 'leading' ? 'Before any element' : 'After the last element';
+  const onpick = position === 'leading' ? '_teSetLeading' : '_teSetTrailing';
+  let tail = '';
+  if (position === 'trailing') {
+    tail = `<label class="edgeband__opt"><input type="checkbox"${_te.final_sep_from_last_component ? ' checked' : ''}${ro ? ' disabled' : ''} onchange="_teToggleFinalSep(this.checked)"> If the last element is omitted, use its separator after the final non-empty field instead</label>`;
+  }
+  let note = '';
+  if (value === 'hard_return') {
+    note = `<div class="edgeband__hardnote"><span class="edgeband__hardnote-icon">&para;</span><span>Creates a blank paragraph in the ${position === 'leading' ? 'first' : 'last'} paragraph&rsquo;s style &mdash; that style can&rsquo;t be overridden here. For a different style, set <em>space before</em>/<em>space after</em> on the entry style in InDesign, or use the <strong>Section Separator</strong> for between-gallery gaps.</span></div>`;
+  }
+  return `<div class="edgeband edgeband--${position}">
+    <div class="edgeband__head"><span class="edgeband__icon">${icon}</span><span class="edgeband__title">${title}</span><span class="edgeband__sub">Fires in ${ctx}; no character style applies.</span></div>
+    <div class="edgeband__body"><span class="lbl">insert</span>${_teSepPickerHTML(value, onpick, ro)}${tail}</div>
+    ${note}
+  </div>`;
+}
+
+// --- Live preview ---------------------------------------------------------
+function _teRenderPreview() {
+  const el = document.getElementById('te-preview');
+  if (!el) return;
+  document.getElementById('te-tab-preview')?.classList.toggle('is-on', _te.activeTab === 'preview');
+  document.getElementById('te-tab-tagged')?.classList.toggle('is-on', _te.activeTab === 'tagged');
+  el.innerHTML = _te.activeTab === 'tagged' ? _teTaggedTextHTML() : _tePreviewHTML();
+}
+
+function _teSepGlyph(kind) {
+  switch (kind) {
+    case 'space':       return `<span class="pv-sep"><span class="pv-sep__glyph">&middot;</span></span>`;
+    case 'tab':         return `<span class="pv-sep pv-sep--tab"><span class="pv-sep__glyph">&rarr;</span></span>`;
+    case 'right_tab':   return `<span class="pv-sep pv-sep--rtab"><span class="pv-sep__glyph">&#8677;</span></span>`;
+    case 'soft_return': return `<span class="pv-sep pv-sep--soft"><span class="pv-sep__glyph">&#8629;</span></span>`;
+    case 'hard_return': return `<span class="pv-sep pv-sep--hard"><span class="pv-sep__glyph">&para;</span></span>`;
+    default: return '';
+  }
+}
+
+function _teVisibleItems(group, sample) {
+  return group.items.filter(it => it.comp.enabled && (!it.comp.omit_sep_when_empty || sample[it.comp.field]));
+}
+
+function _tePreviewHTML() {
+  const groups = _teComputeParagraphs(_te.components);
+  const sample = _TE_SAMPLES[_te.sampleVariant];
+  const renderable = groups.map((g, gi) => ({ g, gi, items: _teVisibleItems(g, sample) })).filter(o => o.items.length);
+  const firstGi = renderable.length ? renderable[0].gi : -1;
+  const lastGi = renderable.length ? renderable[renderable.length - 1].gi : -1;
+
+  let paper = renderable.map(({ g, gi, items }) => {
+    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
+    let line = '';
+    if (gi === firstGi && _te.leading_separator && _te.leading_separator !== 'none') {
+      line += `<span class="pv-edge" title="Leading separator">${_teSepGlyph(_te.leading_separator)}</span>`;
+    }
+    items.forEach(({ comp }, ci) => {
+      const value = sample[comp.field] ?? '';
+      const tok = value
+        ? esc(value)
+        : `<em class="pv-tok__empty">(${esc(_TE_FIELD_LABEL[comp.field] || comp.field)})</em>`;
+      const lbl = comp.char_style ? `<span class="pv-tok__label">${esc(comp.char_style)}</span>` : '';
+      line += `<span class="pv-pair"><span class="pv-tok${comp.char_style ? ' pv-tok--styled' : ''}">${tok}${lbl}</span>`;
+      if (ci !== items.length - 1 && comp.separator_after !== 'none') line += _teSepGlyph(comp.separator_after);
+      line += `</span>`;
+    });
+    if (gi === lastGi && _te.trailing_separator && _te.trailing_separator !== 'none') {
+      line += `<span class="pv-edge" title="Trailing separator">${_teSepGlyph(_te.trailing_separator)}</span>`;
+    }
+    return `<div class="pv-para"><div class="pv-para__tag"><span class="pv-tag--para">&para; ${styleName ? esc(styleName) : '<em>default</em>'}</span></div><div class="pv-para__line">${line}</div></div>`;
+  }).join('');
+  if (!paper) paper = `<p style="color:var(--muted);font-size:13px;margin:0">No visible elements for this sample.</p>`;
+
+  return `<div class="preview"><div class="preview__paper">${paper}</div>
+    <div class="preview__legend">
+      <span><i class="lg lg--styled"></i> character-styled</span>
+      <span><i class="lg lg--tab">&rarr;</i> tab</span>
+      <span><i class="lg lg--rtab">&#8677;</i> right-indent tab</span>
+      <span><i class="lg lg--soft">&#8629;</i> soft return</span>
+      <span><i class="lg lg--para">&para;</i> new paragraph</span>
+    </div></div>`;
+}
+
+function _teTaggedSepChars(k) {
+  switch (k) {
+    case 'space': return ' ';
+    case 'tab': return '\\t';
+    case 'right_tab': return '\\t';
+    case 'soft_return': return '\\n';
+    case 'hard_return': return '\\r';
+    default: return '';
+  }
+}
+
+function _teTaggedTextHTML() {
+  const groups = _teComputeParagraphs(_te.components);
+  const sample = _TE_SAMPLES[_te.sampleVariant];
+  const lines = [];
+  groups.forEach((g, gi) => {
+    const items = _teVisibleItems(g, sample);
+    if (!items.length) return;
+    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
+    let line = `<ParaStyle:${styleName}>`;
+    items.forEach(({ comp }, ci) => {
+      const v = sample[comp.field] ?? '';
+      line += comp.char_style ? `<CharStyle:${comp.char_style}>${v}<CharStyle:>` : v;
+      if (ci !== items.length - 1) line += _teTaggedSepChars(comp.separator_after);
+    });
+    lines.push(line);
+  });
+  if (_te.leading_separator && _te.leading_separator !== 'none' && lines.length) {
+    lines[0] = lines[0].replace(/^(<ParaStyle:[^>]*>)/, `$1${_teTaggedSepChars(_te.leading_separator)}`);
+  }
+  if (_te.trailing_separator && _te.trailing_separator !== 'none' && lines.length) {
+    lines[lines.length - 1] += _teTaggedSepChars(_te.trailing_separator);
+  }
+  const text = lines.join('\n');
+  return `<div class="taggedtext-wrap"><button type="button" class="copybtn" onclick="_teCopyTagged(this)">Copy</button><pre class="taggedtext"><code>${esc(text)}</code></pre></div>`;
+}
+
+// --- State mutations ------------------------------------------------------
+function _teMove(idx, dir) {
+  const t = idx + dir;
+  if (t < 0 || t >= _te.components.length) return;
+  const a = _te.components;
+  [a[idx], a[t]] = [a[t], a[idx]];
+  _teNormalize();
+  _teRender();
+}
+function _teToggleEnabled(idx, on) { _te.components[idx].enabled = on; _teRender(); }
+function _teToggleOmit(idx, on) { _te.components[idx].omit_sep_when_empty = on; _teRenderPreview(); }
+function _teSetChar(idx, v) { _te.components[idx].char_style = v; _teRenderPreview(); }
+function _teSetParaMode(idx, mode) {
+  _te.components[idx].paragraph_style = mode === 'new'
+    ? (_te.components[idx].paragraph_style || _teAutoParaStyle(_te.components[idx].field))
+    : '';
+  _teRender();
+}
+function _teSetParaStyle(idx, v) { _te.components[idx].paragraph_style = v; _teRenderPreview(); }
+function _teSetEntryStyle(v) { _te.entry_style = v; _teRenderPreview(); }
+function _teSetSepCb(idx) { return (v) => { _te.components[idx].separator_after = v; _teRender(); }; }
+function _teSetLeading(v) { _te.leading_separator = v; _teRender(); }
+function _teSetTrailing(v) { _te.trailing_separator = v; _teRender(); }
+function _teToggleFinalSep(on) { _te.final_sep_from_last_component = on; }
+function _teSetMaxChars(idx, v) { _te.components[idx].max_line_chars = v ? parseInt(v, 10) : null; }
+function _teSetNextPos(idx, v) { _te.components[idx].next_component_position = v; }
+function _teToggleBalance(idx, on) { _te.components[idx].balance_lines = on; }
+function _teToggleWrap(idx) { if (_te.wrapOpen.has(idx)) _te.wrapOpen.delete(idx); else _te.wrapOpen.add(idx); _teRender(); }
+function _teTab(tab) { _te.activeTab = tab; _teRenderPreview(); }
+function _teSample(v) { _te.sampleVariant = v; _teRenderPreview(); }
+function _teCopyTagged(btn) {
+  const text = (btn.parentElement.querySelector('code')?.textContent) ?? '';
+  navigator.clipboard.writeText(text).then(
+    () => { btn.textContent = '✓ Copied'; btn.classList.add('copybtn--copied'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copybtn--copied'); }, 1500); },
+    () => { btn.textContent = 'Copy failed'; btn.classList.add('copybtn--error'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copybtn--error'); }, 2000); }
+  );
 }
 
 async function saveTemplate(id) {
@@ -3049,60 +3363,52 @@ async function saveTemplate(id) {
   const name = (nameEl?.value ?? '').trim();
   if (!name) { showToast('Please enter a template name.', 'error'); nameEl?.focus(); return; }
 
-  const components = Array.from(
-    document.querySelectorAll('#tmpl-components .component-row')
-  ).map(row => {
-    const rawMax = row.querySelector('.component-max-chars')?.value;
-    const paraStyle = (row.querySelector('.component-para-style')?.value ?? '').trim();
+  // Components from state; char styles harvested back into flat config keys.
+  const charKeys = {};
+  const components = _te.components.map(c => {
+    charKeys[_TE_CHAR_KEY[c.field]] = (c.char_style ?? '').trim();
     return {
-      field: row.dataset.field,
-      separator_after: row.querySelector('.component-sep')?.value ?? 'none',
-      omit_sep_when_empty: row.querySelector('.component-omit-sep')?.checked ?? true,
-      enabled: row.querySelector('.component-enabled')?.checked ?? true,
-      max_line_chars: rawMax ? parseInt(rawMax, 10) : null,
-      next_component_position: row.querySelector('.component-next-pos')?.value ?? 'end_of_text',
-      balance_lines: row.querySelector('.component-balance')?.checked ?? false,
-      paragraph_style: paraStyle || null,
+      field: c.field,
+      separator_after: c.separator_after ?? 'none',
+      omit_sep_when_empty: !!c.omit_sep_when_empty,
+      enabled: !!c.enabled,
+      max_line_chars: c.max_line_chars ?? null,
+      next_component_position: c.next_component_position ?? 'end_of_text',
+      balance_lines: !!c.balance_lines,
+      paragraph_style: c.paragraph_style ? c.paragraph_style.trim() : null,
     };
   });
 
   const body = {
     name,
-    currency_symbol:     (document.getElementById('tmpl-currency')?.value          ?? '').trim() || '\u00a3',
-    thousands_separator:  document.getElementById('tmpl-thousands-sep')?.value      ?? ',',
-    decimal_places:      Number(document.getElementById('tmpl-decimal-places')?.value ?? '0'),
-    edition_prefix:      (document.getElementById('tmpl-edition-prefix')?.value     ?? '').trim() || 'edition of',
-    edition_brackets:     document.getElementById('tmpl-edition-brackets')?.checked ?? true,
-    section_style:       (document.getElementById('tmpl-section-style')?.value      ?? '').trim() || 'SectionTitle',
-    entry_style:         (document.getElementById('tmpl-entry-style')?.value        ?? '').trim() || 'CatalogueEntry',
-    section_separator:    document.getElementById('tmpl-section-sep')?.value        ?? 'paragraph',
+    currency_symbol: (document.getElementById('tmpl-currency')?.value ?? '').trim() || '£',
+    thousands_separator: document.getElementById('tmpl-thousands-sep')?.value ?? ',',
+    decimal_places: Number(document.getElementById('tmpl-decimal-places')?.value ?? '0'),
+    edition_prefix: (document.getElementById('tmpl-edition-prefix')?.value ?? '').trim() || 'edition of',
+    edition_brackets: document.getElementById('tmpl-edition-brackets')?.checked ?? true,
+    section_style: (document.getElementById('tmpl-section-style')?.value ?? '').trim() || 'SectionTitle',
+    section_styles: _te.section_styles ?? [],
+    entry_style: (_te.entry_style ?? '').trim() || 'CatalogueEntry',
+    section_separator: document.getElementById('tmpl-section-sep')?.value ?? 'paragraph',
     section_separator_style: (document.getElementById('tmpl-section-sep-style')?.value ?? '').trim(),
-    cat_no_style:        (document.getElementById('tmpl-cat-no-style')?.value       ?? '').trim(),
-    artist_style:        (document.getElementById('tmpl-artist-style')?.value       ?? '').trim(),
-    honorifics_style:    (document.getElementById('tmpl-honorifics-style')?.value   ?? '').trim(),
+    honorifics_style: (document.getElementById('tmpl-honorifics-style')?.value ?? '').trim(),
     honorifics_lowercase: document.getElementById('tmpl-honorifics-lowercase')?.checked ?? false,
-    title_style:         (document.getElementById('tmpl-title-style')?.value        ?? '').trim(),
-    title_cased_style:   (document.getElementById('tmpl-title-cased-style')?.value  ?? '').trim(),
-    price_style:         (document.getElementById('tmpl-price-style')?.value        ?? '').trim(),
-    medium_style:        (document.getElementById('tmpl-medium-style')?.value       ?? '').trim(),
-    artwork_style:       (document.getElementById('tmpl-artwork-style')?.value      ?? '').trim(),
-    edition_style:       (document.getElementById('tmpl-edition-style')?.value      ?? '').trim(),
-    leading_separator:    document.getElementById('tmpl-leading-sep')?.value        ?? 'none',
-    trailing_separator:   document.getElementById('tmpl-trailing-sep')?.value       ?? 'none',
-    final_sep_from_last_component: document.getElementById('tmpl-final-sep-from-last')?.checked ?? false,
+    leading_separator: _te.leading_separator ?? 'none',
+    trailing_separator: _te.trailing_separator ?? 'none',
+    final_sep_from_last_component: !!_te.final_sep_from_last_component,
+    ...charKeys,
     components,
   };
 
   const statusEl = document.getElementById('tmpl-status');
-  if (statusEl) { statusEl.textContent = 'Saving\u2026'; statusEl.className = 'status-msg'; }
+  if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.className = 'status-msg'; }
   try {
-    let result;
     if (id === 'new') {
-      result = await api('POST', '/templates', body);
+      const result = await api('POST', '/templates', body);
       location.hash = `#/templates/${result.id}/edit`;
     } else {
       await api('PUT', `/templates/${id}`, body);
-      if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.className = 'status-msg success'; }
     }
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${esc(e.message)}`; statusEl.className = 'status-msg error'; }
