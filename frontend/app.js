@@ -1055,14 +1055,59 @@ async function renderAuditLog() {
 // Settings page
 // ---------------------------------------------------------------------------
 
+// Read-only "Reconciliation" settings panel, rendered from the actual
+// LowDiffConfig defaults (via /reconcile-config) so the surfaced rules can't
+// drift from what the diff does. Not yet editable.
+function _reconcileRulesPanel(rc) {
+  const sevBadge = (s) => `<span class="badge ${_RECON_SEV_BADGE[s] || 'badge-unchanged'}">${esc(s)}</span>`;
+  const chan = (c) => c === 'override' ? 'Per-work override'
+    : c === 'spreadsheet' ? 'Spreadsheet re-import' : esc(c || '');
+  const sev = (rc && rc.severity) || {};
+  const fc  = (rc && rc.fix_channel) || {};
+  const rows = [
+    ['Text field changed',            sev.field_change_default || 'medium', fc.field_change   || 'override'],
+    ['Added (in LOW, not in data)',   sev.entry_added          || 'high',   fc.entry_added    || 'spreadsheet'],
+    ['Removed (in data, not in LOW)', sev.entry_removed        || 'high',   fc.entry_removed  || 'spreadsheet'],
+    ['Moved to another room',         sev.room_move            || 'high',   fc.room_move      || 'spreadsheet'],
+    ['Room renamed',                  sev.section_rename       || 'info',   fc.section_rename || 'spreadsheet'],
+  ];
+  const cosmetic = rc ? rc.suppress_cosmetic : true;
+  const fold     = rc ? rc.fold_typographic : true;
+  return `
+    <h3 class="settings-group-heading">Reconciliation</h3>
+    <p class="settings-group-desc">How a corrected InDesign export is compared with the data when you reconcile a List of Works import. Read-only for now.</p>
+    <section class="panel">
+      <h4 class="panel-subheading">Matching</h4>
+      <ul class="form-hint" style="margin:0;padding-left:18px;line-height:1.7">
+        <li>Entries are matched by <strong>catalogue number</strong>.</li>
+        <li>Rooms are aligned by <strong>shared catalogue numbers</strong>, not heading text &mdash; so a renamed gallery doesn&rsquo;t read as every work moving.</li>
+        <li>A renumbered work appears as one <em>removed</em> plus one <em>added</em>.</li>
+      </ul>
+    </section>
+    <section class="panel">
+      <h4 class="panel-subheading">Significance &amp; routing</h4>
+      <table class="data-table">
+        <thead><tr><th>Difference</th><th>Severity</th><th>Resolve via</th></tr></thead>
+        <tbody>
+          ${rows.map(([label, s, c]) => `<tr><td>${esc(label)}</td><td>${sevBadge(s)}</td><td>${chan(c)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h4 class="panel-subheading">Cosmetic differences</h4>
+      <p class="form-hint" style="margin:0">Differences that vanish after normalisation are ${cosmetic ? 'hidden by default (but viewable)' : 'shown'}: collapsed whitespace and line breaks${fold ? ', plus smart vs straight quotes treated as equal' : ''}. They are never counted as significant findings.</p>
+    </section>`;
+}
+
 async function renderSettings() {
   const app = document.getElementById('app');
   app.innerHTML = '<p class="loading" style="padding:40px 0">Loading settings&hellip;</p>';
-  let cfg, knownArtists;
+  let cfg, knownArtists, reconcileCfg;
   try {
-    [cfg, knownArtists] = await Promise.all([
+    [cfg, knownArtists, reconcileCfg] = await Promise.all([
       api('GET', '/config'),
       api('GET', '/known-artists'),
+      api('GET', '/reconcile-config').catch(() => null),
     ]);
   } catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
 
@@ -1087,6 +1132,14 @@ async function renderSettings() {
   const honorificTokensValue = Array.isArray(cfg.honorific_tokens)
     ? cfg.honorific_tokens.join(', ')
     : (cfg.honorific_tokens ?? 'RA, PRA, PPRA, HON, HONRA, ELECT, EX, OFFICIO');
+  const editionSuppressMax = Number.isInteger(cfg.edition_suppress_max) ? cfg.edition_suppress_max : 0;
+  const substRules = Array.isArray(cfg.text_substitutions) ? cfg.text_substitutions : [];
+  const titleCaseExceptionsValue = Array.isArray(cfg.title_case_exceptions)
+    ? cfg.title_case_exceptions.join(', ')
+    : '';
+  const editionRuleText = editionSuppressMax === 0
+    ? '<code>Edition of 0</code> is suppressed.'
+    : `Editions of ${editionSuppressMax} or fewer are suppressed (an &ldquo;edition of 1&rdquo; is the work itself).`;
 
   app.innerHTML = `
     <h2 class="page-heading">Settings</h2>
@@ -1173,6 +1226,65 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
+      <h4 class="panel-subheading">What&rsquo;s normalised automatically</h4>
+      <p class="form-hint" style="margin:0 0 10px">Deterministic rules applied to every imported value. The raw spreadsheet value is always preserved alongside the normalised one.</p>
+      <table class="data-table">
+        <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td>Price</td><td>Currency symbols and separators stripped to a number. A value with no parseable number (e.g. <code>NFS</code>, <code>_</code>) is kept as-is; a blank or missing price becomes <code>*</code>.</td></tr>
+          <tr><td>Edition</td><td>Parsed from <code>Edition of N</code> or <code>Edition of N at &pound;Y</code>. ${editionRuleText} <span class="muted">Configurable below.</span></td></tr>
+          <tr><td>Honorifics</td><td>Recognised tokens (above) are split from the end of the artist name into a separate field.</td></tr>
+          <tr><td>Whitespace</td><td>Leading/trailing whitespace trimmed from every field (flagged on the work).</td></tr>
+          <tr><td>Artwork</td><td>Parsed to an integer number of pieces.</td></tr>
+          <tr><td>Title, Medium</td><td>Trimmed; otherwise preserved verbatim (plus any text substitutions below).</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h4 class="panel-subheading">Editions</h4>
+      <p class="form-hint" style="margin:0 0 10px">An &ldquo;edition of 1&rdquo; is the work itself, not a distinct copy &mdash; whether to drop it is an editorial choice, so it&rsquo;s configurable.</p>
+      <div class="form-row">
+        <label>Suppress editions of</label>
+        <input id="cfg-edition-suppress-max" type="number" min="0" max="10" value="${editionSuppressMax}" style="max-width:70px"${canAdmin() ? '' : ' disabled'}>
+        <span class="form-hint">or fewer. <strong>0</strong> drops only &ldquo;Edition of 0&rdquo;; <strong>1</strong> also drops &ldquo;Edition of 1&rdquo;. If suppressing one removes a work&rsquo;s only price, that&rsquo;s flagged for review.</span>
+      </div>
+      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
+        <span id="norm-rules-status" class="status-msg"></span>
+      </div>`)}
+    </section>
+
+    <section class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        <h4 class="panel-subheading" style="margin:0">Text substitutions</h4>
+        ${ifAdmin('<button class="btn btn-sm" onclick="addSubstRule()">+ Add rule</button>')}
+      </div>
+      <p class="form-hint" style="margin:0 0 12px">Literal find &rarr; replace on the chosen fields, applied in order. Spaces count (shown as <span class="ws-hint">&middot;</span>), so <code><span class="ws-hint">&middot;</span>-<span class="ws-hint">&middot;</span></code> changes a spaced hyphen but never the hyphen in &ldquo;double-barrelled&rdquo;.</p>
+      <div id="subst-rules">
+        ${substRules.map(r => _substRuleRow(r)).join('')}
+      </div>
+      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
+        <span id="subst-status" class="status-msg"></span>
+      </div>`)}
+    </section>
+
+    <section class="panel">
+      <h4 class="panel-subheading">Title casing</h4>
+      <p class="form-hint" style="margin:0 0 10px">A &ldquo;Title Case Title&rdquo; is derived for each work (used by outputs like the LPG; the List of Works keeps its house caps). All-caps input is best-effort &mdash; multi-letter Roman numerals are kept uppercase automatically, and the result is correctable per work via the Title Case Title override.</p>
+      <div class="form-row">
+        <label>Preserve casing for</label>
+        <input id="cfg-title-case-exceptions" type="text" value="${esc(titleCaseExceptionsValue)}"${canAdmin() ? '' : ' readonly'}>
+        <span class="form-hint">Comma-separated acronyms / stylised names kept as written, e.g. &ldquo;RA, USA, MoMA&rdquo;. Matched case-insensitively.</span>
+      </div>
+      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
+        <span id="title-case-status" class="status-msg"></span>
+      </div>`)}
+    </section>
+
+    <section class="panel">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:12px">
         <h4 class="panel-subheading" style="margin:0">Known Artists</h4>
         <div style="display:flex;align-items:center;gap:6px">
@@ -1187,7 +1299,8 @@ async function renderSettings() {
         ${knownArtists.map(ka => _knownArtistCard(ka)).join('')}
       </div>
       <span id="known-artists-status" class="status-msg" style="display:block;margin-top:8px"></span>
-    </section>`;
+    </section>
+    ${_reconcileRulesPanel(reconcileCfg)}`;
 
   // Populate Index Name previews now that the DOM is ready
   _refreshAllKaPreviews();
@@ -1221,21 +1334,95 @@ function savePreviewSettings() {
   }
 }
 
-async function saveHonorificTokens() {
+// --- Normalisation config (honorifics + edition threshold + substitutions) ---
+// PUT /config is a full replace, so every save sends the *whole* config gathered
+// from the DOM \u2014 otherwise saving one panel would wipe the others.
+
+const _SUBST_FIELDS = [['title', 'Title'], ['medium', 'Medium'], ['artist', 'Artist']];
+
+// Render a value with spaces shown as the \u00b7 whitespace hint used elsewhere.
+function _visSpaces(s) {
+  return esc(s ?? '').replace(/ /g, '<span class="ws-hint">&middot;</span>');
+}
+
+function _substRuleRow(rule) {
+  const r = rule || { find: '', replace: '', fields: ['title', 'medium'] };
+  const disabled = canAdmin() ? '' : ' disabled';
+  const checks = _SUBST_FIELDS.map(([key, label]) =>
+    `<label class="inline-check" style="text-transform:none;font-weight:normal;margin-right:10px">
+       <input type="checkbox" class="subst-field" data-field="${key}"${(r.fields || []).includes(key) ? ' checked' : ''}${disabled}> ${label}
+     </label>`).join('');
+  return `<div class="subst-row">
+    <div class="subst-inputs">
+      <input type="text" class="subst-find" value="${esc(r.find)}" placeholder="find" oninput="_updateSubstPreview(this)"${disabled}>
+      <span class="subst-arrow">&rarr;</span>
+      <input type="text" class="subst-replace" value="${esc(r.replace)}" placeholder="replace" oninput="_updateSubstPreview(this)"${disabled}>
+      ${ifAdmin('<button type="button" class="btn btn-sm subst-remove" onclick="removeSubstRule(this)" title="Remove rule">&times;</button>')}
+    </div>
+    <div class="subst-fields">${checks}</div>
+    <div class="subst-preview"><code>${_visSpaces(r.find)}</code> &rarr; <code>${_visSpaces(r.replace)}</code></div>
+  </div>`;
+}
+
+function _updateSubstPreview(inputEl) {
+  const row = inputEl.closest('.subst-row');
+  if (!row) return;
+  const find = row.querySelector('.subst-find').value;
+  const replace = row.querySelector('.subst-replace').value;
+  row.querySelector('.subst-preview').innerHTML =
+    `<code>${_visSpaces(find)}</code> &rarr; <code>${_visSpaces(replace)}</code>`;
+}
+
+function addSubstRule() {
+  const list = document.getElementById('subst-rules');
+  if (list) list.insertAdjacentHTML('beforeend', _substRuleRow(null));
+}
+
+function removeSubstRule(btn) {
+  btn.closest('.subst-row')?.remove();
+}
+
+function _gatherSubstitutions() {
+  return [...document.querySelectorAll('#subst-rules .subst-row')].map(row => ({
+    // Spaces are significant \u2014 never trim find/replace.
+    find: row.querySelector('.subst-find').value,
+    replace: row.querySelector('.subst-replace').value,
+    fields: [...row.querySelectorAll('.subst-field')].filter(c => c.checked).map(c => c.dataset.field),
+  })).filter(s => s.find !== '');  // drop blank-find rows (backend rejects them)
+}
+
+function _gatherNormalisationConfig() {
   const rawTokens = document.getElementById('cfg-honorific-tokens')?.value ?? '';
-  const honorific_tokens = rawTokens.split(',').map(t => t.trim()).filter(Boolean);
-  const statusEl = document.getElementById('honorific-status');
-  if (!statusEl) return;
-  statusEl.textContent = 'Saving\u2026';
-  statusEl.className = 'status-msg';
+  const editionEl = document.getElementById('cfg-edition-suppress-max');
+  const rawExc = document.getElementById('cfg-title-case-exceptions')?.value ?? '';
+  return {
+    honorific_tokens: rawTokens.split(',').map(t => t.trim()).filter(Boolean),
+    edition_suppress_max: editionEl ? (parseInt(editionEl.value, 10) || 0) : 0,
+    text_substitutions: _gatherSubstitutions(),
+    title_case_exceptions: rawExc.split(',').map(t => t.trim()).filter(Boolean),
+  };
+}
+
+async function _saveNormalisationConfig(statusIds, okMsg) {
+  const els = statusIds.map(id => document.getElementById(id)).filter(Boolean);
+  els.forEach(el => { el.textContent = 'Saving\u2026'; el.className = 'status-msg'; });
   try {
-    await api('PUT', '/config', { honorific_tokens });
-    statusEl.textContent = '\u2713 Saved';
-    statusEl.className = 'status-msg success';
+    await api('PUT', '/config', _gatherNormalisationConfig());
+    els.forEach(el => { el.textContent = okMsg; el.className = 'status-msg success'; });
   } catch (e) {
-    statusEl.textContent = `Error: ${esc(e.message)}`;
-    statusEl.className = 'status-msg error';
+    els.forEach(el => { el.textContent = `Error: ${esc(e.message)}`; el.className = 'status-msg error'; });
   }
+}
+
+function saveHonorificTokens() {
+  return _saveNormalisationConfig(['honorific-status'], '\u2713 Saved');
+}
+
+function saveNormalisationRules() {
+  return _saveNormalisationConfig(
+    ['norm-rules-status', 'subst-status', 'title-case-status'],
+    '\u2713 Saved \u2014 applies to the next import',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2614,241 +2801,561 @@ async function saveIndexTemplate(id) {
 // Template edit page
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Template editor — Entry Layout redesign (Claude Design handoff, ported to
+// vanilla JS). State-driven: the components list + entry-level config live in
+// `_te`; structural changes re-render the editor + live preview. Formatting /
+// section / honorifics stay as DOM inputs in disclosures, read on save.
+// ---------------------------------------------------------------------------
+
+const _TE_FIELD_LABEL = {
+  work_number: 'Work Number', artist: 'Artist', title: 'Title',
+  title_cased: 'Title Case Title', edition: 'Edition info',
+  artwork: 'Artwork number', price: 'Price', medium: 'Medium',
+};
+const _TE_FIELD_HINT = {
+  work_number: 'e.g. 1, 42, 117', artist: 'Honorifics + surname',
+  title: 'As supplied by the artist', title_cased: 'Forced to Title Case',
+  edition: 'e.g. edition of 10 at £500', artwork: 'Internal artwork no.',
+  price: '£1,500 / NFS / POA', medium: 'mixed media, oil on canvas…',
+};
+// Per-field character style lives in a flat config slot (unchanged data model).
+const _TE_CHAR_KEY = {
+  work_number: 'cat_no_style', artist: 'artist_style', title: 'title_style',
+  title_cased: 'title_cased_style', edition: 'edition_style',
+  artwork: 'artwork_style', price: 'price_style', medium: 'medium_style',
+};
+const _TE_SEPARATORS = [
+  { v: 'none',        glyph: '·', label: 'none' },
+  { v: 'space',       glyph: '·', label: 'space' },
+  { v: 'tab',         glyph: '→', label: 'tab' },
+  { v: 'right_tab',   glyph: '⇥', label: 'right-tab' },
+  { v: 'soft_return', glyph: '↵', label: 'soft return' },
+  { v: 'hard_return', glyph: '¶', label: 'hard return' },
+];
+const _TE_SAMPLES = {
+  standard:   { work_number:'1',  artist:'Nicola Turner', title:'The Meddling Fiend', title_cased:'The Meddling Fiend', edition:'(edition of 10 at £500)', price:'£5,000', medium:'mixed media', artwork:'RA-2025-0001' },
+  long_title: { work_number:'117', artist:'Sir Anish Kapoor RA', title:'Untitled (after the long shadow of an October afternoon, IV)', title_cased:'Untitled (After the Long Shadow of an October Afternoon, IV)', edition:'', price:'£42,000', medium:'pigment on aluminium, mounted in a poplar shadow-box', artwork:'RA-2025-0117' },
+  nfs:        { work_number:'42', artist:'Rana Begum', title:'No. 1124', title_cased:'No. 1124', edition:'', price:'NFS', medium:'powder-coated aluminium', artwork:'RA-2025-0042' },
+  empty_fields:{ work_number:'8', artist:'Eileen Cooper RA', title:'', title_cased:'', edition:'', price:'£3,200', medium:'charcoal on paper', artwork:'' },
+};
+const _TE_DEFAULT_COMPONENTS = [
+  { field:'work_number', separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'artist',      separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'title',       separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'title_cased', separator_after:'tab',  omit_sep_when_empty:true, enabled:false, max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'edition',     separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'artwork',     separator_after:'tab',  omit_sep_when_empty:true, enabled:false, max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'price',       separator_after:'none', omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+  { field:'medium',      separator_after:'none', omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
+];
+
+let _te = null;  // editor state (module-level so inline handlers can reach it)
+
+function _teAutoParaStyle(field) {
+  const m = { artist:'LPGARTIST', medium:'LPGMEDIUM', edition:'LPGEDITION', price:'LPGPRICE',
+              title:'LPGTITLE', title_cased:'LPGTITLE', work_number:'LPGTITLE', artwork:'LPGARTWORK' };
+  return m[field] || 'ParaStyle';
+}
+
+// Walk components; the first opens paragraph 1, any later one with a
+// paragraph_style opens a new paragraph, others append to the current.
+function _teComputeParagraphs(components) {
+  const groups = [];
+  let cur = null;
+  components.forEach((c, idx) => {
+    const opens = idx === 0 || !!c.paragraph_style;
+    if (opens) { cur = { paragraph_style: c.paragraph_style || null, items: [] }; groups.push(cur); }
+    cur.items.push({ comp: c, idx });
+  });
+  return groups;
+}
+
+// entry_style consolidation: a legacy first-element paragraph_style migrates
+// into entry_style (the single source of truth for paragraph 1's style).
+function _teNormalize() {
+  const first = _te.components[0];
+  if (first && first.paragraph_style) {
+    if (!_te.entry_style) _te.entry_style = first.paragraph_style;
+    first.paragraph_style = '';
+  }
+}
+
 async function renderTemplateEdit(id) {
   const app = document.getElementById('app');
   app.innerHTML = '<p class="loading" style="padding:40px 0">Loading&hellip;</p>';
-
   const isNew = id === 'new';
   let cfg = {};
   let isBuiltin = false;
-
   if (!isNew) {
     try { cfg = await api('GET', `/templates/${id}`); }
     catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
     isBuiltin = cfg.is_builtin ?? false;
   }
 
-  // helpers
-  const _sepOpts = (val) => [
-    ['none',         'none'],
-    ['space',        'space'],
-    ['tab',          'tab'],
-    ['right_tab',    'right-indent tab (uses tab stop)'],
-    ['soft_return',  'soft return (\\n)'],
-    ['hard_return',  'hard return'],
-  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
+  const saved = cfg.components ?? _TE_DEFAULT_COMPONENTS;
+  const savedFields = new Set(saved.map(c => c.field));
+  const merged = [...saved, ..._TE_DEFAULT_COMPONENTS.filter(c => !savedFields.has(c.field))];
+  const components = merged.map(c => ({
+    field: c.field,
+    separator_after: c.separator_after ?? 'none',
+    omit_sep_when_empty: c.omit_sep_when_empty ?? true,
+    enabled: c.enabled ?? true,
+    max_line_chars: c.max_line_chars ?? null,
+    next_component_position: c.next_component_position ?? 'end_of_text',
+    balance_lines: c.balance_lines ?? false,
+    paragraph_style: c.paragraph_style || '',
+    char_style: cfg[_TE_CHAR_KEY[c.field]] ?? '',
+  }));
 
-  const _sectionSepOpts = (val) => [
-    ['paragraph',    'Paragraph return (blank line)'],
-    ['column_break', 'Column break'],
-    ['frame_break',  'Frame break'],
-    ['page_break',   'Page break'],
-    ['none',         'None (continuous)'],
-  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
-
-  const sepOpts = (val) => [
-    [',', ', &nbsp; 1,000'],
-    ['.', '. &nbsp; 1.000'],
-    [' ', 'space &nbsp; 1 000'],
-    ['',  'none &nbsp; 1000'],
-  ].map(([v, label]) => `<option value="${v}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
-
-  const dpOpts = (val) => [
-    ['0', '0 &mdash; 1,500'],
-    ['2', '2 &mdash; 1,500.00'],
-  ].map(([v, label]) => `<option value="${v}"${String(val) === v ? ' selected' : ''}>${label}</option>`).join('');
-
-  // components
-  const COMP_LABELS = {
-    work_number: 'Work Number', artist: 'Artist', title: 'Title',
-    edition: 'Edition info', artwork: 'Artwork number', price: 'Price', medium: 'Medium',
+  _te = {
+    id, isNew, isBuiltin,
+    name: cfg.name ?? '',
+    entry_style: cfg.entry_style ?? 'CatalogueEntry',
+    section_style: cfg.section_style ?? 'SectionTitle',
+    section_styles: cfg.section_styles ?? [],
+    section_separator: cfg.section_separator ?? 'paragraph',
+    section_separator_style: cfg.section_separator_style ?? '',
+    leading_separator: cfg.leading_separator ?? 'none',
+    trailing_separator: cfg.trailing_separator ?? 'none',
+    final_sep_from_last_component: cfg.final_sep_from_last_component ?? false,
+    currency_symbol: cfg.currency_symbol ?? '£',
+    thousands_separator: cfg.thousands_separator ?? ',',
+    decimal_places: cfg.decimal_places ?? 0,
+    edition_prefix: cfg.edition_prefix ?? 'edition of',
+    edition_brackets: cfg.edition_brackets !== false,
+    honorifics_style: cfg.honorifics_style ?? '',
+    honorifics_lowercase: cfg.honorifics_lowercase ?? false,
+    components,
+    activeTab: 'preview',
+    sampleVariant: 'standard',
+    wrapOpen: new Set(),
   };
-  const defaultComponents = [
-    {field:'work_number',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'artist',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'title',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'edition',separator_after:'tab',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'artwork',separator_after:'tab',omit_sep_when_empty:true,enabled:false,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'price',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-    {field:'medium',separator_after:'none',omit_sep_when_empty:true,enabled:true,max_line_chars:null,next_component_position:'end_of_text',balance_lines:false},
-  ];
-  const savedComponents = cfg.components ?? defaultComponents;
-  const savedFields = new Set(savedComponents.map(c => c.field));
-  const mergedComponents = [
-    ...savedComponents,
-    ...defaultComponents.filter(c => !savedFields.has(c.field)),
-  ];
+  _teNormalize();
 
-  const ro = isBuiltin ? ' readonly disabled' : '';
-  const roCheck = isBuiltin ? ' disabled' : '';
-
-  const componentRowsHTML = mergedComponents.map(c => {
-    const label = COMP_LABELS[c.field] ?? c.field;
-    const enabled = c.enabled ?? true;
-    const maxChars = c.max_line_chars ?? '';
-    const nextPos = c.next_component_position ?? 'end_of_text';
-    const balance = c.balance_lines ?? false;
-    const posDisabled = (maxChars === '' || maxChars === null) ? 'disabled' : '';
-    const balDisabled = posDisabled;
-    return `
-    <div class="component-row" data-field="${esc(c.field)}" style="opacity:${enabled ? 1 : 0.45}">
-      <div class="component-main">
-        <div class="component-handle">
-          <button type="button" class="btn-icon" onclick="moveComponent(this,-1)" title="Move up"${isBuiltin ? ' disabled' : ''}>▲</button>
-          <button type="button" class="btn-icon" onclick="moveComponent(this,1)" title="Move down"${isBuiltin ? ' disabled' : ''}>▼</button>
-        </div>
-        <span class="component-label">${esc(label)}</span>
-        <select class="component-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(c.separator_after)}</select>
-        <label class="inline-check"><input type="checkbox" class="component-omit-sep" ${(c.omit_sep_when_empty ?? true) ? 'checked' : ''}${roCheck}> omit when empty</label>
-        <label class="component-toggle" title="Include this component in the export">
-          <input type="checkbox" class="component-enabled" ${enabled ? 'checked' : ''}${roCheck}
-            onchange="this.closest('.component-row').style.opacity = this.checked ? 1 : 0.45"> include
-        </label>
-      </div>
-      <div class="component-wrap-opts">
-        <label>max chars/line <input type="number" class="component-max-chars" min="1" style="width:4.5em"
-          value="${maxChars}" placeholder="none"${ro}
-          oninput="const r=this.closest('.component-row');r.querySelector('.component-next-pos').disabled=!this.value;r.querySelector('.component-balance').disabled=!this.value"></label>
-        <label>next component at
-          <select class="component-next-pos" ${posDisabled}${isBuiltin ? ' disabled' : ''}>
-            <option value="end_of_text" ${nextPos==='end_of_text'?'selected':''}>end of text</option>
-            <option value="end_of_first_line" ${nextPos==='end_of_first_line'?'selected':''}>end of first line</option>
-          </select>
-        </label>
-        <label class="inline-check"><input type="checkbox" class="component-balance" ${balance?'checked':''}${roCheck} ${balDisabled}> balance lines</label>
-      </div>
-    </div>`;
-  }).join('');
-
-  const backLink = `<a href="#/templates" style="font-size:13px;color:var(--muted)">&larr; Back to templates</a>`;
-  const heading = isNew ? 'New Template' : esc(cfg.name ?? 'Edit Template');
-  const builtinNote = isBuiltin
-    ? `<div class="info-banner" style="margin-bottom:16px;padding:10px 14px;background:var(--bg-alt);border-radius:6px;font-size:13px;color:var(--muted)">
-        <strong>Built-in template</strong> &mdash; read-only. <button class="btn btn-sm" onclick="duplicateTemplate('${esc(id)}',this)">Duplicate to edit</button>
-       </div>`
-    : '';
-  const saveBtn = isBuiltin
-    ? ''
-    : `<button class="btn btn-primary" onclick="saveTemplate('${isNew ? 'new' : esc(id)}')">Save Template</button>`;
+  const ro = isBuiltin;
+  const roAttr = ro ? ' disabled' : '';
+  const heading = isNew ? 'New Template' : esc(_te.name || 'Edit Template');
+  const sepSel = (val, cls, oninput) =>
+    `<select class="${cls}"${roAttr} ${oninput}>` +
+    _TE_SEPARATORS.map(s => `<option value="${s.v}"${val === s.v ? ' selected' : ''}>${s.label}</option>`).join('') +
+    `</select>`;
 
   app.innerHTML = `
-    <div style="margin-bottom:4px">${backLink}</div>
-    <h2 class="page-heading">${heading}</h2>
-    ${builtinNote}
-
-    ${isNew ? `<section class="panel"><div class="settings-form"><div class="form-row">
-      <label>Template name</label>
-      <input id="tmpl-name" type="text" placeholder="e.g. Summer Exhibition 2025">
-    </div></div></section>` : ''}
-    ${!isNew ? `<section class="panel"><div class="settings-form"><div class="form-row">
-      <label>Template name</label>
-      <input id="tmpl-name" type="text" value="${esc(cfg.name ?? '')}"${ro}>
-    </div></div></section>` : ''}
-
-    <h3 class="settings-group-heading">Formatting</h3>
-    <section class="panel">
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Currency symbol</label>
-          <input id="tmpl-currency" type="text" value="${esc(cfg.currency_symbol ?? '\u00a3')}" style="max-width:80px"${ro}>
-        </div>
-        <div class="form-row">
-          <label>Thousands separator</label>
-          <select id="tmpl-thousands-sep"${isBuiltin ? ' disabled' : ''}>${sepOpts(cfg.thousands_separator ?? ',')}</select>
-        </div>
-        <div class="form-row">
-          <label>Decimal places</label>
-          <select id="tmpl-decimal-places"${isBuiltin ? ' disabled' : ''}>${dpOpts(cfg.decimal_places ?? 0)}</select>
-        </div>
-        <div class="form-row">
-          <label>Edition prefix</label>
-          <input id="tmpl-edition-prefix" type="text" value="${esc(cfg.edition_prefix ?? 'edition of')}"${ro}>
-          <span class="form-hint">e.g. &ldquo;edition of&rdquo; &rarr; &ldquo;edition of 10 at &pound;500&rdquo;</span>
-        </div>
-        <div class="form-row">
-          <label>Edition brackets</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" id="tmpl-edition-brackets"${cfg.edition_brackets !== false ? ' checked' : ''}${roCheck}>
-            Wrap edition info in brackets
-          </label>
-        </div>
+    <div style="margin-bottom:4px"><a href="#/templates" style="font-size:13px;color:var(--muted)">&larr; Back to templates</a></div>
+    <header class="page__head" style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:18px">
+      <div>
+        <h2 class="page-heading" style="margin:0;display:flex;align-items:center;gap:12px">${heading}${ro ? ' <span class="badge-builtin">Built-in &middot; read-only</span>' : ''}</h2>
+        <p style="font-size:13px;color:var(--muted-2);margin:6px 0 0">How one catalogue entry is laid out for InDesign Tagged Text export.</p>
       </div>
-    </section>
-
-    <h3 class="settings-group-heading">InDesign Paragraph Styles</h3>
-    <section class="panel">
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Section heading</label>
-          <input id="tmpl-section-style" type="text" value="${esc(cfg.section_style ?? 'SectionTitle')}"${ro}>
-        </div>
-        <div class="form-row">
-          <label>Entry paragraph</label>
-          <input id="tmpl-entry-style" type="text" value="${esc(cfg.entry_style ?? 'CatalogueEntry')}"${ro}>
-        </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        ${ro ? `<button class="btn btn-sm" onclick="duplicateTemplate('${esc(id)}',this)">Duplicate to edit</button>` : ''}
+        ${ro ? '' : `<button class="btn btn-primary" onclick="saveTemplate('${isNew ? 'new' : esc(id)}')">Save template</button>`}
+        <span id="tmpl-status" class="status-msg"></span>
       </div>
-    </section>
+    </header>
 
-    <h3 class="settings-group-heading">InDesign Character Styles</h3>
-    <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Leave blank to output plain text for that field.</p>
-      <div class="settings-form">
-        <div class="form-row"><label>Cat number</label><input id="tmpl-cat-no-style" type="text" value="${esc(cfg.cat_no_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Artist name</label><input id="tmpl-artist-style" type="text" value="${esc(cfg.artist_style ?? '')}"${ro}></div>
-        <div class="form-row">
-          <label>Honorifics</label>
-          <div class="form-row-controls">
-            <input id="tmpl-honorifics-style" type="text" value="${esc(cfg.honorifics_style ?? '')}"${ro}>
-            <label class="inline-check"><input id="tmpl-honorifics-lowercase" type="checkbox" ${cfg.honorifics_lowercase ? 'checked' : ''}${roCheck}> force lowercase</label>
+    ${ro ? `<div class="info-banner" style="margin-bottom:16px"><strong>Built-in template</strong> &mdash; this template ships with the tool and can&rsquo;t be edited. Duplicate it to make changes.</div>` : ''}
+
+    <section class="panel" style="margin-bottom:18px"><div class="settings-form"><div class="form-row">
+      <label>Template name</label>
+      <input id="tmpl-name" type="text" value="${esc(_te.name)}" placeholder="e.g. Summer Exhibition 2026"${roAttr}>
+    </div></div></section>
+
+    <div class="te-layout">
+      <div class="te-editor">
+        <div class="sectionhead"><h3>Entry layout</h3><span class="sectionhead__count" id="te-count"></span></div>
+        <p class="editor__intro">Each catalogue entry is built from the elements below, in order. An element either stays <em>inline</em> in the current paragraph (character-styled) or <em>opens a new paragraph</em> in a chosen paragraph style. The structure on the right updates as you edit.</p>
+        <div id="te-layout"></div>
+        ${_teSurroundingHTML(sepSel, roAttr)}
+      </div>
+
+      <aside class="te-rightcol">
+        <div class="te-rightcol__sticky">
+          <div class="te-rightcol__tabs">
+            <button class="tabbtn${_te.activeTab === 'preview' ? ' is-on' : ''}" id="te-tab-preview" onclick="_teTab('preview')">Sample entry</button>
+            <button class="tabbtn${_te.activeTab === 'tagged' ? ' is-on' : ''}" id="te-tab-tagged" onclick="_teTab('tagged')">Tagged Text</button>
+          </div>
+          <div class="te-rightcol__sub">
+            Showing one entry &middot; sample:
+            <select onchange="_teSample(this.value)">
+              <option value="standard">Standard</option>
+              <option value="long_title">Long title + RA artist</option>
+              <option value="nfs">NFS (no price)</option>
+              <option value="empty_fields">Sparse data (omits)</option>
+            </select>
+          </div>
+          <div id="te-preview"></div>
+        </div>
+      </aside>
+    </div>`;
+
+  _teRender();
+}
+
+// --- Surrounding settings (disclosures; inputs always in DOM, read on save) --
+function _teSurroundingHTML(sepSel, roAttr) {
+  const t = _te;
+  const thOpts = (val) => [[',', ',   1,000'],['.', '.   1.000'],[' ', 'space   1 000'],['', 'none   1000']]
+    .map(([v, l]) => `<option value="${v}"${t.thousands_separator === v ? ' selected' : ''}>${l}</option>`).join('');
+  const dpOpts = (val) => [['0','0 — 1,500'],['2','2 — 1,500.00']]
+    .map(([v, l]) => `<option value="${v}"${String(t.decimal_places) === v ? ' selected' : ''}>${l}</option>`).join('');
+  const secSepOpts = [['paragraph','Paragraph return (blank line)'],['column_break','Column break'],['frame_break','Frame break'],['page_break','Page break'],['none','None (continuous)']]
+    .map(([v, l]) => `<option value="${v}"${t.section_separator === v ? ' selected' : ''}>${l}</option>`).join('');
+  return `
+    <div class="surrounding">
+      <div class="disc">
+        <button type="button" class="disc__head" onclick="_teToggleDisc(this)">
+          <span class="disc__chev">&#9656;</span><span class="disc__title">Number formatting</span>
+          <span class="disc__preview">${esc(t.currency_symbol)} &middot; ${t.thousands_separator || 'none'} &middot; ${t.decimal_places} dp</span>
+        </button>
+        <div class="disc__body" style="display:none">
+          <div class="te-grid2">
+            <label class="fld"><span class="fld__lbl">Currency symbol</span><input id="tmpl-currency" type="text" value="${esc(t.currency_symbol)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Thousands separator</span><select id="tmpl-thousands-sep"${roAttr}>${thOpts()}</select></label>
+            <label class="fld"><span class="fld__lbl">Decimal places</span><select id="tmpl-decimal-places"${roAttr}>${dpOpts()}</select></label>
+            <label class="fld"><span class="fld__lbl">Edition prefix</span><input id="tmpl-edition-prefix" type="text" value="${esc(t.edition_prefix)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Edition brackets</span><label class="ck"><input id="tmpl-edition-brackets" type="checkbox"${t.edition_brackets ? ' checked' : ''}${roAttr}> wrap edition info in brackets</label></label>
           </div>
         </div>
-        <div class="form-row"><label>Title</label><input id="tmpl-title-style" type="text" value="${esc(cfg.title_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Price</label><input id="tmpl-price-style" type="text" value="${esc(cfg.price_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Medium</label><input id="tmpl-medium-style" type="text" value="${esc(cfg.medium_style ?? '')}"${ro}></div>
-        <div class="form-row"><label>Artwork number</label><input id="tmpl-artwork-style" type="text" value="${esc(cfg.artwork_style ?? '')}"${ro}></div>
       </div>
-    </section>
 
-    <h3 class="settings-group-heading">Section Separator</h3>
-    <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">What to insert between gallery sections in the export.</p>
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Between sections</label>
-          <select id="tmpl-section-sep"${isBuiltin ? ' disabled' : ''}>${_sectionSepOpts(cfg.section_separator ?? 'paragraph')}</select>
-        </div>
-        <div class="form-row">
-          <label>Separator style</label>
-          <input id="tmpl-section-sep-style" value="${esc(cfg.section_separator_style ?? '')}"${isBuiltin ? ' disabled' : ''} placeholder="(none)">
+      <div class="disc">
+        <button type="button" class="disc__head" onclick="_teToggleDisc(this)">
+          <span class="disc__chev">&#9656;</span><span class="disc__title">Section headings &amp; separator</span>
+          <span class="disc__preview">${esc(t.section_style || '(none)')}</span>
+        </button>
+        <div class="disc__body" style="display:none">
+          <div class="te-grid2">
+            <label class="fld"><span class="fld__lbl">Section heading style</span><input id="tmpl-section-style" type="text" value="${esc(t.section_style)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Between gallery sections</span><select id="tmpl-section-sep"${roAttr}>${secSepOpts}</select></label>
+            <label class="fld"><span class="fld__lbl">Section separator style</span><input id="tmpl-section-sep-style" type="text" value="${esc(t.section_separator_style)}" placeholder="(none)"${roAttr}></label>
+          </div>
+          <p class="disc__footnote">The entry&rsquo;s own paragraph style is set on the <strong>first element</strong> in the entry layout above (the &ldquo;&para; opens entry paragraph&rdquo; field).</p>
         </div>
       </div>
-    </section>
 
-    <h3 class="settings-group-heading">Entry Layout</h3>
-    <section class="panel">
-      <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Drag to reorder. Separator fires after each non-empty component. Right-align tab = <code>\y</code>, soft return = <code>\n</code>.</p>
-      <div class="form-row" style="margin-bottom:12px">
-        <label>Leading separator</label>
-        <select id="tmpl-leading-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(cfg.leading_separator ?? 'none')}</select>
+      <div class="disc">
+        <button type="button" class="disc__head" onclick="_teToggleDisc(this)">
+          <span class="disc__chev">&#9656;</span><span class="disc__title">Honorifics</span>
+          <span class="disc__preview">${esc(t.honorifics_style || '(none)')} &middot; lowercase: ${t.honorifics_lowercase ? 'on' : 'off'}</span>
+        </button>
+        <div class="disc__body" style="display:none">
+          <div class="te-grid2">
+            <label class="fld"><span class="fld__lbl">Honorifics character style</span><input id="tmpl-honorifics-style" type="text" value="${esc(t.honorifics_style)}"${roAttr}></label>
+            <label class="fld"><span class="fld__lbl">Force lowercase</span><label class="ck"><input id="tmpl-honorifics-lowercase" type="checkbox"${t.honorifics_lowercase ? ' checked' : ''}${roAttr}> e.g. &ldquo;RA&rdquo; &rarr; &ldquo;ra&rdquo;</label></label>
+          </div>
+          <p class="disc__footnote">The honorific suffix is attached to the artist element; it isn&rsquo;t a separate element of its own.</p>
+        </div>
       </div>
-      <div id="tmpl-components" class="component-list">${componentRowsHTML}</div>
-      <div class="form-row" style="margin-top:12px">
-        <label>Trailing separator</label>
-        <select id="tmpl-trailing-sep"${isBuiltin ? ' disabled' : ''}>${_sepOpts(cfg.trailing_separator ?? 'none')}</select>
+    </div>`;
+}
+
+function _teToggleDisc(head) {
+  const disc = head.closest('.disc');
+  const body = disc.querySelector('.disc__body');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  disc.classList.toggle('is-open', open);
+  head.querySelector('.disc__chev').innerHTML = open ? '&#9662;' : '&#9656;';
+}
+
+// --- Render the editor layout + preview from state ------------------------
+function _teRender() {
+  const layoutEl = document.getElementById('te-layout');
+  if (!layoutEl) return;
+  layoutEl.innerHTML = _teLayoutHTML();
+  const countEl = document.getElementById('te-count');
+  if (countEl) {
+    const n = _teComputeParagraphs(_te.components).length;
+    countEl.textContent = `${n} paragraph block${n === 1 ? '' : 's'}`;
+  }
+  _teRenderPreview();
+}
+
+function _teLayoutHTML() {
+  const groups = _teComputeParagraphs(_te.components);
+  const total = _te.components.length;
+  let html = `<div class="paragroups">`;
+  html += _teEdgeBandHTML('leading', _te.leading_separator, 'paragraph 1');
+  groups.forEach((g, gi) => {
+    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
+    const enabledCount = g.items.filter(i => i.comp.enabled).length;
+    html += `<div class="paragroup">
+      <div class="paragroup__head">
+        <span class="paragroup__chip">&para;</span>
+        <span class="paragroup__title">Paragraph ${gi + 1}</span>
+        <span class="paragroup__divider"></span>
+        <span class="paragroup__style">${styleName
+          ? `<span class="paragroup__style-lbl">style:</span> <code>${esc(styleName)}</code>`
+          : `<span class="paragroup__style-default">uses default entry style</span>`}</span>
+        <span class="paragroup__count">${enabledCount} of ${g.items.length} elements</span>
       </div>
-      <div class="form-row" style="margin-top:8px">
-        <label class="inline-check" style="text-transform:none;font-size:13px">
-          <input type="checkbox" id="tmpl-final-sep-from-last"
-            ${(cfg.final_sep_from_last_component ?? false) ? 'checked' : ''}${roCheck}>
-          When last component is omitted, adopt its separator for the final non-empty field
+      <div class="paragroup__body">
+        ${g.items.map((it, pos) => _teCardHTML(it.comp, it.idx, total, pos === g.items.length - 1)).join('')}
+      </div>
+    </div>`;
+  });
+  const trailingCtx = groups.length > 1 ? `paragraph ${groups.length}` : 'the entry paragraph';
+  html += _teEdgeBandHTML('trailing', _te.trailing_separator, trailingCtx);
+  html += `</div>`;
+  return html;
+}
+
+function _teSepPickerHTML(value, onpick, disabled) {
+  return `<div class="seppicker${disabled ? ' is-disabled' : ''}">` +
+    _TE_SEPARATORS.map(s =>
+      `<button type="button" class="seppicker__btn${s.v === value ? ' is-on' : ''}"${disabled ? ' disabled' : ''} title="${s.label}" onclick="${onpick}('${s.v}')">` +
+      `<span class="seppicker__glyph">${s.glyph}</span><span class="seppicker__label">${s.label}</span></button>`
+    ).join('') + `</div>`;
+}
+
+function _teCardHTML(comp, idx, total, isLastInGroup) {
+  const ro = _te.isBuiltin;
+  const roAttr = ro ? ' disabled' : '';
+  const opensPara = idx === 0 || !!comp.paragraph_style;
+  const greyed = !comp.enabled;
+  const label = _TE_FIELD_LABEL[comp.field] ?? comp.field;
+  const hint = _TE_FIELD_HINT[comp.field] ?? '';
+  const ctrlDisabled = ro || !comp.enabled;
+
+  // ParaToggle
+  let paraHTML;
+  if (idx === 0) {
+    paraHTML = `<div class="paratoggle paratoggle--locked" title="The first element always opens the entry paragraph.">
+      <span class="paratoggle__pill">&para; opens entry paragraph</span>
+      <input type="text" class="paratoggle__style" value="${esc(_te.entry_style)}" placeholder="(uses default entry style)"
+             spellcheck="false"${roAttr} oninput="_teSetEntryStyle(this.value)">
+    </div>`;
+  } else {
+    const opens = !!comp.paragraph_style;
+    paraHTML = `<div class="paratoggle ${opens ? 'is-opens' : 'is-inline'}">
+      <div class="paratoggle__seg" role="tablist">
+        <button type="button" role="tab" class="paratoggle__btn" aria-selected="${!opens}"${roAttr} onclick="_teSetParaMode(${idx},'inline')"><span class="paratoggle__btn-icon">&#8617;</span>inline</button>
+        <button type="button" role="tab" class="paratoggle__btn" aria-selected="${opens}"${roAttr} onclick="_teSetParaMode(${idx},'new')"><span class="paratoggle__btn-icon">&para;</span>new paragraph</button>
+      </div>
+      ${opens ? `<input type="text" class="paratoggle__style" value="${esc(comp.paragraph_style)}" placeholder="paragraph style name" spellcheck="false"${roAttr} oninput="_teSetParaStyle(${idx}, this.value)">` : ''}
+    </div>`;
+  }
+
+  // wrap options (only when not last in paragraph — nothing to flow into otherwise)
+  let wrapHTML = '';
+  if (!isLastInGroup) {
+    const open = _te.wrapOpen.has(idx);
+    const setBadge = (comp.max_line_chars || comp.balance_lines) && !open ? `<span class="el-card__more-badge">set</span>` : '';
+    wrapHTML = `<button type="button" class="el-card__more" onclick="_teToggleWrap(${idx})">${open ? '&#9662;' : '&#9656;'} wrap options${setBadge}</button>`;
+  }
+  let advHTML = '';
+  if (!isLastInGroup && _te.wrapOpen.has(idx)) {
+    advHTML = `<div class="el-card__advanced">
+      <span class="adv-note">Only used by single-paragraph (List of Works) exports for in-paragraph wrapping.</span>
+      <div class="adv-controls">
+        <label>max chars per line <input type="number" min="1" style="width:64px" value="${comp.max_line_chars ?? ''}" placeholder="none"${roAttr} oninput="_teSetMaxChars(${idx}, this.value)"></label>
+        <label>next element at <select${ro || !comp.max_line_chars ? ' disabled' : ''} onchange="_teSetNextPos(${idx}, this.value)">
+          <option value="end_of_text"${comp.next_component_position === 'end_of_text' ? ' selected' : ''}>end of text</option>
+          <option value="end_of_first_line"${comp.next_component_position === 'end_of_first_line' ? ' selected' : ''}>end of first line</option>
+        </select></label>
+        <label class="ck"><input type="checkbox"${comp.balance_lines ? ' checked' : ''}${ro || !comp.max_line_chars ? ' disabled' : ''} onchange="_teToggleBalance(${idx}, this.checked)"> balance lines</label>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="el-card${opensPara ? ' el-card--opener' : ''}${greyed ? ' el-card--off' : ''}">
+    <div class="el-card__rail" aria-hidden="true">${opensPara ? '<span class="el-card__pilcrow">&para;</span>' : ''}</div>
+    <div class="el-card__body">
+      <div class="el-card__row el-card__row--top">
+        <div class="el-card__handle">
+          <button type="button" class="iconbtn" title="Move up"${ro || idx === 0 ? ' disabled' : ''} onclick="_teMove(${idx},-1)">&#9650;</button>
+          <button type="button" class="iconbtn" title="Move down"${ro || idx === total - 1 ? ' disabled' : ''} onclick="_teMove(${idx},1)">&#9660;</button>
+        </div>
+        <div class="el-card__name">
+          <label class="toggle ${comp.enabled ? 'is-on' : 'is-off'}" title="${comp.enabled ? 'Included' : 'Excluded — click to include'}">
+            <input type="checkbox"${comp.enabled ? ' checked' : ''}${roAttr} onchange="_teToggleEnabled(${idx}, this.checked)"><span class="toggle__dot"></span>
+          </label>
+          <div class="el-card__name-text">
+            <div class="el-card__field">${esc(label)}</div>
+            <div class="el-card__hint">${esc(hint)}</div>
+          </div>
+        </div>
+        <div class="el-card__charstyle">
+          <span class="lbl">character style</span>
+          <div class="char-input-wrap">
+            <input type="text" value="${esc(comp.char_style)}" placeholder="plain text" spellcheck="false"${ctrlDisabled ? ' disabled' : ''} oninput="_teSetChar(${idx}, this.value)">
+            ${comp.char_style ? '<span class="char-chip">cs</span>' : ''}
+          </div>
+          ${!comp.char_style && comp.enabled ? '<span class="el-card__charstyle-hint">Blank exports as plain text.</span>' : ''}
+        </div>
+        <label class="el-card__omit" title="Skip this element AND its separator if its value is empty">
+          <input type="checkbox"${comp.omit_sep_when_empty ? ' checked' : ''}${ctrlDisabled ? ' disabled' : ''} onchange="_teToggleOmit(${idx}, this.checked)"><span>omit if empty</span>
         </label>
       </div>
-    </section>
+      <div class="el-card__row el-card__row--bottom">
+        ${paraHTML}
+        <div class="el-card__sep"><span class="lbl">then</span>${_teSepPickerHTML(comp.separator_after, `_teSetSepCb(${idx})`, ctrlDisabled)}</div>
+        ${wrapHTML}
+      </div>
+      ${advHTML}
+    </div>
+  </div>`;
+}
 
-    <div class="form-actions" style="padding-bottom:20px">
-      ${saveBtn}
-      <span id="tmpl-status" class="status-msg"></span>
-    </div>`;
+function _teEdgeBandHTML(position, value, ctx) {
+  const ro = _te.isBuiltin;
+  const icon = position === 'leading' ? '&#8627;' : '&#8626;';
+  const title = position === 'leading' ? 'Before any element' : 'After the last element';
+  const onpick = position === 'leading' ? '_teSetLeading' : '_teSetTrailing';
+  let tail = '';
+  if (position === 'trailing') {
+    tail = `<label class="edgeband__opt"><input type="checkbox"${_te.final_sep_from_last_component ? ' checked' : ''}${ro ? ' disabled' : ''} onchange="_teToggleFinalSep(this.checked)"> If the last element is omitted, use its separator after the final non-empty field instead</label>`;
+  }
+  let note = '';
+  if (value === 'hard_return') {
+    note = `<div class="edgeband__hardnote"><span class="edgeband__hardnote-icon">&para;</span><span>Creates a blank paragraph in the ${position === 'leading' ? 'first' : 'last'} paragraph&rsquo;s style &mdash; that style can&rsquo;t be overridden here. For a different style, set <em>space before</em>/<em>space after</em> on the entry style in InDesign, or use the <strong>Section Separator</strong> for between-gallery gaps.</span></div>`;
+  }
+  return `<div class="edgeband edgeband--${position}">
+    <div class="edgeband__head"><span class="edgeband__icon">${icon}</span><span class="edgeband__title">${title}</span><span class="edgeband__sub">Fires in ${ctx}; no character style applies.</span></div>
+    <div class="edgeband__body"><span class="lbl">insert</span>${_teSepPickerHTML(value, onpick, ro)}${tail}</div>
+    ${note}
+  </div>`;
+}
+
+// --- Live preview ---------------------------------------------------------
+function _teRenderPreview() {
+  const el = document.getElementById('te-preview');
+  if (!el) return;
+  document.getElementById('te-tab-preview')?.classList.toggle('is-on', _te.activeTab === 'preview');
+  document.getElementById('te-tab-tagged')?.classList.toggle('is-on', _te.activeTab === 'tagged');
+  el.innerHTML = _te.activeTab === 'tagged' ? _teTaggedTextHTML() : _tePreviewHTML();
+}
+
+function _teSepGlyph(kind) {
+  switch (kind) {
+    case 'space':       return `<span class="pv-sep"><span class="pv-sep__glyph">&middot;</span></span>`;
+    case 'tab':         return `<span class="pv-sep pv-sep--tab"><span class="pv-sep__glyph">&rarr;</span></span>`;
+    case 'right_tab':   return `<span class="pv-sep pv-sep--rtab"><span class="pv-sep__glyph">&#8677;</span></span>`;
+    case 'soft_return': return `<span class="pv-sep pv-sep--soft"><span class="pv-sep__glyph">&#8629;</span></span>`;
+    case 'hard_return': return `<span class="pv-sep pv-sep--hard"><span class="pv-sep__glyph">&para;</span></span>`;
+    default: return '';
+  }
+}
+
+function _teVisibleItems(group, sample) {
+  return group.items.filter(it => it.comp.enabled && (!it.comp.omit_sep_when_empty || sample[it.comp.field]));
+}
+
+function _tePreviewHTML() {
+  const groups = _teComputeParagraphs(_te.components);
+  const sample = _TE_SAMPLES[_te.sampleVariant];
+  const renderable = groups.map((g, gi) => ({ g, gi, items: _teVisibleItems(g, sample) })).filter(o => o.items.length);
+  const firstGi = renderable.length ? renderable[0].gi : -1;
+  const lastGi = renderable.length ? renderable[renderable.length - 1].gi : -1;
+
+  let paper = renderable.map(({ g, gi, items }) => {
+    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
+    let line = '';
+    if (gi === firstGi && _te.leading_separator && _te.leading_separator !== 'none') {
+      line += `<span class="pv-edge" title="Leading separator">${_teSepGlyph(_te.leading_separator)}</span>`;
+    }
+    items.forEach(({ comp }, ci) => {
+      const value = sample[comp.field] ?? '';
+      const tok = value
+        ? esc(value)
+        : `<em class="pv-tok__empty">(${esc(_TE_FIELD_LABEL[comp.field] || comp.field)})</em>`;
+      const lbl = comp.char_style ? `<span class="pv-tok__label">${esc(comp.char_style)}</span>` : '';
+      line += `<span class="pv-pair"><span class="pv-tok${comp.char_style ? ' pv-tok--styled' : ''}">${tok}${lbl}</span>`;
+      if (ci !== items.length - 1 && comp.separator_after !== 'none') line += _teSepGlyph(comp.separator_after);
+      line += `</span>`;
+    });
+    if (gi === lastGi && _te.trailing_separator && _te.trailing_separator !== 'none') {
+      line += `<span class="pv-edge" title="Trailing separator">${_teSepGlyph(_te.trailing_separator)}</span>`;
+    }
+    return `<div class="pv-para"><div class="pv-para__tag"><span class="pv-tag--para">&para; ${styleName ? esc(styleName) : '<em>default</em>'}</span></div><div class="pv-para__line">${line}</div></div>`;
+  }).join('');
+  if (!paper) paper = `<p style="color:var(--muted);font-size:13px;margin:0">No visible elements for this sample.</p>`;
+
+  return `<div class="preview"><div class="preview__paper">${paper}</div>
+    <div class="preview__legend">
+      <span><i class="lg lg--styled"></i> character-styled</span>
+      <span><i class="lg lg--tab">&rarr;</i> tab</span>
+      <span><i class="lg lg--rtab">&#8677;</i> right-indent tab</span>
+      <span><i class="lg lg--soft">&#8629;</i> soft return</span>
+      <span><i class="lg lg--para">&para;</i> new paragraph</span>
+    </div></div>`;
+}
+
+function _teTaggedSepChars(k) {
+  switch (k) {
+    case 'space': return ' ';
+    case 'tab': return '\\t';
+    case 'right_tab': return '\\t';
+    case 'soft_return': return '\\n';
+    case 'hard_return': return '\\r';
+    default: return '';
+  }
+}
+
+function _teTaggedTextHTML() {
+  const groups = _teComputeParagraphs(_te.components);
+  const sample = _TE_SAMPLES[_te.sampleVariant];
+  const lines = [];
+  groups.forEach((g, gi) => {
+    const items = _teVisibleItems(g, sample);
+    if (!items.length) return;
+    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
+    let line = `<ParaStyle:${styleName}>`;
+    items.forEach(({ comp }, ci) => {
+      const v = sample[comp.field] ?? '';
+      line += comp.char_style ? `<CharStyle:${comp.char_style}>${v}<CharStyle:>` : v;
+      if (ci !== items.length - 1) line += _teTaggedSepChars(comp.separator_after);
+    });
+    lines.push(line);
+  });
+  if (_te.leading_separator && _te.leading_separator !== 'none' && lines.length) {
+    lines[0] = lines[0].replace(/^(<ParaStyle:[^>]*>)/, `$1${_teTaggedSepChars(_te.leading_separator)}`);
+  }
+  if (_te.trailing_separator && _te.trailing_separator !== 'none' && lines.length) {
+    lines[lines.length - 1] += _teTaggedSepChars(_te.trailing_separator);
+  }
+  const text = lines.join('\n');
+  return `<div class="taggedtext-wrap"><button type="button" class="copybtn" onclick="_teCopyTagged(this)">Copy</button><pre class="taggedtext"><code>${esc(text)}</code></pre></div>`;
+}
+
+// --- State mutations ------------------------------------------------------
+function _teMove(idx, dir) {
+  const t = idx + dir;
+  if (t < 0 || t >= _te.components.length) return;
+  const a = _te.components;
+  [a[idx], a[t]] = [a[t], a[idx]];
+  _teNormalize();
+  _teRender();
+}
+function _teToggleEnabled(idx, on) { _te.components[idx].enabled = on; _teRender(); }
+function _teToggleOmit(idx, on) { _te.components[idx].omit_sep_when_empty = on; _teRenderPreview(); }
+function _teSetChar(idx, v) { _te.components[idx].char_style = v; _teRenderPreview(); }
+function _teSetParaMode(idx, mode) {
+  _te.components[idx].paragraph_style = mode === 'new'
+    ? (_te.components[idx].paragraph_style || _teAutoParaStyle(_te.components[idx].field))
+    : '';
+  _teRender();
+}
+function _teSetParaStyle(idx, v) { _te.components[idx].paragraph_style = v; _teRenderPreview(); }
+function _teSetEntryStyle(v) { _te.entry_style = v; _teRenderPreview(); }
+function _teSetSepCb(idx) { return (v) => { _te.components[idx].separator_after = v; _teRender(); }; }
+function _teSetLeading(v) { _te.leading_separator = v; _teRender(); }
+function _teSetTrailing(v) { _te.trailing_separator = v; _teRender(); }
+function _teToggleFinalSep(on) { _te.final_sep_from_last_component = on; }
+function _teSetMaxChars(idx, v) { _te.components[idx].max_line_chars = v ? parseInt(v, 10) : null; }
+function _teSetNextPos(idx, v) { _te.components[idx].next_component_position = v; }
+function _teToggleBalance(idx, on) { _te.components[idx].balance_lines = on; }
+function _teToggleWrap(idx) { if (_te.wrapOpen.has(idx)) _te.wrapOpen.delete(idx); else _te.wrapOpen.add(idx); _teRender(); }
+function _teTab(tab) { _te.activeTab = tab; _teRenderPreview(); }
+function _teSample(v) { _te.sampleVariant = v; _teRenderPreview(); }
+function _teCopyTagged(btn) {
+  const text = (btn.parentElement.querySelector('code')?.textContent) ?? '';
+  navigator.clipboard.writeText(text).then(
+    () => { btn.textContent = '✓ Copied'; btn.classList.add('copybtn--copied'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copybtn--copied'); }, 1500); },
+    () => { btn.textContent = 'Copy failed'; btn.classList.add('copybtn--error'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copybtn--error'); }, 2000); }
+  );
 }
 
 async function saveTemplate(id) {
@@ -2856,56 +3363,52 @@ async function saveTemplate(id) {
   const name = (nameEl?.value ?? '').trim();
   if (!name) { showToast('Please enter a template name.', 'error'); nameEl?.focus(); return; }
 
-  const components = Array.from(
-    document.querySelectorAll('#tmpl-components .component-row')
-  ).map(row => {
-    const rawMax = row.querySelector('.component-max-chars')?.value;
+  // Components from state; char styles harvested back into flat config keys.
+  const charKeys = {};
+  const components = _te.components.map(c => {
+    charKeys[_TE_CHAR_KEY[c.field]] = (c.char_style ?? '').trim();
     return {
-      field: row.dataset.field,
-      separator_after: row.querySelector('.component-sep')?.value ?? 'none',
-      omit_sep_when_empty: row.querySelector('.component-omit-sep')?.checked ?? true,
-      enabled: row.querySelector('.component-enabled')?.checked ?? true,
-      max_line_chars: rawMax ? parseInt(rawMax, 10) : null,
-      next_component_position: row.querySelector('.component-next-pos')?.value ?? 'end_of_text',
-      balance_lines: row.querySelector('.component-balance')?.checked ?? false,
+      field: c.field,
+      separator_after: c.separator_after ?? 'none',
+      omit_sep_when_empty: !!c.omit_sep_when_empty,
+      enabled: !!c.enabled,
+      max_line_chars: c.max_line_chars ?? null,
+      next_component_position: c.next_component_position ?? 'end_of_text',
+      balance_lines: !!c.balance_lines,
+      paragraph_style: c.paragraph_style ? c.paragraph_style.trim() : null,
     };
   });
 
   const body = {
     name,
-    currency_symbol:     (document.getElementById('tmpl-currency')?.value          ?? '').trim() || '\u00a3',
-    thousands_separator:  document.getElementById('tmpl-thousands-sep')?.value      ?? ',',
-    decimal_places:      Number(document.getElementById('tmpl-decimal-places')?.value ?? '0'),
-    edition_prefix:      (document.getElementById('tmpl-edition-prefix')?.value     ?? '').trim() || 'edition of',
-    edition_brackets:     document.getElementById('tmpl-edition-brackets')?.checked ?? true,
-    section_style:       (document.getElementById('tmpl-section-style')?.value      ?? '').trim() || 'SectionTitle',
-    entry_style:         (document.getElementById('tmpl-entry-style')?.value        ?? '').trim() || 'CatalogueEntry',
-    section_separator:    document.getElementById('tmpl-section-sep')?.value        ?? 'paragraph',
+    currency_symbol: (document.getElementById('tmpl-currency')?.value ?? '').trim() || '£',
+    thousands_separator: document.getElementById('tmpl-thousands-sep')?.value ?? ',',
+    decimal_places: Number(document.getElementById('tmpl-decimal-places')?.value ?? '0'),
+    edition_prefix: (document.getElementById('tmpl-edition-prefix')?.value ?? '').trim() || 'edition of',
+    edition_brackets: document.getElementById('tmpl-edition-brackets')?.checked ?? true,
+    section_style: (document.getElementById('tmpl-section-style')?.value ?? '').trim() || 'SectionTitle',
+    section_styles: _te.section_styles ?? [],
+    entry_style: (_te.entry_style ?? '').trim() || 'CatalogueEntry',
+    section_separator: document.getElementById('tmpl-section-sep')?.value ?? 'paragraph',
     section_separator_style: (document.getElementById('tmpl-section-sep-style')?.value ?? '').trim(),
-    cat_no_style:        (document.getElementById('tmpl-cat-no-style')?.value       ?? '').trim(),
-    artist_style:        (document.getElementById('tmpl-artist-style')?.value       ?? '').trim(),
-    honorifics_style:    (document.getElementById('tmpl-honorifics-style')?.value   ?? '').trim(),
+    honorifics_style: (document.getElementById('tmpl-honorifics-style')?.value ?? '').trim(),
     honorifics_lowercase: document.getElementById('tmpl-honorifics-lowercase')?.checked ?? false,
-    title_style:         (document.getElementById('tmpl-title-style')?.value        ?? '').trim(),
-    price_style:         (document.getElementById('tmpl-price-style')?.value        ?? '').trim(),
-    medium_style:        (document.getElementById('tmpl-medium-style')?.value       ?? '').trim(),
-    artwork_style:       (document.getElementById('tmpl-artwork-style')?.value      ?? '').trim(),
-    leading_separator:    document.getElementById('tmpl-leading-sep')?.value        ?? 'none',
-    trailing_separator:   document.getElementById('tmpl-trailing-sep')?.value       ?? 'none',
-    final_sep_from_last_component: document.getElementById('tmpl-final-sep-from-last')?.checked ?? false,
+    leading_separator: _te.leading_separator ?? 'none',
+    trailing_separator: _te.trailing_separator ?? 'none',
+    final_sep_from_last_component: !!_te.final_sep_from_last_component,
+    ...charKeys,
     components,
   };
 
   const statusEl = document.getElementById('tmpl-status');
-  if (statusEl) { statusEl.textContent = 'Saving\u2026'; statusEl.className = 'status-msg'; }
+  if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.className = 'status-msg'; }
   try {
-    let result;
     if (id === 'new') {
-      result = await api('POST', '/templates', body);
+      const result = await api('POST', '/templates', body);
       location.hash = `#/templates/${result.id}/edit`;
     } else {
       await api('PUT', `/templates/${id}`, body);
-      if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.className = 'status-msg success'; }
     }
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${esc(e.message)}`; statusEl.className = 'status-msg error'; }
@@ -3120,20 +3623,40 @@ async function renderDetail(importId) {
   document.getElementById('app').innerHTML = `
     <div class="breadcrumb"><a href="#/">\u2190 All Imports</a></div>
     <h2 class="page-heading" id="detail-heading">Loading\u2026</h2>
-    ${ifEditor(`<section class="panel reimport-panel">
-      <h3>Update Import</h3>
-      <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
-      <form id="reimport-form" class="upload-form">
-        <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
-        <button type="submit" class="btn btn-primary">Re-import</button>
-      </form>
-      <p id="reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
-      <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
-    </section>`)}
-    <section class="panel">
-      <h3>Export</h3>
-      <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
-    </section>
+    <details class="panel tools-panel">
+      <summary class="section-summary"><span class="section-name">Tools</span></summary>
+      <div class="tools-body">
+        <section class="tool-block">
+          <h4>Export</h4>
+          <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
+        </section>
+        ${ifEditor(`<section class="tool-block reimport-panel">
+          <h4>Update Import</h4>
+          <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
+          <form id="reimport-form" class="upload-form">
+            <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
+            <button type="submit" class="btn btn-primary">Re-import</button>
+          </form>
+          <p id="reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
+          <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
+        </section>`)}
+        ${ifEditor(`<section class="tool-block" id="reconcile-panel">
+          <h4>Reconcile corrected LOW</h4>
+          <p class="muted" style="font-size:12px;margin-bottom:10px">Upload a corrected InDesign LOW tags export to find data changes made downstream that aren\u2019t yet in this data. Detection only \u2014 nothing is changed automatically.</p>
+          <form id="reconcile-form" class="upload-form">
+            <input type="file" id="reconcile-file" accept=".txt" required>
+            <label class="export-template-label">InDesign Template</label>
+            <select id="reconcile-tmpl"></select>
+            <button type="submit" class="btn btn-primary">Reconcile</button>
+          </form>
+          <p id="reconcile-status" class="status-msg" style="margin-top:6px"></p>
+        </section>`)}
+        ${ifEditor(`<div class="tool-output">
+          <div id="reconcile-history" class="reconcile-history"></div>
+          <div id="reconcile-results"></div>
+        </div>`)}
+      </div>
+    </details>
     <section class="panel" id="warnings-panel"><p class="loading">Loading flagged issues\u2026</p></section>
     <section class="panel">
       <h3>Works</h3>
@@ -3202,7 +3725,7 @@ async function renderDetail(importId) {
   if (panelEl) panelEl.innerHTML = `
     <div class="export-buttons">
       <div class="template-row">
-        <label class="export-template-label">Template</label>
+        <label class="export-template-label">InDesign Template</label>
         <select id="tmpl-select-${esc(importId)}"${templates.length ? '' : ' disabled'}>${tmplOpts}</select>
         <button class="btn btn-secondary" onclick="downloadExportWithTemplate('${esc(importId)}','tags','txt',null,this)">InDesign Tags (.txt)</button>
       </div>
@@ -3216,6 +3739,8 @@ async function renderDetail(importId) {
   // Persist template choice on change
   const _tmplSel = document.getElementById(`tmpl-select-${importId}`);
   if (_tmplSel) _tmplSel.addEventListener('change', () => localStorage.setItem(_lastTmplKey, _tmplSel.value));
+
+  if (canEdit()) initReconcilePanel(importId, templates);
 
   renderWarningsPanel(warnings);
 
@@ -3258,6 +3783,9 @@ const _LOW_WARNING_LABELS = {
   // Changed: normalisation engine modified data
   whitespace_trimmed:     'Whitespace trimmed',
   zero_edition_suppressed: 'Edition stripped',
+  edition_suppressed:      'Edition stripped',
+  // High severity: needs a decision
+  edition_suppressed_no_price: 'Edition price lost',
   // Info: data quality issues needing review
   missing_title:        'Missing title',
   missing_artist:       'Missing artist',
@@ -3270,11 +3798,22 @@ const _LOW_WARNING_LABELS = {
   empty_spreadsheet:    'Empty spreadsheet',
 };
 const _LOW_CHANGED_TYPES = new Set([
-  'whitespace_trimmed', 'zero_edition_suppressed',
+  'whitespace_trimmed', 'zero_edition_suppressed', 'edition_suppressed',
+]);
+// High-severity warnings rendered in red — they signal data loss, not a benign change.
+const _LOW_HIGH_SEVERITY_TYPES = new Set([
+  'edition_suppressed_no_price',
 ]);
 
 function _lowWarnLabel(type) {
   return _LOW_WARNING_LABELS[type] || type;
+}
+
+// Badge colour for a LoW warning type: red (high) / blue (benign change) / yellow (review).
+function _lowWarnBadgeClass(type) {
+  if (_LOW_HIGH_SEVERITY_TYPES.has(type)) return 'badge-removed';
+  if (_LOW_CHANGED_TYPES.has(type)) return 'badge-info';
+  return 'badge-warning';
 }
 
 function _buildWarningsPanel() {
@@ -3295,8 +3834,7 @@ function _buildWarningsPanel() {
     .sort((a, b) => b[1] - a[1])
     .map(([type, n]) => {
       const muted = _hiddenWarningTypes.has(type);
-      const isChanged = _LOW_CHANGED_TYPES.has(type);
-      const badgeClass = isChanged ? 'badge badge-info warning-filter-btn' : 'badge badge-warning warning-filter-btn';
+      const badgeClass = `badge ${_lowWarnBadgeClass(type)} warning-filter-btn`;
       return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_lowWarnLabel(type))}: ${n}</button>`;
     }).join('');
 
@@ -3308,7 +3846,7 @@ function _buildWarningsPanel() {
       ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(w.work_id)}')">${esc(who)}</button>`
       : (esc(who) || '\u2014');
     return `<tr>
-      <td><span class="badge ${_LOW_CHANGED_TYPES.has(w.warning_type) ? 'badge-info' : 'badge-warning'}">${esc(_lowWarnLabel(w.warning_type))}</span></td>
+      <td><span class="badge ${_lowWarnBadgeClass(w.warning_type)}">${esc(_lowWarnLabel(w.warning_type))}</span></td>
       <td>${esc(w.message)}</td>
       <td class="muted col-work">${workCell}</td>
     </tr>`;
@@ -3468,44 +4006,52 @@ function _buildWorkDetailTable(w) {
   const hasOvr = !!w.override;
   const o = w.override || {};
 
-  const thead = hasOvr
-    ? '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th><th>Override</th></tr></thead>'
-    : '<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th></tr></thead>';
+  // "Selected InDesign Export" column — shows the snapshot currently selected
+  // in Tools for THIS import, and only for works present in that export.
+  const cat = String(w.raw_cat_no ?? '');
+  const diff = (_reconState && _reconState.diff
+    && _reconState.importId === _currentLowImportId) ? _reconState.diff : null;
+  const low = (diff && diff.low_by_cat && cat) ? diff.low_by_cat[cat] : null;
+  const showLow = !!low;
+  // Significant (black) vs cosmetic/unchanged (grey): a field is black only if
+  // it's a significant finding for this catalogue number.
+  const sigSet = showLow
+    ? new Set((diff.findings || []).filter(f => f.field).map(f => `${f.cat_no}|${f.field}`))
+    : null;
 
-  function row(label, rawVal, normVal, ovrVal) {
+  function lowCell(field) {
+    if (!showLow) return '';
+    const cls = sigSet.has(`${cat}|${field}`) ? 'val-changed' : 'val-unchanged';
+    return `<td class="${cls}">${esc(low[field] ?? '')}</td>`;
+  }
+
+  const headLow = showLow ? '<th>Selected InDesign Export</th>' : '';
+  const thead = hasOvr
+    ? `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th><th>Override</th>${headLow}</tr></thead>`
+    : `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th>${headLow}</tr></thead>`;
+
+  function row(label, field, rawVal, normVal, ovrVal) {
     const raw  = rawVal  ?? '';
     const norm = normVal ?? '';
     const ovr  = ovrVal  ?? '';
-    if (hasOvr) {
-      return `<tr>
-        <td>${esc(label)}</td>
-        <td>${_normRawCell(raw, norm)}</td>
-        <td class="${_valClass(raw, norm)}">${esc(norm)}</td>
-        <td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>
-      </tr>`;
-    }
+    const ovrCell = hasOvr ? `<td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>` : '';
     return `<tr>
       <td>${esc(label)}</td>
       <td>${_normRawCell(raw, norm)}</td>
       <td class="${_valClass(raw, norm)}">${esc(norm)}</td>
+      ${ovrCell}${lowCell(field)}
     </tr>`;
   }
 
-  function derivedRow(label, normVal, ovrVal) {
+  function derivedRow(label, field, normVal, ovrVal) {
     const norm = normVal ?? '';
     const ovr  = ovrVal  ?? '';
-    if (hasOvr) {
-      return `<tr>
-        <td>${esc(label)}</td>
-        <td class="muted">&mdash;</td>
-        <td>${esc(norm)}</td>
-        <td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>
-      </tr>`;
-    }
+    const ovrCell = hasOvr ? `<td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>` : '';
     return `<tr>
       <td>${esc(label)}</td>
       <td class="muted">&mdash;</td>
       <td>${esc(norm)}</td>
+      ${ovrCell}${lowCell(field)}
     </tr>`;
   }
 
@@ -3518,18 +4064,19 @@ function _buildWorkDetailTable(w) {
   const ovrEd  = [o.edition_total_override ? String(o.edition_total_override) : '', o.edition_price_numeric_override ? `at ${o.edition_price_numeric_override}` : ''].filter(Boolean).join(' ');
 
   const rows = [
-    row('Artist',    w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
-    derivedRow('Honorifics',        w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
-    row('Title',     w.raw_title,   w.title ?? '',        o.title_override ?? ''),
-    row('Price',     w.raw_price,   normPrice,            ovrPrice),
-    row('Edition',   w.raw_edition, normEd,               ovrEd),
-    row('Artwork',   w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
-    row('Medium',    w.raw_medium,  w.medium ?? '',       o.medium_override ?? ''),
+    row('Artist',  'artist',     w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
+    derivedRow('Honorifics', 'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
+    row('Title',   'title',      w.raw_title,   w.title ?? '',        o.title_override ?? ''),
+    row('Price',   'price',      w.raw_price,   normPrice,            ovrPrice),
+    row('Edition', 'edition',    w.raw_edition, normEd,               ovrEd),
+    row('Artwork', 'artwork',    w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
+    row('Medium',  'medium',     w.raw_medium,  w.medium ?? '',       o.medium_override ?? ''),
   ];
 
   // Notes — override-only field; only show when set
   if (hasOvr && o.notes) {
-    rows.push(`<tr><td>Notes</td><td class="muted">&mdash;</td><td class="muted">&mdash;</td><td>${esc(o.notes)}</td></tr>`);
+    const lowBlank = showLow ? '<td class="muted">&mdash;</td>' : '';
+    rows.push(`<tr><td>Notes</td><td class="muted">&mdash;</td><td class="muted">&mdash;</td><td>${esc(o.notes)}</td>${lowBlank}</tr>`);
   }
 
   return `<table class="detail-table">${thead}<tbody>${rows.join('')}</tbody></table>`;
@@ -3608,7 +4155,7 @@ function _workWarningsBadges(workId) {
   const warns = (_warningsByWorkId[workId] || []).filter(w => !_LOW_CHANGED_TYPES.has(w.warning_type));
   if (!warns.length) return '';
   const badges = warns.map(w => {
-    return `<span class="badge badge-warning" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
+    return `<span class="badge ${_lowWarnBadgeClass(w.warning_type)}" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
   }).join(' ');
   // Collect detailed explanations for warning types that benefit from inline detail
   const details = warns
@@ -3735,7 +4282,7 @@ function workRowHTML(importId, w, cfg) {
   if (wWarns && wWarns.length) {
     const warnTypes = [...new Set(wWarns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
     for (const wt of warnTypes) {
-      flags.push(`<span class="badge badge-warning" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
+      flags.push(`<span class="badge ${_lowWarnBadgeClass(wt)}" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
     }
   }
 
@@ -3866,6 +4413,7 @@ function showOverrideForm(importId, workId, existing) {
   const o   = existing ?? {};
   const cur = {
     title_override:                    o.title_override                    ?? w.title                    ?? '',
+    title_cased_override:              o.title_cased_override              ?? w.title_cased               ?? '',
     artist_name_override:              o.artist_name_override              ?? w.artist_name               ?? '',
     artist_honorifics_override:        o.artist_honorifics_override        ?? w.artist_honorifics          ?? '',
     price_text_override:               o.price_text_override               ?? w.price_text                ?? '',
@@ -3877,16 +4425,40 @@ function showOverrideForm(importId, workId, existing) {
     notes:                              o.notes                              ?? '',
   };
 
-  // Returns a clickable hint that copies the current value into the named input/textarea
-  const hint = (field, inputName) => {
-    const v = cur[field];
-    if (v === null || v === undefined || v === '') return '';
-    const safe = esc(String(v));
-    // Encode value as base64 to safely handle newlines in the onclick handler
-    const b64 = btoa(unescape(encodeURIComponent(String(v))));
-    return `<button type="button" class="current-val-hint"
-      onclick="(function(){var el=document.querySelector('#ovf-${esc(workId)} [name=\\'${inputName}\\']');if(el)el.value=decodeURIComponent(escape(atob('${b64}')));})()">
-      ${safe.replace(/\n/g, ' \u23ce ')}</button>`;
+  // Selected InDesign export values for this work (when a snapshot is selected
+  // in Tools for this import). Display strings; parsed for structured fields.
+  const _ovrCat = String(w.raw_cat_no ?? '');
+  const _ovrDiff = (_reconState && _reconState.diff
+    && _reconState.importId === _currentLowImportId) ? _reconState.diff : null;
+  const lowAll = (_ovrDiff && _ovrDiff.low_by_cat && _ovrCat) ? _ovrDiff.low_by_cat[_ovrCat] : null;
+  const _edTotal = (s) => { const m = String(s).match(/(\d+)/); return m ? m[1] : ''; };
+  const _edPrice = (s) => { const m = String(s).match(/at\s*\u00a3?\s*([\d,]+)/i); return m ? m[1].replace(/,/g, '') : ''; };
+
+  // A clickable chip that copies `value` into the named input (base64-encoded
+  // so newlines survive the onclick).
+  const fillBtn = (cls, prefix, value, inputName) => {
+    const b64 = btoa(unescape(encodeURIComponent(String(value))));
+    const text = esc(prefix + String(value)).replace(/\n/g, ' \u23ce ');
+    return `<button type="button" class="${cls}"
+      onclick="(function(){var el=document.querySelector('#ovf-${esc(workId)} [name=\\'${inputName}\\']');if(el)el.value=decodeURIComponent(escape(atob('${b64}')));})()">${text}</button>`;
+  };
+
+  // Current-value chip, plus an "InDesign:" chip beside it when a snapshot is
+  // selected and the export has a value for this field. Labels are prefixed
+  // only when both are shown, so the no-snapshot case is unchanged.
+  const fills = (curField, inputName, lowField, transform) => {
+    const curV = cur[curField];
+    let lowV = '';
+    if (lowAll && lowField && lowAll[lowField] != null && lowAll[lowField] !== '') {
+      lowV = transform ? transform(lowAll[lowField]) : String(lowAll[lowField]);
+    }
+    const paired = lowV !== '';
+    const parts = [];
+    if (curV !== '' && curV != null) {
+      parts.push(fillBtn('current-val-hint', paired ? 'current: ' : '', curV, inputName));
+    }
+    if (paired) parts.push(fillBtn('low-val-hint', 'InDesign: ', lowV, inputName));
+    return parts.join('');
   };
 
   const cell = document.getElementById(`wk-ovc-${workId}`);
@@ -3894,7 +4466,7 @@ function showOverrideForm(importId, workId, existing) {
   cell.innerHTML = `
     <div class="override-form" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
-        <h5 style="margin:0">Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
+        <h5 style="margin:0">Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click a current or InDesign chip to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
         <button type="button" class="btn btn-xs btn-secondary" style="flex-shrink:0;margin-left:16px" onclick="event.stopPropagation(); toggleWorkOverrideForm('${esc(importId)}','${esc(workId)}')">Close &#x2715;</button>
       </div>
       <div class="override-field-form" id="ovf-${esc(workId)}">
@@ -3903,10 +4475,13 @@ function showOverrideForm(importId, workId, existing) {
             <h5 class="ka-section-heading">Content</h5>
             <div class="ka-fields">
               <div class="form-row"><label>Title</label>
-                ${hint('title_override','title_override')}
+                ${fills('title_override','title_override','title')}
                 <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
+              <div class="form-row"><label>Title Case Title <span class="muted" style="text-transform:none;font-weight:400">&mdash; used by the LPG</span></label>
+                ${fills('title_cased_override','title_cased_override',null)}
+                <textarea name="title_cased_override" rows="2" placeholder="Title-cased title (auto-derived; correct here if wrong)">${val('title_cased_override')}</textarea></div>
               <div class="form-row"><label>Medium</label>
-                ${hint('medium_override','medium_override')}
+                ${fills('medium_override','medium_override','medium')}
                 <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
             </div>
           </div>
@@ -3914,10 +4489,10 @@ function showOverrideForm(importId, workId, existing) {
             <h5 class="ka-section-heading">Artist</h5>
             <div class="ka-fields">
               <div class="form-row"><label>Artist</label>
-                ${hint('artist_name_override','artist_name_override')}
+                ${fills('artist_name_override','artist_name_override','artist')}
                 <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
               <div class="form-row"><label>Honorifics</label>
-                ${hint('artist_honorifics_override','artist_honorifics_override')}
+                ${fills('artist_honorifics_override','artist_honorifics_override','honorifics')}
                 <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
             </div>
           </div>
@@ -3925,19 +4500,19 @@ function showOverrideForm(importId, workId, existing) {
             <h5 class="ka-section-heading">Pricing &amp; Edition</h5>
             <div class="ka-fields">
               <div class="form-row"><label>Price text</label>
-                ${hint('price_text_override','price_text_override')}
+                ${fills('price_text_override','price_text_override','price')}
                 <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
               <div class="form-row"><label>Price numeric</label>
-                ${hint('price_numeric_override','price_numeric_override')}
+                ${fills('price_numeric_override','price_numeric_override',null)}
                 <input type="number" step="0.01" min="0" name="price_numeric_override" value="${val('price_numeric_override')}" placeholder="e.g. 1500"></div>
               <div class="form-row"><label>Edition total</label>
-                ${hint('edition_total_override','edition_total_override')}
+                ${fills('edition_total_override','edition_total_override','edition',_edTotal)}
                 <input type="number" min="0" name="edition_total_override" value="${val('edition_total_override')}" placeholder="e.g. 10"></div>
               <div class="form-row"><label>Edition price</label>
-                ${hint('edition_price_numeric_override','edition_price_numeric_override')}
+                ${fills('edition_price_numeric_override','edition_price_numeric_override','edition',_edPrice)}
                 <input type="number" step="0.01" min="0" name="edition_price_numeric_override" value="${val('edition_price_numeric_override')}" placeholder="e.g. 750"></div>
               <div class="form-row"><label>Artwork</label>
-                ${hint('artwork_override','artwork_override')}
+                ${fills('artwork_override','artwork_override','artwork')}
                 <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
             </div>
           </div>
@@ -3976,7 +4551,7 @@ async function saveOverride(importId, workId) {
   statusEl.className = 'status-msg';
 
   const numFields = new Set(['price_numeric_override','edition_total_override','edition_price_numeric_override','artwork_override']);
-  const allFields = ['title_override','artist_name_override','artist_honorifics_override',
+  const allFields = ['title_override','title_cased_override','artist_name_override','artist_honorifics_override',
     'price_text_override','price_numeric_override','edition_total_override','edition_price_numeric_override',
     'artwork_override','medium_override','notes'];
 
@@ -4115,6 +4690,242 @@ function _renderDiffPanel(diff) {
 
   parts.push('</div>');
   return parts.join('');
+}
+
+// ---------------------------------------------------------------------------
+// Reconcile corrected LOW (LOW → LPG reconciliation)
+// ---------------------------------------------------------------------------
+
+let _reconState = { importId: null, snapshot: null, diff: null, sevFilter: 'all', text: '' };
+
+const _RECON_KIND_LABEL = {
+  field_change: 'Changed',
+  entry_added: 'Added (in LOW only)',
+  entry_removed: 'Removed (in data only)',
+  room_move: 'Moved room',
+  section_rename: 'Room renamed',
+};
+const _RECON_SEV_BADGE = { high: 'badge-removed', medium: 'badge-changed', info: 'badge-unchanged' };
+
+function initReconcilePanel(importId, templates) {
+  const sel = document.getElementById('reconcile-tmpl');
+  if (sel) {
+    const last = localStorage.getItem('catalogue_last_template') || '';
+    sel.innerHTML = (templates && templates.length)
+      ? templates.map(t => `<option value="${esc(t.id)}"${t.id === last ? ' selected' : ''}>${esc(t.name)}</option>`).join('')
+      : '<option value="">Default config</option>';
+  }
+  document.getElementById('reconcile-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('reconcile-file').files[0];
+    if (file) await handleReconcileUpload(importId, file);
+  });
+  loadReconcileSnapshots(importId);
+}
+
+async function handleReconcileUpload(importId, file) {
+  const statusEl = document.getElementById('reconcile-status');
+  const btn = document.querySelector('#reconcile-form .btn-primary');
+  const restore = btnLoading(btn, 'Reconciling');
+  const tid = document.getElementById('reconcile-tmpl')?.value || '';
+  if (tid) localStorage.setItem('catalogue_last_template', tid);
+  statusEl.textContent = 'Uploading & reconciling…';
+  statusEl.className = 'status-msg';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    let path = `/imports/${importId}/low-tag-snapshots`;
+    if (tid) path += `?template_id=${encodeURIComponent(tid)}`;
+    const res = await fetch(path, { method: 'POST', body: form, headers: _apiHeaders() });
+    if (res.status === 401) { renderLogin('Your session has expired. Please log in again.'); return; }
+    if (!res.ok) { const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    statusEl.textContent = '';
+    document.getElementById('reconcile-file').value = '';
+    showToast('Reconciled', 'success', 2500);
+    await loadReconcileSnapshots(importId, data.snapshot.id);
+    _renderReconcileResults(importId, data.snapshot, data.diff);
+  } catch (err) {
+    statusEl.textContent = `Reconcile failed: ${err.message}`;
+    statusEl.className = 'status-msg error';
+  } finally {
+    restore();
+  }
+}
+
+async function loadReconcileSnapshots(importId, activeId) {
+  const el = document.getElementById('reconcile-history');
+  if (!el) return;
+  try {
+    const snaps = await api('GET', `/imports/${importId}/low-tag-snapshots`);
+    if (!snaps.length) { el.innerHTML = ''; return; }
+    const clearLink = activeId
+      ? `<a href="#" class="recon-clear" title="Hide the InDesign export column and findings" onclick="clearReconcileSelection('${esc(importId)}');return false">Clear selection</a>`
+      : '';
+    el.innerHTML = `<div class="muted" style="font-size:12px;margin:8px 0 4px">Uploaded exports from InDesign:</div>
+      <div class="reconcile-history-list">` + snaps.map(s => `
+        <span class="recon-snap${s.id === activeId ? ' active' : ''}">
+          <a href="#" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(s.id)}');return false" title="Uploaded ${esc(formatDate(s.uploaded_at))}">${esc(s.filename || 'snapshot')}</a>
+          ${ifEditor(`<button class="recon-snap-del" title="Delete" onclick="deleteReconcileSnapshot('${esc(importId)}','${esc(s.id)}')">×</button>`)}
+        </span>`).join('') + `</div>` + clearLink;
+  } catch (e) { el.innerHTML = ''; }
+}
+
+function clearReconcileSelection(importId) {
+  _reconState = { importId: null, snapshot: null, diff: null, sevFilter: 'all', text: '' };
+  const res = document.getElementById('reconcile-results');
+  if (res) res.innerHTML = '';
+  loadReconcileSnapshots(importId);  // re-render chips with none active
+}
+
+async function viewReconcileSnapshot(importId, sid) {
+  const results = document.getElementById('reconcile-results');
+  if (results) results.innerHTML = '<p class="loading">Recomputing…</p>';
+  try {
+    const data = await api('GET', `/imports/${importId}/low-tag-snapshots/${sid}`);
+    await loadReconcileSnapshots(importId, sid);
+    _renderReconcileResults(importId, data.snapshot, data.diff);
+  } catch (e) {
+    if (results) results.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
+}
+
+async function deleteReconcileSnapshot(importId, sid) {
+  if (!confirm('Delete this reconciliation snapshot?')) return;
+  try {
+    await api('DELETE', `/imports/${importId}/low-tag-snapshots/${sid}`);
+    showToast('Snapshot deleted', 'success', 2000);
+    if (_reconState.snapshot && _reconState.snapshot.id === sid) {
+      document.getElementById('reconcile-results').innerHTML = '';
+      _reconState = { importId: null, snapshot: null, diff: null, sevFilter: 'all', text: '' };
+    }
+    await loadReconcileSnapshots(importId);
+  } catch (e) { showToast(`Delete failed: ${e.message}`, 'error'); }
+}
+
+function _renderReconcileResults(importId, snapshot, diff) {
+  _reconState = { importId, snapshot, diff, sevFilter: 'all', text: '' };
+  _paintReconcile();
+}
+
+function setReconSevFilter(sev) { _reconState.sevFilter = sev; _paintReconcile(); }
+function setReconTextFilter(v) { _reconState.text = v || ''; _paintReconGroups(); }
+
+function _paintReconcile() {
+  const el = document.getElementById('reconcile-results');
+  if (!el || !_reconState.diff) return;
+  const { diff, snapshot, importId, sevFilter, text } = _reconState;
+  const all = diff.findings || [];
+  const counts = diff.counts || {};
+
+  const parts = ['<div class="diff-result" style="margin-top:14px">'];
+  (diff.warnings || []).forEach(w =>
+    parts.push(`<p class="status-msg warning" style="margin:0 0 8px">⚠ ${esc(w)}</p>`));
+
+  const summaryText = `${counts.matched ?? 0} matched · ${all.length} difference${all.length === 1 ? '' : 's'} · parsed ${diff.parsed_entries}/${diff.db_entries}`;
+  // Cosmetic toggle styled as a warning-filter badge (muted = hidden, the
+  // default) for consistency with the flagged-issues filters.
+  const cosmeticBadge = counts.suppressed_cosmetic
+    ? `<button type="button" class="badge badge-info warning-filter-btn badge-muted recon-cosmetic-toggle" onclick="toggleReconCosmetic()" title="Click: show the suppressed cosmetic differences">Cosmetic: ${counts.suppressed_cosmetic}</button>`
+    : '';
+  parts.push(`<p class="diff-summary" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span>${esc(summaryText)}</span>
+    ${cosmeticBadge}
+    <button class="btn btn-xs btn-secondary" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(snapshot.id)}')">Re-check against current data</button>
+  </p>`);
+
+  if (!all.length) {
+    parts.push('<div class="diff-ok" style="padding:10px 12px;border-radius:6px;margin-top:6px"><p style="margin:0">✓ No outstanding differences — this data matches the corrected LOW.</p></div>');
+  } else {
+    const sevCounts = { high: 0, medium: 0, info: 0 };
+    all.forEach(f => { sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1; });
+    const sevBtn = (key, label) =>
+      `<button class="recon-filter${sevFilter === key ? ' active' : ''}" onclick="setReconSevFilter('${key}')">${label}${key !== 'all' ? ` (${sevCounts[key] || 0})` : ''}</button>`;
+    parts.push(`<div class="recon-filters">
+      ${sevBtn('all', 'All')}${sevBtn('high', 'High')}${sevBtn('medium', 'Medium')}${sevBtn('info', 'Info')}
+      <input type="text" id="recon-text-filter" class="works-filter-input" placeholder="Filter by cat no / field / room…" oninput="setReconTextFilter(this.value)" value="${esc(text)}">
+    </div>`);
+    parts.push('<div id="recon-groups"></div>');
+  }
+
+  parts.push('<div id="recon-cosmetic" class="recon-cosmetic" style="display:none"></div>');
+  parts.push('</div>');
+  el.innerHTML = parts.join('');
+  if (all.length) _paintReconGroups();
+}
+
+function toggleReconCosmetic() {
+  const el = document.getElementById('recon-cosmetic');
+  const btn = document.querySelector('.recon-cosmetic-toggle');
+  if (!el) return;
+  const cos = (_reconState.diff && _reconState.diff.cosmetic) || [];
+  if (el.style.display !== 'none') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    if (btn) { btn.classList.add('badge-muted'); btn.title = 'Click: show the suppressed cosmetic differences'; }
+    return;
+  }
+  if (!cos.length) return;
+  const rows = cos.map(f => `<tr>
+    <td class="diff-catno">${esc(f.cat_no ?? '—')}</td>
+    <td><code>${esc(f.field || '')}</code></td>
+    <td><span class="diff-old">${esc(String(f.db_value ?? ''))}</span></td>
+    <td><span class="diff-new">${esc(String(f.low_value ?? ''))}</span></td>
+    <td>${esc(f.section ?? '')}</td>
+  </tr>`).join('');
+  el.innerHTML = `<h4 class="diff-heading">Cosmetic differences <span class="muted" style="font-weight:normal">(${cos.length} — ignored for matching: whitespace, quote style, line breaks)</span></h4>
+    <table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Field</th><th>In data</th><th>In LOW</th><th>Room</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.style.display = '';
+  if (btn) { btn.classList.remove('badge-muted'); btn.title = 'Click: hide the cosmetic differences'; }
+}
+
+function _paintReconGroups() {
+  const host = document.getElementById('recon-groups');
+  if (!host || !_reconState.diff) return;
+  const { diff, sevFilter, text } = _reconState;
+  const t = (text || '').toLowerCase();
+  const filtered = (diff.findings || []).filter(f => {
+    if (sevFilter !== 'all' && f.severity !== sevFilter) return false;
+    if (t) {
+      const hay = `${f.cat_no || ''} ${f.field || ''} ${f.section || ''} ${f.db_value || ''} ${f.low_value || ''}`.toLowerCase();
+      if (!hay.includes(t)) return false;
+    }
+    return true;
+  });
+  if (!filtered.length) {
+    host.innerHTML = '<p class="muted" style="margin:8px 0">No differences match the current filter.</p>';
+    return;
+  }
+  const structural = filtered.filter(f => f.fix_channel === 'spreadsheet');
+  const textual = filtered.filter(f => f.fix_channel === 'override');
+  host.innerHTML =
+    _reconTaskGroup('1', 'Fix in the source spreadsheet, then re-import',
+      'Work numbers, gallery moves and added/removed works can’t be set as overrides — correct them in the spreadsheet and use Update Import above.', structural)
+    + _reconTaskGroup('2', 'Apply as per-work overrides',
+      'Text changes — open the work below and set the override. Best done after the re-import is settled.', textual);
+}
+
+function _reconTaskGroup(num, title, hint, findings) {
+  if (!findings.length) return '';
+  const rows = findings.map(f => {
+    const what = f.field ? `<code>${esc(f.field)}</code>` : esc(_RECON_KIND_LABEL[f.kind] || f.kind);
+    const sevBadge = `<span class="badge ${_RECON_SEV_BADGE[f.severity] || 'badge-unchanged'}">${esc(f.severity)}</span>`;
+    const dbv = (f.db_value != null && f.db_value !== '') ? `<span class="diff-old">${esc(String(f.db_value))}</span>` : '<span class="muted">—</span>';
+    const lowv = (f.low_value != null && f.low_value !== '') ? `<span class="diff-new">${esc(String(f.low_value))}</span>` : '<span class="muted">—</span>';
+    return `<tr>
+      <td class="diff-catno">${esc(f.cat_no ?? '—')}</td>
+      <td>${what}</td>
+      <td>${dbv}</td>
+      <td>${lowv}</td>
+      <td>${esc(f.section ?? '')}</td>
+      <td>${sevBadge}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="recon-task">
+    <h4 class="diff-heading"><span class="recon-task-num">${num}</span> ${esc(title)} <span class="muted">(${findings.length})</span></h4>
+    <p class="muted" style="font-size:12px;margin:0 0 6px">${hint}</p>
+    <table class="data-table diff-table"><thead><tr><th>Cat No</th><th>What</th><th>In data</th><th>In LOW</th><th>Room</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+  </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -4257,13 +5068,24 @@ async function downloadExport(importId, format, ext, sectionId = null, templateI
       + String(now.getHours()).padStart(2, '0')
       + String(now.getMinutes()).padStart(2, '0')
       + String(now.getSeconds()).padStart(2, '0');
-    // Use section name for section exports, "catalogue" for full exports
-    const slug = sectionName
-      ? sectionName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      : 'catalogue';
+    // Prefer the server-supplied name (embeds template + gallery for tag exports).
+    const cd = res.headers.get('Content-Disposition') || '';
+    const cdMatch = /filename="?([^";]+)"?/.exec(cd);
+    const _slug = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    let filename;
+    if (cdMatch) {
+      // Insert a timestamp before the extension for versioned downloads.
+      filename = cdMatch[1].replace(/(\.[a-z0-9]+)$/i, `_${ts}$1`);
+    } else {
+      // Fallback (json/xml/csv): template + gallery + timestamp.
+      const parts = [_slug(templateName) || 'catalogue'];
+      if (sectionName) parts.push(_slug(sectionName));
+      parts.push(ts);
+      filename = `${parts.join('_')}.${ext}`;
+    }
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${slug}-${importId.slice(0, 8)}-${ts}.${ext}`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

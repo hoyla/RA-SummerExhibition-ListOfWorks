@@ -1,0 +1,21 @@
+<ASCII-MAC>
+<vsn:21><fset:InDesign-Roman>
+<dcs:LPGSMALLCAPS=<Nextstyle:LPGSMALLCAPS><ccase:Small Caps>>
+<dps:LPGTITLE=<Nextstyle:LPGTITLE>>
+<dps:LPGARTIST=<BasedOn:LPGTITLE><Nextstyle:LPGARTIST>>
+<dps:LPGMEDIUM=<BasedOn:LPGARTIST><Nextstyle:LPGMEDIUM>>
+<dps:LPGEDITION=<BasedOn:LPGARTIST><Nextstyle:LPGEDITION>>
+<dps:LPGPRICE=<BasedOn:LPGARTIST><Nextstyle:LPGPRICE>>
+<pstyle:LPGTITLE>1	The Meddling Fiend
+<pstyle:LPGARTIST>Nicola Turner
+<pstyle:LPGMEDIUM>mixed media including horsehair, wool, wood and brass.
+<pstyle:LPGPRICE>NFS
+<pstyle:LPGTITLE>2	Reflection of Gerti Cori
+<pstyle:LPGARTIST>Stephen Chambers <cstyle:LPGSMALLCAPS>ra<cstyle:>
+<pstyle:LPGMEDIUM>oil on gesso panel
+<pstyle:LPGPRICE><0x00A3>16,000
+<pstyle:LPGTITLE>3	Superhero Rabbit
+<pstyle:LPGARTIST>Joanna Ham
+<pstyle:LPGMEDIUM>screenprint with UV neon ink
+<pstyle:LPGEDITION>(edition of 200 at <0x00A3>90)
+<pstyle:LPGPRICE><0x00A3>140

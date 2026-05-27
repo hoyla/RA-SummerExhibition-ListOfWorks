@@ -5,12 +5,15 @@ Also contains _ruleset_to_export_config which converts a Ruleset DB row
 into an ExportConfig dataclass.
 """
 
+import re
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from uuid import UUID
 
 from backend.app.api.deps import get_db
+from backend.app.models.section_model import Section
 from backend.app.services.export_renderer import (
     render_import_as_tagged_text,
     render_import_as_json,
@@ -29,6 +32,36 @@ from backend.app.services.export_diff_service import (
 )
 
 router = APIRouter(tags=["exports"])
+
+
+# ---------------------------------------------------------------------------
+# Download filenames
+# ---------------------------------------------------------------------------
+
+
+def _slug_part(s: str) -> str:
+    """Filesystem-safe slug: alphanumerics kept, everything else collapsed to
+    single hyphens."""
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", (s or "").strip()).strip("-")
+    return cleaned or "export"
+
+
+def _tags_filename(ruleset, section_name: str | None = None) -> str:
+    """Build a download filename embedding the template and (for per-room
+    exports) the gallery, so individual gallery files are distinguishable on
+    disk — e.g. ``Large-Print-Guide-2026_Gallery-III.txt``."""
+    base = _slug_part(ruleset.name) if ruleset else "catalogue"
+    if section_name:
+        return f"{base}_{_slug_part(section_name)}.txt"
+    return f"{base}.txt"
+
+
+def _attachment(content: bytes, filename: str) -> Response:
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +85,7 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
                 "max_line_chars": c.max_line_chars,
                 "next_component_position": c.next_component_position,
                 "balance_lines": c.balance_lines,
+                "paragraph_style": c.paragraph_style,
             }
             for c in DEFAULT_COMPONENTS
         ],
@@ -83,12 +117,16 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
                 if isinstance(c, dict)
                 else c.balance_lines
             ),
+            paragraph_style=(
+                c.get("paragraph_style") if isinstance(c, dict) else c.paragraph_style
+            ),
         )
         for c in raw_components
     ]
     return ExportConfig(
         currency_symbol=cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
         section_style=cfg.get("section_style", DEFAULT_CONFIG.section_style),
+        section_styles=cfg.get("section_styles", []),
         entry_style=cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
         edition_prefix=cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
         edition_brackets=cfg.get("edition_brackets", DEFAULT_CONFIG.edition_brackets),
@@ -99,9 +137,11 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
             "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
         ),
         title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
+        title_cased_style=cfg.get("title_cased_style", DEFAULT_CONFIG.title_cased_style),
         price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
         medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
         artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
+        edition_style=cfg.get("edition_style", DEFAULT_CONFIG.edition_style),
         thousands_separator=cfg.get(
             "thousands_separator", DEFAULT_CONFIG.thousands_separator
         ),
@@ -137,12 +177,13 @@ def export_indesign_tags(
     template_id: UUID | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    config = _ruleset_to_export_config(resolve_export_config(db, template_id))
+    ruleset = resolve_export_config(db, template_id)
+    config = _ruleset_to_export_config(ruleset)
     output = render_import_as_tagged_text(import_id, db, config)
     save_export_snapshot(import_id, template_id, db)
-    return Response(
-        content=escape_for_mac_roman(output).encode("mac_roman"),
-        media_type="text/plain",
+    return _attachment(
+        escape_for_mac_roman(output).encode("mac_roman"),
+        _tags_filename(ruleset),
     )
 
 
@@ -153,13 +194,21 @@ def export_section_indesign_tags(
     template_id: UUID | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Export InDesign Tagged Text for a single section only."""
-    config = _ruleset_to_export_config(resolve_export_config(db, template_id))
+    """Export InDesign Tagged Text for a single section only. The gallery name is
+    embedded in the download filename so per-room exports are distinguishable on
+    disk."""
+    ruleset = resolve_export_config(db, template_id)
+    config = _ruleset_to_export_config(ruleset)
     output = render_import_as_tagged_text(import_id, db, config, section_id=section_id)
+    section = (
+        db.query(Section)
+        .filter(Section.id == section_id, Section.import_id == import_id)
+        .first()
+    )
     # Section-level exports don't snapshot (full-import only)
-    return Response(
-        content=escape_for_mac_roman(output).encode("mac_roman"),
-        media_type="text/plain",
+    return _attachment(
+        escape_for_mac_roman(output).encode("mac_roman"),
+        _tags_filename(ruleset, section.name if section else None),
     )
 
 

@@ -4,8 +4,11 @@ from typing import List, Optional, Set, Tuple
 
 
 # -----------------------------
-# Artist
+# Configurable-rule defaults
 # -----------------------------
+# These are the *shipped* defaults surfaced by GET /config and applied at import
+# when no admin config row exists. They are editorial conventions, not objective
+# facts, which is why they're configurable (see normalisation_config.py).
 
 DEFAULT_HONORIFIC_TOKENS: List[str] = [
     "RA",
@@ -17,6 +20,38 @@ DEFAULT_HONORIFIC_TOKENS: List[str] = [
     "EX",
     "OFFICIO",
 ]
+
+# Suppress editions whose total is <= this. 0 = drop only "Edition of 0"
+# (today's behaviour). 1 also drops "Edition of 1", which is logically the work
+# itself rather than a distinct copy.
+DEFAULT_EDITION_SUPPRESS_MAX: int = 0
+
+# Literal find -> replace substitutions applied to the listed derived fields.
+# Spaces are significant and preserved, so " - " only matches a spaced hyphen,
+# never the hyphen in "double-barrelled".
+DEFAULT_TEXT_SUBSTITUTIONS: List[dict] = [
+    {"find": "...", "replace": "…", "fields": ["title", "medium"]},
+]
+
+# Tokens whose exact casing is preserved when title-casing (acronyms, initialisms,
+# stylised names). Matched case-insensitively; the value here is the form emitted.
+# Roman numerals are handled separately (by pattern), so they don't go here.
+DEFAULT_TITLE_CASE_EXCEPTIONS: List[str] = [
+    "RA", "PRA", "PPRA", "RWS", "RE", "NEAC", "OBE", "MBE", "CBE",
+    "USA", "UK", "NYC", "LA", "BBC", "MoMA",
+]
+
+# Field keys an admin may target, mapped to the Work attribute they normalise.
+SUBSTITUTABLE_FIELDS = {
+    "title": "title",
+    "medium": "medium",
+    "artist": "artist_name",
+}
+
+
+# -----------------------------
+# Artist
+# -----------------------------
 
 
 def normalise_artist(raw_artist: str, honorific_tokens: Optional[List[str]] = None):
@@ -91,27 +126,120 @@ def parse_price(raw_price):
 # -----------------------------
 
 
-def parse_edition(raw_edition):
+def _parse_edition_components(raw_edition):
+    """Parse the raw edition string into ``(total, price)`` without applying any
+    suppression. Returns ``(None, None)`` when the string is absent or doesn't
+    match the "Edition of N [at £Y]" shape."""
     if not raw_edition:
         return None, None
 
     value = str(raw_edition).strip()
 
-    if value.startswith("Edition of 0"):
-        return None, None
-
     full_match = re.match(r"Edition of (\d+) at .*?([0-9,]+\.?[0-9]*)", value)
     if full_match:
-        total = int(full_match.group(1))
-        price = int(Decimal(full_match.group(2).replace(",", "")))
-        return total, price
+        return int(full_match.group(1)), int(
+            Decimal(full_match.group(2).replace(",", ""))
+        )
 
     partial_match = re.match(r"Edition of (\d+)", value)
     if partial_match:
-        total = int(partial_match.group(1))
-        return total, None
+        return int(partial_match.group(1)), None
 
     return None, None
+
+
+def parse_edition(raw_edition, suppress_max: int = DEFAULT_EDITION_SUPPRESS_MAX):
+    """Normalise an edition string to ``(total, price)``.
+
+    Editions whose total is ``<= suppress_max`` are suppressed (returned as
+    ``(None, None)``). With the default 0 only "Edition of 0" is dropped; raise
+    the threshold to 1 to also drop "Edition of 1" (which is the work itself,
+    not a distinct copy). The raw value is never mutated — only the derived
+    total/price are withheld — so this stays principle-3 safe.
+    """
+    total, price = _parse_edition_components(raw_edition)
+    if total is None:
+        return None, None
+    if total <= suppress_max:
+        return None, None
+    return total, price
+
+
+# -----------------------------
+# Text substitutions
+# -----------------------------
+
+
+def apply_text_substitutions(value, substitutions, field_key: str):
+    """Apply each literal find→replace whose ``fields`` includes ``field_key``,
+    in list order. Spaces in ``find``/``replace`` are significant. A blank
+    ``find`` is skipped (a no-op guard, also enforced at the API)."""
+    if not value or not substitutions:
+        return value
+    out = value
+    for sub in substitutions:
+        find = (sub or {}).get("find")
+        if not find:
+            continue
+        if field_key in (sub.get("fields") or []):
+            out = out.replace(find, sub.get("replace", "") or "")
+    return out
+
+
+# -----------------------------
+# Title casing
+# -----------------------------
+
+# Strict Roman numeral (II, IV, VIII, XIV …). Single letters are excluded by the
+# length guard in the callback ("I" is handled by titlecase itself).
+_ROMAN_RE = re.compile(
+    r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$", re.IGNORECASE
+)
+# Common words / short forms that match the Roman pattern but usually aren't
+# numerals — left as ordinary title-cased words (still override-correctable).
+_ROMAN_DENYLIST = {"mix", "di", "li", "mm", "cd", "mi", "dc"}
+
+
+def _looks_roman(core: str) -> bool:
+    return (
+        len(core) > 1
+        and core.lower() not in _ROMAN_DENYLIST
+        and bool(_ROMAN_RE.match(core))
+    )
+
+
+def to_title_case(text, exceptions: Optional[List[str]] = None):
+    """Best-effort Title Case for a display string.
+
+    Uses the ``titlecase`` library (Gruber's algorithm: small words like "of",
+    "the" stay lower). All-caps input is cased correctly; intentional mixed case
+    (e.g. "iPhone") is preserved. A callback restores two things the algorithm
+    can't infer from cased-away input:
+
+      - exact-cased *exceptions* (acronyms / initialisms / stylised names), and
+      - multi-letter Roman numerals (uppercased).
+
+    Lossy by nature for all-caps input — the result is meant to be reviewed and
+    corrected per work via the title-case override.
+    """
+    if not text:
+        return text
+
+    from titlecase import titlecase  # local import: optional-feature dependency
+
+    canon = {e.upper(): e for e in (exceptions or []) if e}
+
+    def _callback(word, **kwargs):
+        core = re.sub(r"^[^0-9A-Za-z]+|[^0-9A-Za-z]+$", "", word)
+        if not core:
+            return None
+        if core.upper() in canon:
+            return word.replace(core, canon[core.upper()])
+        if _looks_roman(core):
+            return word.replace(core, core.upper())
+        return None  # let titlecase decide
+
+    return titlecase(text, callback=_callback)
 
 
 # -----------------------------
@@ -119,12 +247,27 @@ def parse_edition(raw_edition):
 # -----------------------------
 
 
-def normalise_work(work, honorific_tokens: Optional[List[str]] = None):
+def normalise_work(
+    work,
+    honorific_tokens: Optional[List[str]] = None,
+    edition_suppress_max: int = DEFAULT_EDITION_SUPPRESS_MAX,
+    text_substitutions: Optional[List[dict]] = None,
+    title_case_exceptions: Optional[List[str]] = None,
+):
+    """Compute a Work's derived fields from its raw_* fields.
+
+    Configurable editorial rules (honorific tokens, edition suppression
+    threshold, literal text substitutions, title-case exceptions) are applied
+    here. Only derived fields are written; raw_* values are left canonical
+    (principle 3).
+    """
     work.artist_name, work.artist_honorifics = normalise_artist(
         work.raw_artist, honorific_tokens
     )
     work.price_numeric, work.price_text = parse_price(work.raw_price)
-    work.edition_total, work.edition_price_numeric = parse_edition(work.raw_edition)
+    work.edition_total, work.edition_price_numeric = parse_edition(
+        work.raw_edition, suppress_max=edition_suppress_max
+    )
 
     if work.raw_artwork:
         try:
@@ -138,16 +281,40 @@ def normalise_work(work, honorific_tokens: Optional[List[str]] = None):
     if work.raw_medium:
         work.medium = str(work.raw_medium).strip()
 
+    # Literal text substitutions, applied last to the derived fields so they act
+    # on the trimmed values an admin actually sees.
+    if text_substitutions:
+        for field_key, attr in SUBSTITUTABLE_FIELDS.items():
+            current = getattr(work, attr, None)
+            if current:
+                setattr(
+                    work,
+                    attr,
+                    apply_text_substitutions(current, text_substitutions, field_key),
+                )
+
+    # Derived Title Case form, alongside the (possibly all-caps) title. Best
+    # effort — corrected per work via the title-case override, used by outputs
+    # like the LPG that want title case rather than the LOW's house caps.
+    exceptions = (
+        title_case_exceptions
+        if title_case_exceptions is not None
+        else DEFAULT_TITLE_CASE_EXCEPTIONS
+    )
+    work.title_cased = to_title_case(work.title, exceptions) if work.title else None
+
 
 # -----------------------------
 # Validation Warnings
 # -----------------------------
 
 
-def collect_work_warnings(work) -> List[Tuple[str, str]]:
+def collect_work_warnings(
+    work, edition_suppress_max: int = DEFAULT_EDITION_SUPPRESS_MAX
+) -> List[Tuple[str, str]]:
     """
     Inspect a normalised Work and return a list of (warning_type, message) tuples.
-    Must be called after normalise_work().
+    Must be called after normalise_work() with the *same* edition_suppress_max.
 
     Warning types:
       whitespace_trimmed     – leading/trailing whitespace removed from fields
@@ -157,6 +324,9 @@ def collect_work_warnings(work) -> List[Tuple[str, str]]:
       unrecognised_price     – raw price present but could not be parsed
       edition_anomaly        – raw edition present but could not be parsed
       zero_edition_suppressed – edition was explicitly of 0 (suppressed)
+      edition_suppressed      – edition of 1..threshold suppressed (the work itself)
+      edition_suppressed_no_price – HIGH: a suppressed edition was the work's only
+                                price; its value should be restored via an override
       non_ascii_characters    – normalised fields contain chars outside ASCII-128
     """
     warnings: List[Tuple[str, str]] = []
@@ -206,26 +376,53 @@ def collect_work_warnings(work) -> List[Tuple[str, str]]:
                 ("unrecognised_price", f"Price could not be parsed: {raw_p!r}")
             )
 
-    # Edition handling
+    # Edition handling — re-derive the original components (ignoring suppression)
+    # so we can explain what happened and flag the dangerous case.
     if work.raw_edition:
         raw_ed = str(work.raw_edition).strip()
         if raw_ed:
-            # Zero edition suppressed
-            if re.match(r"edition of 0", raw_ed, re.IGNORECASE):
-                warnings.append(
-                    (
-                        "zero_edition_suppressed",
-                        f"Zero edition suppressed: {raw_ed!r}",
-                    )
-                )
-            # Anomaly: non-zero edition content that could not be parsed
-            elif work.edition_total is None:
+            total, ed_price = _parse_edition_components(raw_ed)
+            if total is None:
+                # Couldn't parse it at all → anomaly.
                 warnings.append(
                     (
                         "edition_anomaly",
                         f"Edition field could not be parsed: {raw_ed!r}",
                     )
                 )
+            elif total <= edition_suppress_max:
+                # Suppressed by the threshold.
+                no_work_price = work.price_numeric is None and getattr(
+                    work, "price_text", None
+                ) in (None, "", "*")
+                if total == 0:
+                    # "Edition of 0" — there is no edition; benign.
+                    warnings.append(
+                        (
+                            "zero_edition_suppressed",
+                            f"Zero edition suppressed: {raw_ed!r}",
+                        )
+                    )
+                elif ed_price is not None and no_work_price:
+                    # An "edition of 1" with a price IS the work's price, and the
+                    # work has no price of its own — suppressing it would lose the
+                    # only price. Surface loudly so it's restored via an override.
+                    warnings.append(
+                        (
+                            "edition_suppressed_no_price",
+                            f"{raw_ed!r} suppressed, removing the only price "
+                            f"(£{ed_price}). Set the work price via an override.",
+                        )
+                    )
+                else:
+                    # Suppressed, but the work keeps its own price — benign.
+                    warnings.append(
+                        (
+                            "edition_suppressed",
+                            f"Edition suppressed (treated as the work itself): "
+                            f"{raw_ed!r}",
+                        )
+                    )
 
     # Non-ASCII characters – will be unicode-escaped in the InDesign export
     _non_ascii_fields = {

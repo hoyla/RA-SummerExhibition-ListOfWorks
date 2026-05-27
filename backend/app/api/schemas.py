@@ -41,6 +41,7 @@ class WorkOverrideOut(BaseModel):
     """Embedded override snapshot attached to each WorkOut."""
 
     title_override: str | None = None
+    title_cased_override: str | None = None
     artist_name_override: str | None = None
     artist_honorifics_override: str | None = None
     price_numeric_override: float | None = None
@@ -67,6 +68,7 @@ class WorkOut(BaseModel):
     raw_medium: str | None = None
     # Normalised layer
     title: str | None
+    title_cased: str | None = None
     artist_name: str | None
     artist_honorifics: str | None
     price_text: str | None
@@ -167,6 +169,7 @@ class OverrideIn(BaseModel):
     """Request body for setting work overrides. All fields are optional."""
 
     title_override: str | None = None
+    title_cased_override: str | None = None
     artist_name_override: str | None = None
     artist_honorifics_override: str | None = None
     price_numeric_override: float | None = None
@@ -181,6 +184,7 @@ class OverrideIn(BaseModel):
 class OverrideOut(BaseModel):
     work_id: str
     title_override: str | None
+    title_cased_override: str | None
     artist_name_override: str | None
     artist_honorifics_override: str | None
     price_numeric_override: float | None
@@ -204,6 +208,38 @@ class OverrideOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+_SUBSTITUTABLE_FIELDS = {"title", "medium", "artist"}
+
+
+class TextSubstitutionIn(BaseModel):
+    """A literal find→replace rule scoped to one or more derived fields.
+
+    Spaces in find/replace are significant and preserved (so " - " only matches a
+    spaced hyphen). find must be non-empty."""
+
+    find: str
+    replace: str = ""
+    fields: list[str] = ["title", "medium"]
+
+    @field_validator("find")
+    @classmethod
+    def _find_not_blank(cls, v: str) -> str:
+        if not v:
+            raise ValueError("substitution 'find' must not be empty")
+        return v
+
+    @field_validator("fields")
+    @classmethod
+    def _known_fields(cls, v: list[str]) -> list[str]:
+        bad = [f for f in v if f not in _SUBSTITUTABLE_FIELDS]
+        if bad:
+            raise ValueError(
+                f"unknown substitution field(s): {bad}; "
+                f"allowed: {sorted(_SUBSTITUTABLE_FIELDS)}"
+            )
+        return v
+
+
 class NormalisationIn(BaseModel):
     honorific_tokens: list[str] = [
         "RA",
@@ -215,6 +251,23 @@ class NormalisationIn(BaseModel):
         "EX",
         "OFFICIO",
     ]
+    # Suppress editions whose total is <= this (0 = drop only "Edition of 0").
+    edition_suppress_max: int = 0
+    text_substitutions: list[TextSubstitutionIn] = [
+        TextSubstitutionIn(find="...", replace="…", fields=["title", "medium"]),
+    ]
+    # Tokens whose casing is preserved when title-casing (acronyms, stylised names).
+    title_case_exceptions: list[str] = [
+        "RA", "PRA", "PPRA", "RWS", "RE", "NEAC", "OBE", "MBE", "CBE",
+        "USA", "UK", "NYC", "LA", "BBC", "MoMA",
+    ]
+
+    @field_validator("edition_suppress_max")
+    @classmethod
+    def _sane_threshold(cls, v: int) -> int:
+        if v < 0 or v > 10:
+            raise ValueError("edition_suppress_max must be between 0 and 10")
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -230,12 +283,16 @@ class ComponentConfigIn(BaseModel):
     max_line_chars: int | None = None
     next_component_position: str = "end_of_text"
     balance_lines: bool = False
+    # When set, this component opens a new paragraph with this paragraph style
+    # (LPG model). Empty/None keeps it inline (LOW model).
+    paragraph_style: str | None = None
 
 
 class TemplateBodyIn(BaseModel):
     name: str
     currency_symbol: str = "\u00a3"
     section_style: str = "SectionTitle"
+    section_styles: list[str] = []
     entry_style: str = "CatalogueEntry"
     edition_prefix: str = "edition of"
     edition_brackets: bool = True
@@ -244,9 +301,11 @@ class TemplateBodyIn(BaseModel):
     honorifics_style: str = "Honorifics"
     honorifics_lowercase: bool = False
     title_style: str = "WorkTitle"
+    title_cased_style: str = "WorkTitle"
     price_style: str = "Price"
     medium_style: str = "Medium"
     artwork_style: str = "Artwork"
+    edition_style: str = "Edition"
     thousands_separator: str = ","
     decimal_places: int = 0
     section_separator: str = "paragraph"
@@ -258,6 +317,7 @@ class TemplateBodyIn(BaseModel):
         ComponentConfigIn(field="work_number", separator_after="tab"),
         ComponentConfigIn(field="artist", separator_after="tab"),
         ComponentConfigIn(field="title", separator_after="tab"),
+        ComponentConfigIn(field="title_cased", separator_after="tab", enabled=False),
         ComponentConfigIn(field="edition", separator_after="tab"),
         ComponentConfigIn(field="artwork", separator_after="tab", enabled=False),
         ComponentConfigIn(field="price", separator_after="none"),

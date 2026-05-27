@@ -48,6 +48,9 @@ class Work(Base):
     # NORMALISED LAYER
     number = Column(Integer, nullable=True)
     title = Column(Text, nullable=True)
+    # Best-effort Title Case form of `title`, derived at import (alongside the
+    # possibly all-caps title). Used by outputs that want title case (e.g. LPG).
+    title_cased = Column(Text, nullable=True)
     artist_name = Column(Text, nullable=True)
     artist_honorifics = Column(Text, nullable=True)
     price_numeric = Column(Numeric(12, 2), nullable=True)
@@ -57,7 +60,13 @@ class Work(Base):
     artwork = Column(Integer, nullable=True)
     medium = Column(Text, nullable=True)
 
-    include_in_export = Column(Boolean, nullable=False, server_default="true")
+    # Python-side default in addition to the DB server_default: without it,
+    # rows inserted via the ORM that don't set the value rely on the DB default,
+    # which on SQLite (tests) stores a value that doesn't satisfy
+    # `== True` queries. App-level default only — no schema change / migration.
+    include_in_export = Column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
     created_at = Column(
         TIMESTAMP(timezone=True),

@@ -35,7 +35,7 @@ from backend.app.services.excel_importer import (
     reimport_excel,
     ImportError as ExcelImportError,
 )
-from backend.app.services.export_renderer import resolve_export_config
+from backend.app.api.normalisation_config import load_normalisation_settings
 
 router = APIRouter(tags=["imports"])
 
@@ -47,17 +47,17 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     storage.save(disk_name, file.file)
 
     with storage.open_path(disk_name) as file_path:
-        ruleset = resolve_export_config(db)
-        honorific_tokens = None
-        if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
-            honorific_tokens = ruleset.config["honorific_tokens"]
+        norm = load_normalisation_settings(db)
         # Pass the original filename so the Import record shows the user-facing name
         try:
             import_record = import_excel(
                 file_path,
                 db,
-                honorific_tokens=honorific_tokens,
+                honorific_tokens=norm["honorific_tokens"],
                 display_name=original_name,
+                edition_suppress_max=norm["edition_suppress_max"],
+                text_substitutions=norm["text_substitutions"],
+                title_case_exceptions=norm["title_case_exceptions"],
             )
         except ExcelImportError as exc:
             # Clean up the saved file on validation failure
@@ -97,18 +97,17 @@ def reimport_upload(
     storage.save(disk_name, file.file)
 
     with storage.open_path(disk_name) as file_path:
-        ruleset = resolve_export_config(db)
-        honorific_tokens = None
-        if ruleset and isinstance(ruleset.config.get("honorific_tokens"), list):
-            honorific_tokens = ruleset.config["honorific_tokens"]
-
+        norm = load_normalisation_settings(db)
         try:
             _record, stats = reimport_excel(
                 import_id,
                 file_path,
                 db,
-                honorific_tokens=honorific_tokens,
+                honorific_tokens=norm["honorific_tokens"],
                 display_name=original_name,
+                edition_suppress_max=norm["edition_suppress_max"],
+                text_substitutions=norm["text_substitutions"],
+                title_case_exceptions=norm["title_case_exceptions"],
             )
         except ExcelImportError as exc:
             storage.delete(disk_name)

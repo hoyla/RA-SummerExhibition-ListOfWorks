@@ -96,6 +96,9 @@ def import_excel(
     db: Session,
     honorific_tokens: Optional[List[str]] = None,
     display_name: Optional[str] = None,
+    edition_suppress_max: int = 0,
+    text_substitutions: Optional[List[dict]] = None,
+    title_case_exceptions: Optional[List[str]] = None,
 ) -> Import:
     # --- Open workbook (catch corrupt / non-Excel files) ---
     try:
@@ -201,11 +204,19 @@ def import_excel(
         )
 
         db.add(work)
-        normalise_work(work, honorific_tokens=honorific_tokens)
+        normalise_work(
+            work,
+            honorific_tokens=honorific_tokens,
+            edition_suppress_max=edition_suppress_max,
+            text_substitutions=text_substitutions,
+            title_case_exceptions=title_case_exceptions,
+        )
         db.flush()  # ensures work.id is assigned before referencing it in warnings
 
         # Collect and store work-level validation warnings
-        for warning_type, message in collect_work_warnings(work):
+        for warning_type, message in collect_work_warnings(
+            work, edition_suppress_max=edition_suppress_max
+        ):
             db.add(
                 ValidationWarning(
                     import_id=import_record.id,
@@ -275,6 +286,9 @@ def reimport_excel(
     db: Session,
     honorific_tokens: Optional[List[str]] = None,
     display_name: Optional[str] = None,
+    edition_suppress_max: int = 0,
+    text_substitutions: Optional[List[dict]] = None,
+    title_case_exceptions: Optional[List[str]] = None,
 ) -> Tuple[Import, Dict[str, int]]:
     """Re-import a spreadsheet into an existing Import, preserving overrides.
 
@@ -401,7 +415,13 @@ def reimport_excel(
             raw_medium=raw_medium,
         )
         db.add(work)
-        normalise_work(work, honorific_tokens=honorific_tokens)
+        normalise_work(
+            work,
+            honorific_tokens=honorific_tokens,
+            edition_suppress_max=edition_suppress_max,
+            text_substitutions=text_substitutions,
+            title_case_exceptions=title_case_exceptions,
+        )
         db.flush()
 
         # Restore override / include_in_export if cat_no matches
@@ -419,7 +439,9 @@ def reimport_excel(
             stats["added"] += 1
 
         # Work-level validation warnings
-        for warning_type, message in collect_work_warnings(work):
+        for warning_type, message in collect_work_warnings(
+            work, edition_suppress_max=edition_suppress_max
+        ):
             db.add(
                 ValidationWarning(
                     import_id=import_id,

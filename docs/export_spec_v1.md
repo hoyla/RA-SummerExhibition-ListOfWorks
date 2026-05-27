@@ -1,5 +1,9 @@
 # InDesign Tagged Text export specification
 
+> **Related docs:** reading a corrected LOW export *back* into the tool is
+> covered in [`reconcile.md`](./reconcile.md); services and data model are in
+> [`architecture_v1.md`](./architecture_v1.md).
+
 ## Encoding
 
 - File header: `<ASCII-MAC>`
@@ -34,8 +38,9 @@ Sections are separated by a blank line (bare `\r`).
 
 ## Component layout
 
-Each catalogue entry is a single paragraph. The field order, separators,
-and character styles are all configurable via `ExportConfig`.
+The field order, separators, character styles, and **paragraph grouping** are all
+configurable via `ExportConfig`. One template model serves two layouts (see
+"Two layout models" below).
 
 Default component order:
 
@@ -44,12 +49,56 @@ Default component order:
 | work_number | tab             | yes             |
 | artist      | tab             | yes             |
 | title       | tab             | yes             |
+| title_cased | tab             | no              |
 | edition     | tab             | yes             |
 | artwork     | tab             | no              |
 | price       | none            | yes             |
 | medium      | none            | yes             |
 
 Components with `enabled=False` are omitted entirely from the output.
+`title_cased` is the derived Title-Case form of the title (see
+[`architecture_v1.md`](./architecture_v1.md)); it ships disabled in the LOW and
+enabled in the LPG.
+
+### Two layout models (LOW vs LPG)
+
+Each component carries an optional `paragraph_style`. It is the single control
+that picks the layout:
+
+- **Blank → inline (the List of Works model).** The element stays in the current
+  paragraph, wrapped in its character style and joined to the previous element by
+  its separator. A whole LOW entry is therefore **one paragraph** (`entry_style`,
+  e.g. `Title No Nest`) of character-styled, tab-separated runs.
+- **Set → new paragraph (the Large Print Guide model).** The element **opens a new
+  paragraph** in that paragraph style. An LPG work is therefore **several
+  paragraphs** — number+title in `LPGTITLE`, then `LPGARTIST`, `LPGMEDIUM`,
+  conditional `LPGEDITION`, `LPGPRICE` — typically with no character styles
+  (the paragraph style does the work). Specifying a paragraph style *is* the
+  line break.
+
+The first component always opens the entry's first paragraph; its style is the
+template's `entry_style`. A paragraph whose every component is empty and
+omit-when-empty is dropped (e.g. the conditional `LPGEDITION`). The renderer
+auto-selects the paragraphed path when any component declares a `paragraph_style`.
+
+LPG example output:
+
+```
+<ParaStyle:LPGTITLE>1\tThe Meddling Fiend\r
+<ParaStyle:LPGARTIST>Nicola Turner\r
+<ParaStyle:LPGMEDIUM>mixed media\r
+<ParaStyle:LPGEDITION>(edition of 10 at £500)\r
+<ParaStyle:LPGPRICE>£5,000\r
+```
+
+### Per-room (per-section) export & filenames
+
+The LPG is produced **one file per room**. A section-scoped export
+(`GET /imports/{id}/sections/{section_id}/export-tags`) sets a download filename
+embedding the template and gallery — e.g.
+`Large-Print-Guide-2026_The-Annenberg-Courtyard.txt` — so individual gallery
+files are distinguishable on disk. A blank `section_style` suppresses gallery
+headings (the LPG has none).
 
 When a component's value is empty and `omit_sep_when_empty=True` (default),
 the separator after that component is also suppressed.
@@ -99,9 +148,15 @@ Default style names:
 | artist name | `ArtistName`  |
 | honorifics  | `Honorifics`  |
 | title       | `WorkTitle`   |
+| title_cased | `WorkTitle`   |
+| edition     | `Edition`     |
 | price       | `Price`       |
 | medium      | `Medium`      |
 | artwork     | `Artwork`     |
+
+In the editor, each element's character style is shown **on its own row** (next
+to its separator and paragraph-style controls), but it is stored in these
+per-field config slots — the data model is unchanged.
 
 ---
 
@@ -115,6 +170,13 @@ Default style names:
 | Neither         | suppressed                |
 
 The prefix `edition of` and bracketing are configurable via `ExportConfig`.
+The rendered edition string is wrapped in the `edition` character style
+(default `Edition`), so every field carries a character style.
+
+Which editions are suppressed is an editorial choice, set by the normalisation
+config's `edition_suppress_max` (default 0 = drop only "Edition of 0"; 1 also
+drops "Edition of 1", which is the work itself). See the normalisation rules in
+[`architecture_v1.md`](./architecture_v1.md).
 
 ---
 
@@ -148,6 +210,29 @@ corresponding normalised `Work` values before export. A `None` override field
 means "use the Work value". An empty string override outputs nothing for that field.
 
 ---
+
+## InDesign dialects
+
+Our renderer emits the **native** dialect (long `<ParaStyle:>` / `<CharStyle:>`
+tags, CR paragraph breaks). A file **re-exported by InDesign** uses a different
+dialect; the reconcile parser ([`reconcile.md`](./reconcile.md)) handles both.
+A real InDesign re-export differs as follows:
+
+- **Short tag forms** `<pstyle:Name>` / `<cstyle:Name>…<cstyle:>`.
+- **LF paragraph breaks** (not CR), preceded by a preamble of `<vsn:>` / `<dps:>`
+  / `<dcs:>` style definitions (discarded by the paragraph allowlist).
+- **All non-ASCII escaped** as `<0x####>` even when Mac-Roman-encodable
+  (`£` = `<0x00A3>`, `'` = `<0x2019>`) — so the file is plain ASCII.
+- **A forced line break inside a paragraph is `<0x000A>`** — decoded then deleted
+  like any soft return; the whole entry stays one paragraph.
+- **Style names are backslash-escaped**: `<cstyle:Work Number\/Name>` — the parser
+  unescapes them before matching against the template's style allowlist.
+- **Inline local modifications** (e.g. `<ccase:…>`, a leading `<cl:…>`) can appear
+  inside a styled run; the parser strips them.
+
+These were confirmed against the real 2025 catalogue export, and are why
+validating against a real file matters: a native-only parser returns zero entries
+on any real InDesign re-export.
 
 ---
 

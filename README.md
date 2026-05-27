@@ -20,16 +20,23 @@ Supports two data products:
 
 - Excel upload and structured import model (Import → Section → Work)
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
-- Configurable normalisation config (honorific token list)
-- Validation warnings for unparseable values
-- Whitespace trimming detection with per-work warnings
-- Editorial overrides per work (title, artist, price, edition, artwork, medium, notes)
+- **Admin-configurable normalisation rules**: honorific tokens, edition-suppression
+  threshold, literal text substitutions, and title-case exceptions
+- **Title Case Title** — a derived title-cased field (for the LPG) with its own
+  per-work override; the List of Works keeps house caps
+- Validation warnings for unparseable values; whitespace-trim detection per work
+- Editorial overrides per work (title, title-cased, artist, price, edition, artwork, medium, notes)
 - Export templates: named, versioned configs stored in the database
-- Configurable export component order, separators, balance-lines, and character styles
-- Per-component include/exclude toggle
-- Section-level exports with custom filenames
+- **One template model, two layouts** — character-styled inline (List of Works) or
+  paragraph-styled, one element per paragraph (Large Print Guide), edited in a
+  unified per-element editor with a live sample-entry preview
+- Per-component include/exclude toggle, separators, balance-lines, character styles
+- Per-room (per-section) export with template + gallery-name filenames
 - Re-import with override preservation
 - Export diff (compare current output to last snapshot)
+- **Reconcile (LOW → LPG):** diff a corrected InDesign LOW export back against the
+  database to recover last-minute downstream data changes, with snapshot
+  provenance — see [`docs/reconcile.md`](docs/reconcile.md)
 
 ### Artists Index
 
@@ -155,7 +162,7 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (775 tests across 31 test files)
+tests/            # pytest suite (900 tests across 37 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/

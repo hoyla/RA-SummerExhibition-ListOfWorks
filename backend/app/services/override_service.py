@@ -21,6 +21,7 @@ class EffectiveWork:
     raw_cat_no: Optional[str]
 
     title: Optional[str]
+    title_cased: Optional[str]
     artist_name: Optional[str]
     artist_honorifics: Optional[str]
 
@@ -42,8 +43,9 @@ def resolve_effective_work(work, override) -> EffectiveWork:
 
     Rules:
       - If an override field is not None, it takes precedence.
-      - For price: if price_text_override is set, that wins for display;
-        if price_numeric_override is also set, both are used.
+      - For price: a non-empty price_text_override wins for display and
+        suppresses the numeric, so a footnoted/non-numeric price (e.g.
+        "£60,000*") can be carried for a work whose source price is numeric.
       - Raw fields (raw_cat_no) are never overridable – preserved as-is.
       - include_in_export lives on the Work directly (no override).
 
@@ -63,6 +65,7 @@ def resolve_effective_work(work, override) -> EffectiveWork:
         return EffectiveWork(
             raw_cat_no=work.raw_cat_no,
             title=work.title,
+            title_cased=getattr(work, "title_cased", None),
             artist_name=work.artist_name,
             artist_honorifics=work.artist_honorifics,
             price_numeric=work.price_numeric,
@@ -86,6 +89,11 @@ def resolve_effective_work(work, override) -> EffectiveWork:
         if override.price_text_override is not None
         else work.price_text
     )
+    # A non-empty price-text override means "display this exact price string"
+    # (e.g. a footnoted "£60,000*"), so suppress the numeric — which otherwise
+    # wins in the renderer. "" (clear text) does not suppress the numeric.
+    if override.price_text_override:
+        effective_price_numeric = None
 
     return EffectiveWork(
         raw_cat_no=work.raw_cat_no,
@@ -93,6 +101,11 @@ def resolve_effective_work(work, override) -> EffectiveWork:
             override.title_override
             if override.title_override is not None
             else work.title
+        ),
+        title_cased=(
+            override.title_cased_override
+            if getattr(override, "title_cased_override", None) is not None
+            else getattr(work, "title_cased", None)
         ),
         artist_name=(
             override.artist_name_override

@@ -32,7 +32,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | `backend/alembic/versions/` | Database migrations (auto-run on startup)             |
 | `backend/seed_templates/`   | Default templates and known artist seed data          |
 | `frontend/`                 | Single-page app (`app.js`, `style.css`, `index.html`) |
-| `tests/`                    | Pytest suite (~775 tests, SQLite in-memory)           |
+| `tests/`                    | Pytest suite (~900 tests, SQLite in-memory)           |
 
 ### Data flow
 
