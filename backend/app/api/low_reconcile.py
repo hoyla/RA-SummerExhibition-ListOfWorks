@@ -109,6 +109,7 @@ def _diff_payload(
         "section_alignment": result.section_alignment,
         "counts": result.counts,
         "findings": [asdict(f) for f in result.findings],
+        "cosmetic": [asdict(f) for f in result.cosmetic],
     }
 
 

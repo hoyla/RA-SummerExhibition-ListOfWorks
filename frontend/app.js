@@ -4261,31 +4261,58 @@ function _paintReconcile() {
   (diff.warnings || []).forEach(w =>
     parts.push(`<p class="status-msg warning" style="margin:0 0 8px">⚠ ${esc(w)}</p>`));
 
-  const summary = `${counts.matched ?? 0} matched · ${all.length} difference${all.length === 1 ? '' : 's'}`
-    + (counts.suppressed_cosmetic ? ` · ${counts.suppressed_cosmetic} cosmetic hidden` : '')
-    + ` · parsed ${diff.parsed_entries}/${diff.db_entries}`;
+  const summaryText = `${counts.matched ?? 0} matched · ${all.length} difference${all.length === 1 ? '' : 's'} · parsed ${diff.parsed_entries}/${diff.db_entries}`;
+  const cosmeticLink = counts.suppressed_cosmetic
+    ? ` · <a href="#" class="recon-cosmetic-toggle" onclick="toggleReconCosmetic();return false">${counts.suppressed_cosmetic} cosmetic hidden — view</a>`
+    : '';
   parts.push(`<p class="diff-summary" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span>${esc(summary)}</span>
+    <span>${esc(summaryText)}${cosmeticLink}</span>
     <button class="btn btn-xs btn-secondary" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(snapshot.id)}')">Re-check against current data</button>
   </p>`);
 
   if (!all.length) {
-    parts.push('<div class="diff-ok" style="padding:10px 12px;border-radius:6px;margin-top:6px"><p style="margin:0">✓ No outstanding differences — this data matches the corrected LOW.</p></div></div>');
-    el.innerHTML = parts.join('');
-    return;
+    parts.push('<div class="diff-ok" style="padding:10px 12px;border-radius:6px;margin-top:6px"><p style="margin:0">✓ No outstanding differences — this data matches the corrected LOW.</p></div>');
+  } else {
+    const sevCounts = { high: 0, medium: 0, info: 0 };
+    all.forEach(f => { sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1; });
+    const sevBtn = (key, label) =>
+      `<button class="recon-filter${sevFilter === key ? ' active' : ''}" onclick="setReconSevFilter('${key}')">${label}${key !== 'all' ? ` (${sevCounts[key] || 0})` : ''}</button>`;
+    parts.push(`<div class="recon-filters">
+      ${sevBtn('all', 'All')}${sevBtn('high', 'High')}${sevBtn('medium', 'Medium')}${sevBtn('info', 'Info')}
+      <input type="text" id="recon-text-filter" class="works-filter-input" placeholder="Filter by cat no / field / room…" oninput="setReconTextFilter(this.value)" value="${esc(text)}">
+    </div>`);
+    parts.push('<div id="recon-groups"></div>');
   }
 
-  const sevCounts = { high: 0, medium: 0, info: 0 };
-  all.forEach(f => { sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1; });
-  const sevBtn = (key, label) =>
-    `<button class="recon-filter${sevFilter === key ? ' active' : ''}" onclick="setReconSevFilter('${key}')">${label}${key !== 'all' ? ` (${sevCounts[key] || 0})` : ''}</button>`;
-  parts.push(`<div class="recon-filters">
-    ${sevBtn('all', 'All')}${sevBtn('high', 'High')}${sevBtn('medium', 'Medium')}${sevBtn('info', 'Info')}
-    <input type="text" id="recon-text-filter" class="works-filter-input" placeholder="Filter by cat no / field / room…" oninput="setReconTextFilter(this.value)" value="${esc(text)}">
-  </div>`);
-  parts.push('<div id="recon-groups"></div></div>');
+  parts.push('<div id="recon-cosmetic" class="recon-cosmetic" style="display:none"></div>');
+  parts.push('</div>');
   el.innerHTML = parts.join('');
-  _paintReconGroups();
+  if (all.length) _paintReconGroups();
+}
+
+function toggleReconCosmetic() {
+  const el = document.getElementById('recon-cosmetic');
+  const link = document.querySelector('.recon-cosmetic-toggle');
+  if (!el) return;
+  const cos = (_reconState.diff && _reconState.diff.cosmetic) || [];
+  if (el.style.display !== 'none') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    if (link) link.textContent = `${cos.length} cosmetic hidden — view`;
+    return;
+  }
+  if (!cos.length) return;
+  const rows = cos.map(f => `<tr>
+    <td class="diff-catno">${esc(f.cat_no ?? '—')}</td>
+    <td><code>${esc(f.field || '')}</code></td>
+    <td><span class="diff-old">${esc(String(f.db_value ?? ''))}</span></td>
+    <td><span class="diff-new">${esc(String(f.low_value ?? ''))}</span></td>
+    <td>${esc(f.section ?? '')}</td>
+  </tr>`).join('');
+  el.innerHTML = `<h4 class="diff-heading">Cosmetic differences <span class="muted" style="font-weight:normal">(${cos.length} — ignored for matching: whitespace, quote style, line breaks)</span></h4>
+    <table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Field</th><th>In data</th><th>In LOW</th><th>Room</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.style.display = '';
+  if (link) link.textContent = `${cos.length} cosmetic — hide`;
 }
 
 function _paintReconGroups() {

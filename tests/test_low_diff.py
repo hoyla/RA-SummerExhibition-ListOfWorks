@@ -185,6 +185,10 @@ def test_cosmetic_changes_suppressed():
     result = _diff_modified(config, modified, collected)
     assert [f for f in result.findings if f.cat_no == "104"] == []
     assert result.counts["suppressed_cosmetic"] >= 1
+    # The suppressed difference is retained (viewable) with severity "cosmetic".
+    cos = [f for f in result.cosmetic if f.cat_no == "104" and f.field == "title"]
+    assert len(cos) == 1 and cos[0].severity == "cosmetic"
+    assert cos[0].low_value == "Artist’s  Study"  # raw value kept, for drill-in
 
 
 def test_cosmetic_surfaces_when_suppression_disabled():

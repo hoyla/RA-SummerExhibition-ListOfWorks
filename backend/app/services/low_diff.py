@@ -170,6 +170,9 @@ class DiffResult:
     findings: list[Finding]
     section_alignment: dict[str, str]  # DB section name -> aligned LOW section name
     counts: dict
+    # Field differences that vanish after normalisation (whitespace, quote style,
+    # line breaks). Kept out of `findings` but retained for transparency/drill-in.
+    cosmetic: list[Finding] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -269,16 +272,29 @@ def diff_low(
     compare_fields = [f for f in recoverable_fields(export_config) if f != "work_number"]
 
     findings: list[Finding] = []
-    suppressed = 0
+    cosmetic: list[Finding] = []
 
     for cat in sorted(matched, key=_catsort):
         # Field-level changes
         for fld in compare_fields:
             dv = db_fields[cat].get(fld, "")
             lv = low_fields[cat].get(fld, "")
+            if dv == lv:
+                continue  # identical
             if _norm(dv, diff_config) == _norm(lv, diff_config):
-                if dv != lv:
-                    suppressed += 1  # differed only cosmetically
+                # Differs only cosmetically (whitespace / quotes / line breaks).
+                cf = Finding(
+                    kind="field_change",
+                    cat_no=cat,
+                    field=fld,
+                    db_value=dv,
+                    low_value=lv,
+                    section=db_sec[cat],
+                    severity="cosmetic",
+                    fix_channel=_channel(diff_config, "field_change"),
+                    message=f"{fld}: {dv!r} → {lv!r} (cosmetic)",
+                )
+                (cosmetic if diff_config.suppress_cosmetic else findings).append(cf)
                 continue
             findings.append(
                 Finding(
@@ -361,8 +377,13 @@ def diff_low(
         "db_only": len(db_only),
         "low_only": len(low_only),
         "findings": len(findings),
-        "suppressed_cosmetic": suppressed,
+        "suppressed_cosmetic": len(cosmetic),
         "by_severity": _count_by(findings, "severity"),
         "by_fix_channel": _count_by(findings, "fix_channel"),
     }
-    return DiffResult(findings=findings, section_alignment=aligned, counts=counts)
+    return DiffResult(
+        findings=findings,
+        section_alignment=aligned,
+        counts=counts,
+        cosmetic=cosmetic,
+    )

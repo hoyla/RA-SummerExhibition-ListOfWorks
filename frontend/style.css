@@ -1040,6 +1040,9 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .tool-output:empty { display: none; }
 
 /* Reconcile corrected LOW */
+.recon-cosmetic { margin-top: 16px; }
+/* Show whitespace / line-break differences that are otherwise invisible in HTML */
+.recon-cosmetic .diff-old, .recon-cosmetic .diff-new { white-space: pre-wrap; }
 .reconcile-history-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
 .recon-snap { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid #ddd; border-radius: 12px; background: #fafafa; font-size: 12px; }
 .recon-snap.active { background: #eef5ff; border-color: #a4c3f5; }
