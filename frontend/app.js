@@ -3243,6 +3243,60 @@ function _teVisibleItems(group, sample) {
   return group.items.filter(it => it.comp.enabled && (!it.comp.omit_sep_when_empty || sample[it.comp.field]));
 }
 
+// --- Line wrapping (ports the renderer's _wrap_lines / _balance_wrap_lines so
+//     the preview honours max_line_chars / balance_lines / next_component_position) ---
+const _TE_OPEN_PUNCT = new Set(["'", '"', '‘', '“', '(', '[']);
+const _TE_CLOSE_PUNCT = new Set(["'", '"', ',', ';', ':', '.', '!', '?', ')', ']', '’', '”']);
+const _TE_NO_BREAK_AFTER = new Set(['–', '—']);
+
+function _teWrapLines(text, maxChars) {
+  const lines = [];
+  let remaining = text;
+  while (remaining.length > maxChars) {
+    let candidate = remaining.lastIndexOf(' ', maxChars - 1);
+    if (candidate < 0) { lines.push(remaining.slice(0, maxChars)); remaining = remaining.slice(maxChars); continue; }
+    for (let k = 0; k < maxChars; k++) {
+      const before = candidate > 0 ? remaining[candidate - 1] : '';
+      const after = candidate + 1 < remaining.length ? remaining[candidate + 1] : '';
+      if (!(_TE_OPEN_PUNCT.has(before) || _TE_NO_BREAK_AFTER.has(before) || _TE_CLOSE_PUNCT.has(after))) break;
+      const prev = remaining.lastIndexOf(' ', candidate - 1);
+      if (prev < 0) { candidate = -1; break; }
+      candidate = prev;
+    }
+    if (candidate < 0) { lines.push(remaining.slice(0, maxChars)); remaining = remaining.slice(maxChars); }
+    else { lines.push(remaining.slice(0, candidate + 1)); remaining = remaining.slice(candidate + 1); }
+  }
+  if (remaining) lines.push(remaining);
+  return lines;
+}
+
+function _teBalanceWrap(text, maxChars) {
+  const n = _teWrapLines(text, maxChars).length;
+  if (n <= 1) return _teWrapLines(text, maxChars);
+  let lo = Math.max(Math.max(1, Math.ceil(text.length / n)), Math.floor(maxChars * 0.8));
+  let hi = maxChars;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (_teWrapLines(text, mid).length > n) lo = mid + 1; else hi = mid;
+  }
+  return _teWrapLines(text, lo);
+}
+
+// Wrapped lines for a component's value (or [value] when no wrap applies).
+function _teWrapValue(comp, value) {
+  if (!comp.max_line_chars || !value) return [value];
+  return comp.balance_lines ? _teBalanceWrap(value, comp.max_line_chars) : _teWrapLines(value, comp.max_line_chars);
+}
+
+function _teTokenHTML(comp, text) {
+  const styled = !!comp.char_style;
+  const body = text !== '' && text != null
+    ? esc(text)
+    : `<em class="pv-tok__empty">(${esc(_TE_FIELD_LABEL[comp.field] || comp.field)})</em>`;
+  const lbl = styled ? `<span class="pv-tok__label">${esc(comp.char_style)}</span>` : '';
+  return `<span class="pv-pair"><span class="pv-tok${styled ? ' pv-tok--styled' : ''}">${body}${lbl}</span></span>`;
+}
+
 function _tePreviewHTML() {
   const groups = _teComputeParagraphs(_te.components);
   const sample = _TE_SAMPLES[_te.sampleVariant];
@@ -3252,24 +3306,50 @@ function _tePreviewHTML() {
 
   let paper = renderable.map(({ g, gi, items }) => {
     const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
-    let line = '';
+    // Build visual lines (each becomes its own .pv-para__line), so wrapped
+    // components actually break at their max-chars width.
+    const vlines = [''];
+    let cur = 0;
+    const add = (html) => { vlines[cur] += html; };
+    const breakLine = () => { vlines.push(''); cur = vlines.length - 1; };
+    const skip = new Set();
+
     if (gi === firstGi && _te.leading_separator && _te.leading_separator !== 'none') {
-      line += `<span class="pv-edge" title="Leading separator">${_teSepGlyph(_te.leading_separator)}</span>`;
+      add(`<span class="pv-edge" title="Leading separator">${_teSepGlyph(_te.leading_separator)}</span>`);
     }
     items.forEach(({ comp }, ci) => {
+      if (skip.has(ci)) return;
       const value = sample[comp.field] ?? '';
-      const tok = value
-        ? esc(value)
-        : `<em class="pv-tok__empty">(${esc(_TE_FIELD_LABEL[comp.field] || comp.field)})</em>`;
-      const lbl = comp.char_style ? `<span class="pv-tok__label">${esc(comp.char_style)}</span>` : '';
-      line += `<span class="pv-pair"><span class="pv-tok${comp.char_style ? ' pv-tok--styled' : ''}">${tok}${lbl}</span>`;
-      if (ci !== items.length - 1 && comp.separator_after !== 'none') line += _teSepGlyph(comp.separator_after);
-      line += `</span>`;
+      const wrapped = _teWrapValue(comp, value);
+      const isLast = ci === items.length - 1;
+      if (wrapped.length <= 1) {
+        add(_teTokenHTML(comp, value));
+        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+      } else if (comp.next_component_position === 'end_of_first_line' && ci + 1 < items.length) {
+        // First wrapped line, this component's separator, then the NEXT element
+        // inline; the remaining wrapped lines drop below.
+        const nc = items[ci + 1].comp;
+        const ncVal = sample[nc.field] ?? '';
+        add(_teTokenHTML(comp, wrapped[0]));
+        if (comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+        add(_teTokenHTML(nc, ncVal));
+        skip.add(ci + 1);
+        for (let li = 1; li < wrapped.length; li++) { add(_teSepGlyph('soft_return')); breakLine(); add(_teTokenHTML(comp, wrapped[li])); }
+        if (ci + 1 !== items.length - 1 && nc.separator_after !== 'none') add(_teSepGlyph(nc.separator_after));
+      } else {
+        // Multi-line, normal: one visual line per wrapped line (soft return between).
+        for (let li = 0; li < wrapped.length; li++) {
+          if (li > 0) { add(_teSepGlyph('soft_return')); breakLine(); }
+          add(_teTokenHTML(comp, wrapped[li]));
+        }
+        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+      }
     });
     if (gi === lastGi && _te.trailing_separator && _te.trailing_separator !== 'none') {
-      line += `<span class="pv-edge" title="Trailing separator">${_teSepGlyph(_te.trailing_separator)}</span>`;
+      add(`<span class="pv-edge" title="Trailing separator">${_teSepGlyph(_te.trailing_separator)}</span>`);
     }
-    return `<div class="pv-para"><div class="pv-para__tag"><span class="pv-tag--para">&para; ${styleName ? esc(styleName) : '<em>default</em>'}</span></div><div class="pv-para__line">${line}</div></div>`;
+    const linesHTML = vlines.map(l => `<div class="pv-para__line">${l}</div>`).join('');
+    return `<div class="pv-para"><div class="pv-para__tag"><span class="pv-tag--para">&para; ${styleName ? esc(styleName) : '<em>default</em>'}</span></div>${linesHTML}</div>`;
   }).join('');
   if (!paper) paper = `<p style="color:var(--muted);font-size:13px;margin:0">No visible elements for this sample.</p>`;
 
@@ -3278,7 +3358,7 @@ function _tePreviewHTML() {
       <span><i class="lg lg--styled"></i> character-styled</span>
       <span><i class="lg lg--tab">&rarr;</i> tab</span>
       <span><i class="lg lg--rtab">&#8677;</i> right-indent tab</span>
-      <span><i class="lg lg--soft">&#8629;</i> soft return</span>
+      <span><i class="lg lg--soft">&#8629;</i> soft return / wrap</span>
       <span><i class="lg lg--para">&para;</i> new paragraph</span>
     </div></div>`;
 }
@@ -3297,16 +3377,29 @@ function _teTaggedSepChars(k) {
 function _teTaggedTextHTML() {
   const groups = _teComputeParagraphs(_te.components);
   const sample = _TE_SAMPLES[_te.sampleVariant];
+  const styled = (comp, t) => comp.char_style ? `<CharStyle:${comp.char_style}>${t}<CharStyle:>` : t;
   const lines = [];
   groups.forEach((g, gi) => {
     const items = _teVisibleItems(g, sample);
     if (!items.length) return;
     const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
     let line = `<ParaStyle:${styleName}>`;
+    const skip = new Set();
     items.forEach(({ comp }, ci) => {
+      if (skip.has(ci)) return;
       const v = sample[comp.field] ?? '';
-      line += comp.char_style ? `<CharStyle:${comp.char_style}>${v}<CharStyle:>` : v;
-      if (ci !== items.length - 1) line += _teTaggedSepChars(comp.separator_after);
+      const wrapped = _teWrapValue(comp, v);
+      if (wrapped.length > 1 && comp.next_component_position === 'end_of_first_line' && ci + 1 < items.length) {
+        const nc = items[ci + 1].comp;
+        const ncVal = sample[nc.field] ?? '';
+        line += styled(comp, wrapped[0]) + _teTaggedSepChars(comp.separator_after) + styled(nc, ncVal)
+              + styled(comp, '\\n' + wrapped.slice(1).join('\\n'));
+        skip.add(ci + 1);
+        if (ci + 1 !== items.length - 1) line += _teTaggedSepChars(nc.separator_after);
+      } else {
+        line += styled(comp, wrapped.length > 1 ? wrapped.join('\\n') : v);
+        if (ci !== items.length - 1) line += _teTaggedSepChars(comp.separator_after);
+      }
     });
     lines.push(line);
   });
