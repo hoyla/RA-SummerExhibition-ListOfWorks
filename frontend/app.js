@@ -4262,11 +4262,14 @@ function _paintReconcile() {
     parts.push(`<p class="status-msg warning" style="margin:0 0 8px">⚠ ${esc(w)}</p>`));
 
   const summaryText = `${counts.matched ?? 0} matched · ${all.length} difference${all.length === 1 ? '' : 's'} · parsed ${diff.parsed_entries}/${diff.db_entries}`;
-  const cosmeticLink = counts.suppressed_cosmetic
-    ? ` · <a href="#" class="recon-cosmetic-toggle" onclick="toggleReconCosmetic();return false">${counts.suppressed_cosmetic} cosmetic hidden — view</a>`
+  // Cosmetic toggle styled as a warning-filter badge (muted = hidden, the
+  // default) for consistency with the flagged-issues filters.
+  const cosmeticBadge = counts.suppressed_cosmetic
+    ? `<button type="button" class="badge badge-info warning-filter-btn badge-muted recon-cosmetic-toggle" onclick="toggleReconCosmetic()" title="Click: show the suppressed cosmetic differences">Cosmetic: ${counts.suppressed_cosmetic}</button>`
     : '';
   parts.push(`<p class="diff-summary" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span>${esc(summaryText)}${cosmeticLink}</span>
+    <span>${esc(summaryText)}</span>
+    ${cosmeticBadge}
     <button class="btn btn-xs btn-secondary" onclick="viewReconcileSnapshot('${esc(importId)}','${esc(snapshot.id)}')">Re-check against current data</button>
   </p>`);
 
@@ -4292,13 +4295,13 @@ function _paintReconcile() {
 
 function toggleReconCosmetic() {
   const el = document.getElementById('recon-cosmetic');
-  const link = document.querySelector('.recon-cosmetic-toggle');
+  const btn = document.querySelector('.recon-cosmetic-toggle');
   if (!el) return;
   const cos = (_reconState.diff && _reconState.diff.cosmetic) || [];
   if (el.style.display !== 'none') {
     el.style.display = 'none';
     el.innerHTML = '';
-    if (link) link.textContent = `${cos.length} cosmetic hidden — view`;
+    if (btn) { btn.classList.add('badge-muted'); btn.title = 'Click: show the suppressed cosmetic differences'; }
     return;
   }
   if (!cos.length) return;
@@ -4312,7 +4315,7 @@ function toggleReconCosmetic() {
   el.innerHTML = `<h4 class="diff-heading">Cosmetic differences <span class="muted" style="font-weight:normal">(${cos.length} — ignored for matching: whitespace, quote style, line breaks)</span></h4>
     <table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Field</th><th>In data</th><th>In LOW</th><th>Room</th></tr></thead><tbody>${rows}</tbody></table>`;
   el.style.display = '';
-  if (link) link.textContent = `${cos.length} cosmetic — hide`;
+  if (btn) { btn.classList.remove('badge-muted'); btn.title = 'Click: hide the cosmetic differences'; }
 }
 
 function _paintReconGroups() {
