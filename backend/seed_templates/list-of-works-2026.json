@@ -74,6 +74,7 @@
   "edition_style": "Work Edition",
   "artwork_style": "Artwork",
   "section_style": "Gallery 2 deck small",
+  "section_styles": ["Gallery Roman"],
   "decimal_places": 0,
   "edition_prefix": "edition of",
   "currency_symbol": "£",

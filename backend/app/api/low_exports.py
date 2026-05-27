@@ -89,6 +89,7 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
     return ExportConfig(
         currency_symbol=cfg.get("currency_symbol", DEFAULT_CONFIG.currency_symbol),
         section_style=cfg.get("section_style", DEFAULT_CONFIG.section_style),
+        section_styles=cfg.get("section_styles", []),
         entry_style=cfg.get("entry_style", DEFAULT_CONFIG.entry_style),
         edition_prefix=cfg.get("edition_prefix", DEFAULT_CONFIG.edition_prefix),
         edition_brackets=cfg.get("edition_brackets", DEFAULT_CONFIG.edition_brackets),

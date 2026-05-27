@@ -88,11 +88,16 @@ def test_final_low_export_parses_cleanly():
     with open(_FINAL, encoding="mac_roman") as fh:
         parsed = parse_low_tags(fh.read(), _config_2026())
 
-    assert len(parsed) >= 1700
+    assert len(parsed) == 1729  # every work, including the tricky ones
     by_cat = {e.cat_no: e for e in parsed}
     assert "1" in by_cat  # cat 1 was previously lost (heading shared its line)
+    # 405-412 carry a local leading override (<cl:…>) inside the cat-no run;
+    # inline tags must be stripped before the tab-split or they're dropped.
+    assert all(str(n) in by_cat for n in range(405, 413))
     # Cat numbers are clean digits, not "2\tHOW MUCH IS A LOT?".
     assert all(e.cat_no.isdigit() for e in parsed[:100])
+    # Roman-numeral galleries ("Gallery Roman") are recognised as sections too.
+    assert "IX" in {e.section_name for e in parsed}
     # Inline <ccase:>/<cs:>/kerning tags are stripped from field values.
     blob = " ".join(v for e in parsed for v in e.fields.values())
     assert "<ccase" not in blob and "<cstyle" not in blob and "<cs:" not in blob

@@ -236,6 +236,7 @@ class TemplateBodyIn(BaseModel):
     name: str
     currency_symbol: str = "\u00a3"
     section_style: str = "SectionTitle"
+    section_styles: list[str] = []
     entry_style: str = "CatalogueEntry"
     edition_prefix: str = "edition of"
     edition_brackets: bool = True

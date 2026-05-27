@@ -113,6 +113,16 @@ def _unescape_name(name: str) -> str:
     return _BACKSLASH_RE.sub(r"\1", name)
 
 
+def _strip_inline(value: str) -> str:
+    """Decode ``<0x####>`` escapes, then remove inline formatting tags InDesign
+    emits *inside* a styled run (local leading ``<cl:…>``, ``<ccase:…>``, kerning,
+    …). Applied to a span value *before* splitting colliding runs on tab, so a
+    leading inline tag doesn't become a spurious piece (decode first so escaped
+    characters like ``<0x2019>`` survive the tag strip)."""
+    value = _HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), value)
+    return _TAG_RE.sub("", value)
+
+
 def enabled_field_order(config: ExportConfig) -> list[str]:
     """Field names in the order the renderer emits them, with honorifics placed
     immediately after artist (the renderer appends it to the artist value)."""
@@ -161,7 +171,7 @@ def _assign_spans(
     """
     by_style: dict[str, list[str]] = {}
     for style, value in spans:
-        by_style.setdefault(_unescape_name(style), []).append(value)
+        by_style.setdefault(_unescape_name(style), []).append(_strip_inline(value))
 
     out: dict[str, str] = {}
     for style, values in by_style.items():
@@ -196,6 +206,10 @@ def parse_low_tags(
     paragraph/character style-name allowlist and the component order).
     """
     style_fields = _style_to_fields(config)
+    # Paragraph styles that denote a gallery/section heading. A LoW worked in
+    # InDesign may use several (e.g. "Gallery 2 deck small" and "Gallery Roman");
+    # config.section_styles lists the equivalents beyond the primary one.
+    section_styles = {config.section_style, *getattr(config, "section_styles", [])}
     entries: list[ParsedEntry] = []
     current_section = ""
 
@@ -216,7 +230,7 @@ def parse_low_tags(
         para_style = m.group(1)
         body = para[m.end() :]
 
-        if para_style == config.section_style:
+        if para_style in section_styles:
             # Decode escapes, strip inline tags, replace control chars, drop any
             # "works N-NN" catalogue-range suffix, and collapse whitespace to get
             # the clean gallery name.

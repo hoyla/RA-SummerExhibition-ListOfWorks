@@ -58,6 +58,9 @@ DEFAULT_COMPONENTS: List[ComponentConfig] = [
 class ExportConfig:
     currency_symbol: str = "£"
     section_style: str = "SectionTitle"
+    # Additional paragraph styles that also denote a section heading when parsing
+    # a corrected LOW back in (the renderer only ever emits ``section_style``).
+    section_styles: List[str] = field(default_factory=list)
     entry_style: str = "CatalogueEntry"
     edition_prefix: str = "edition of"
     edition_brackets: bool = True
