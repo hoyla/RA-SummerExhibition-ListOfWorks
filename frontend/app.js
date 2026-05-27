@@ -4160,6 +4160,7 @@ function _buildWorkDetailTable(w) {
     row('Artist',  'artist',     w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
     derivedRow('Honorifics', 'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
     row('Title',   'title',      w.raw_title,   w.title ?? '',        o.title_override ?? ''),
+    derivedRow('Title Case Title', 'title_cased', w.title_cased ?? '', o.title_cased_override ?? ''),
     row('Price',   'price',      w.raw_price,   normPrice,            ovrPrice),
     row('Edition', 'edition',    w.raw_edition, normEd,               ovrEd),
     row('Artwork', 'artwork',    w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),

@@ -194,6 +194,18 @@ class TestListSections:
         assert len(data[0]["works"]) == 1
         assert data[0]["works"][0]["title"] == "Painting A"
 
+    def test_works_include_title_cased(self, client, db_session):
+        """The sections endpoint must serialise the derived title_cased field
+        (it builds WorkOut manually, so a new field is easy to miss)."""
+        imp = _seed_import(db_session)
+        sec = _seed_section(db_session, imp)
+        w = _seed_work(db_session, imp, sec, title="WHAT DO ANIMALS DREAM OF?")
+        w.title_cased = "What Do Animals Dream Of?"
+        db_session.commit()
+
+        r = client.get(f"/imports/{imp.id}/sections")
+        assert r.json()[0]["works"][0]["title_cased"] == "What Do Animals Dream Of?"
+
     def test_empty_import_returns_empty_list(self, client, db_session):
         imp = _seed_import(db_session)
         r = client.get(f"/imports/{imp.id}/sections")
