@@ -243,6 +243,7 @@ def list_sections(import_id: UUID, db: Session = Depends(get_db)):
                 raw_artwork=w.raw_artwork,
                 raw_medium=w.raw_medium,
                 title=w.title,
+                title_cased=w.title_cased,
                 artist_name=w.artist_name,
                 artist_honorifics=w.artist_honorifics,
                 price_text=w.price_text,
