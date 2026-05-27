@@ -231,3 +231,48 @@ def test_no_whitespace_trimmed_when_value_actually_changed():
     work = make_work(raw_title="Old Title", title="New Title")
     types = [w[0] for w in collect_work_warnings(work)]
     assert "whitespace_trimmed" not in types
+
+
+# ---------------------------------------------------------------------------
+# title_case_roman / title_case_exception
+# ---------------------------------------------------------------------------
+
+
+def test_warns_title_case_roman_for_trailing_numeral():
+    work = make_work(title="DIALOGUE II")
+    msgs = {t: m for t, m in collect_work_warnings(work)}
+    assert "title_case_roman" in msgs
+    assert "II" in msgs["title_case_roman"]
+    assert "title_case_exception" not in msgs
+
+
+def test_warns_title_case_exception_for_curated_token():
+    # "USA" is in the shipped default exceptions list.
+    work = make_work(title="PORTRAIT OF THE USA")
+    msgs = {t: m for t, m in collect_work_warnings(work)}
+    assert "title_case_exception" in msgs
+    assert "USA" in msgs["title_case_exception"]
+    assert "title_case_roman" not in msgs
+
+
+def test_title_case_exception_honours_custom_exceptions():
+    # With a custom list that lacks "USA", no exception warning fires.
+    work = make_work(title="PORTRAIT OF THE USA")
+    types = [
+        t for t, _ in collect_work_warnings(work, title_case_exceptions=["RA"])
+    ]
+    assert "title_case_exception" not in types
+
+
+def test_no_title_case_warning_for_clean_title():
+    work = make_work(title="THE POSSIBILITY OF AN ISLAND")
+    types = [t for t, _ in collect_work_warnings(work)]
+    assert "title_case_roman" not in types
+    assert "title_case_exception" not in types
+
+
+def test_roman_denylist_word_does_not_warn():
+    # "MIX" matches the Roman pattern but is denylisted as a real word.
+    work = make_work(title="THE MIX")
+    types = [t for t, _ in collect_work_warnings(work)]
+    assert "title_case_roman" not in types

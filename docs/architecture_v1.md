@@ -136,6 +136,8 @@ issue is suspected.
 | `edition_anomaly`             | Raw edition present but could not be parsed                    |
 | `edition_suppressed_no_price` | **High:** a suppressed edition was the work's only price — restore it via an override |
 | `non_ascii_characters`        | Normalised fields contain chars outside ASCII-128              |
+| `title_case_roman`            | Title-casing kept a token uppercase as a Roman numeral (might be a real word) |
+| `title_case_exception`        | Title-casing kept a token uppercase via the exceptions list (possible false positive, e.g. `LA` for "la") |
 | `duplicate_filename`          | A previous import with the same filename exists                |
 | `empty_spreadsheet`           | Column headers present but no data rows                        |
 | `missing_column`              | An optional column is absent from the spreadsheet              |
@@ -293,6 +295,13 @@ that keeps the exceptions list verbatim and uppercases multi-letter Roman
 numerals (`VIII`). It's lossy for all-caps input by nature, so `title_cased` is a
 derived field corrected per work via `title_cased_override` — not an export-time
 transform. The LOW keeps source caps; the LPG uses `title_cased`.
+
+Every token the callback keeps uppercase is flagged at import (one warning per
+work, split by reason: `title_case_roman` vs `title_case_exception`) so staff can
+review false positives — a real word matching the Roman pattern, or a stray
+exceptions hit such as the article "la" matching an `LA` entry. The detector
+(`title_case_preserved_tokens`) shares its classification with the casing
+callback, so the two cannot drift.
 
 ### Artists Index normalisation
 

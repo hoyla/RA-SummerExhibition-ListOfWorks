@@ -3896,6 +3896,8 @@ const _LOW_WARNING_LABELS = {
   unrecognised_price:   'Unrecognised price',
   edition_anomaly:      'Edition anomaly',
   non_ascii_characters: 'Non-ASCII chars',
+  title_case_roman:     'Title-case Roman',
+  title_case_exception: 'Title-case exception',
   duplicate_filename:   'Duplicate filename',
   missing_column:       'Missing column',
   empty_spreadsheet:    'Empty spreadsheet',
