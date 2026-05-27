@@ -3910,16 +3910,40 @@ function showOverrideForm(importId, workId, existing) {
     notes:                              o.notes                              ?? '',
   };
 
-  // Returns a clickable hint that copies the current value into the named input/textarea
-  const hint = (field, inputName) => {
-    const v = cur[field];
-    if (v === null || v === undefined || v === '') return '';
-    const safe = esc(String(v));
-    // Encode value as base64 to safely handle newlines in the onclick handler
-    const b64 = btoa(unescape(encodeURIComponent(String(v))));
-    return `<button type="button" class="current-val-hint"
-      onclick="(function(){var el=document.querySelector('#ovf-${esc(workId)} [name=\\'${inputName}\\']');if(el)el.value=decodeURIComponent(escape(atob('${b64}')));})()">
-      ${safe.replace(/\n/g, ' \u23ce ')}</button>`;
+  // Selected InDesign export values for this work (when a snapshot is selected
+  // in Tools for this import). Display strings; parsed for structured fields.
+  const _ovrCat = String(w.raw_cat_no ?? '');
+  const _ovrDiff = (_reconState && _reconState.diff
+    && _reconState.importId === _currentLowImportId) ? _reconState.diff : null;
+  const lowAll = (_ovrDiff && _ovrDiff.low_by_cat && _ovrCat) ? _ovrDiff.low_by_cat[_ovrCat] : null;
+  const _edTotal = (s) => { const m = String(s).match(/(\d+)/); return m ? m[1] : ''; };
+  const _edPrice = (s) => { const m = String(s).match(/at\s*\u00a3?\s*([\d,]+)/i); return m ? m[1].replace(/,/g, '') : ''; };
+
+  // A clickable chip that copies `value` into the named input (base64-encoded
+  // so newlines survive the onclick).
+  const fillBtn = (cls, prefix, value, inputName) => {
+    const b64 = btoa(unescape(encodeURIComponent(String(value))));
+    const text = esc(prefix + String(value)).replace(/\n/g, ' \u23ce ');
+    return `<button type="button" class="${cls}"
+      onclick="(function(){var el=document.querySelector('#ovf-${esc(workId)} [name=\\'${inputName}\\']');if(el)el.value=decodeURIComponent(escape(atob('${b64}')));})()">${text}</button>`;
+  };
+
+  // Current-value chip, plus an "InDesign:" chip beside it when a snapshot is
+  // selected and the export has a value for this field. Labels are prefixed
+  // only when both are shown, so the no-snapshot case is unchanged.
+  const fills = (curField, inputName, lowField, transform) => {
+    const curV = cur[curField];
+    let lowV = '';
+    if (lowAll && lowField && lowAll[lowField] != null && lowAll[lowField] !== '') {
+      lowV = transform ? transform(lowAll[lowField]) : String(lowAll[lowField]);
+    }
+    const paired = lowV !== '';
+    const parts = [];
+    if (curV !== '' && curV != null) {
+      parts.push(fillBtn('current-val-hint', paired ? 'current: ' : '', curV, inputName));
+    }
+    if (paired) parts.push(fillBtn('low-val-hint', 'InDesign: ', lowV, inputName));
+    return parts.join('');
   };
 
   const cell = document.getElementById(`wk-ovc-${workId}`);
@@ -3927,7 +3951,7 @@ function showOverrideForm(importId, workId, existing) {
   cell.innerHTML = `
     <div class="override-form" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
-        <h5 style="margin:0">Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click current value to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
+        <h5 style="margin:0">Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click a current or InDesign chip to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
         <button type="button" class="btn btn-xs btn-secondary" style="flex-shrink:0;margin-left:16px" onclick="event.stopPropagation(); toggleWorkOverrideForm('${esc(importId)}','${esc(workId)}')">Close &#x2715;</button>
       </div>
       <div class="override-field-form" id="ovf-${esc(workId)}">
@@ -3936,10 +3960,10 @@ function showOverrideForm(importId, workId, existing) {
             <h5 class="ka-section-heading">Content</h5>
             <div class="ka-fields">
               <div class="form-row"><label>Title</label>
-                ${hint('title_override','title_override')}
+                ${fills('title_override','title_override','title')}
                 <textarea name="title_override" rows="2" placeholder="Override title (use Enter for line breaks)">${val('title_override')}</textarea></div>
               <div class="form-row"><label>Medium</label>
-                ${hint('medium_override','medium_override')}
+                ${fills('medium_override','medium_override','medium')}
                 <textarea name="medium_override" rows="2" placeholder="Override medium (use Enter for line breaks)">${val('medium_override')}</textarea></div>
             </div>
           </div>
@@ -3947,10 +3971,10 @@ function showOverrideForm(importId, workId, existing) {
             <h5 class="ka-section-heading">Artist</h5>
             <div class="ka-fields">
               <div class="form-row"><label>Artist</label>
-                ${hint('artist_name_override','artist_name_override')}
+                ${fills('artist_name_override','artist_name_override','artist')}
                 <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
               <div class="form-row"><label>Honorifics</label>
-                ${hint('artist_honorifics_override','artist_honorifics_override')}
+                ${fills('artist_honorifics_override','artist_honorifics_override','honorifics')}
                 <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
             </div>
           </div>
@@ -3958,19 +3982,19 @@ function showOverrideForm(importId, workId, existing) {
             <h5 class="ka-section-heading">Pricing &amp; Edition</h5>
             <div class="ka-fields">
               <div class="form-row"><label>Price text</label>
-                ${hint('price_text_override','price_text_override')}
+                ${fills('price_text_override','price_text_override',null)}
                 <input type="text" name="price_text_override" value="${val('price_text_override')}" placeholder="e.g. NFS or 1500"></div>
               <div class="form-row"><label>Price numeric</label>
-                ${hint('price_numeric_override','price_numeric_override')}
+                ${fills('price_numeric_override','price_numeric_override',null)}
                 <input type="number" step="0.01" min="0" name="price_numeric_override" value="${val('price_numeric_override')}" placeholder="e.g. 1500"></div>
               <div class="form-row"><label>Edition total</label>
-                ${hint('edition_total_override','edition_total_override')}
+                ${fills('edition_total_override','edition_total_override','edition',_edTotal)}
                 <input type="number" min="0" name="edition_total_override" value="${val('edition_total_override')}" placeholder="e.g. 10"></div>
               <div class="form-row"><label>Edition price</label>
-                ${hint('edition_price_numeric_override','edition_price_numeric_override')}
+                ${fills('edition_price_numeric_override','edition_price_numeric_override','edition',_edPrice)}
                 <input type="number" step="0.01" min="0" name="edition_price_numeric_override" value="${val('edition_price_numeric_override')}" placeholder="e.g. 750"></div>
               <div class="form-row"><label>Artwork</label>
-                ${hint('artwork_override','artwork_override')}
+                ${fills('artwork_override','artwork_override','artwork')}
                 <input type="number" min="0" name="artwork_override" value="${val('artwork_override')}" placeholder="e.g. 42"></div>
             </div>
           </div>

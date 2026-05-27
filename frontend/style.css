@@ -952,6 +952,25 @@ details.section-block[open] > .section-summary::before {
 }
 .current-val-hint:hover { background: #f0f4ff; border-color: #99b; color: #335; }
 
+/* "InDesign:" adopt chip — sits beside the current-value chip in the override
+   form; blue tint to distinguish it as the downstream export value. */
+.low-val-hint {
+  background: none;
+  border: 1px solid #a4c3f5;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #1a56db;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+}
+.low-val-hint:hover { background: #eef5ff; border-color: #6f9be8; }
+
 /* Highlight pulse when scrolled to from warnings panel */
 @keyframes row-pulse {
   0%   { background: #ffeeba; }
