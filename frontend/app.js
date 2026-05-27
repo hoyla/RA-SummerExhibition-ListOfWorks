@@ -3122,33 +3122,38 @@ async function renderDetail(importId) {
   document.getElementById('app').innerHTML = `
     <div class="breadcrumb"><a href="#/">\u2190 All Imports</a></div>
     <h2 class="page-heading" id="detail-heading">Loading\u2026</h2>
-    ${ifEditor(`<section class="panel reimport-panel">
-      <h3>Update Import</h3>
-      <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
-      <form id="reimport-form" class="upload-form">
-        <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
-        <button type="submit" class="btn btn-primary">Re-import</button>
-      </form>
-      <p id="reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
-      <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
-    </section>`)}
-    <section class="panel">
-      <h3>Export</h3>
-      <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
-    </section>
-    ${ifEditor(`<section class="panel" id="reconcile-panel">
-      <h3>Reconcile corrected LOW</h3>
-      <p class="muted" style="font-size:12px;margin-bottom:10px">Upload a corrected InDesign LOW tags export to find data changes made downstream that aren\u2019t yet in this data. Detection only \u2014 nothing is changed automatically.</p>
-      <form id="reconcile-form" class="upload-form">
-        <input type="file" id="reconcile-file" accept=".txt" required>
-        <label class="export-template-label">Template</label>
-        <select id="reconcile-tmpl"></select>
-        <button type="submit" class="btn btn-primary">Reconcile</button>
-      </form>
-      <p id="reconcile-status" class="status-msg" style="margin-top:6px"></p>
-      <div id="reconcile-history" class="reconcile-history"></div>
-      <div id="reconcile-results"></div>
-    </section>`)}
+    <details class="panel tools-panel">
+      <summary class="section-summary"><h3>Tools</h3><span class="muted" style="font-size:12px">Export \u00b7 Update import \u00b7 Reconcile</span></summary>
+      <div class="tools-body">
+        <section class="tool-block">
+          <h4>Export</h4>
+          <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
+        </section>
+        ${ifEditor(`<section class="tool-block reimport-panel">
+          <h4>Update Import</h4>
+          <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
+          <form id="reimport-form" class="upload-form">
+            <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
+            <button type="submit" class="btn btn-primary">Re-import</button>
+          </form>
+          <p id="reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
+          <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
+        </section>`)}
+        ${ifEditor(`<section class="tool-block" id="reconcile-panel">
+          <h4>Reconcile corrected LOW</h4>
+          <p class="muted" style="font-size:12px;margin-bottom:10px">Upload a corrected InDesign LOW tags export to find data changes made downstream that aren\u2019t yet in this data. Detection only \u2014 nothing is changed automatically.</p>
+          <form id="reconcile-form" class="upload-form">
+            <input type="file" id="reconcile-file" accept=".txt" required>
+            <label class="export-template-label">InDesign Template</label>
+            <select id="reconcile-tmpl"></select>
+            <button type="submit" class="btn btn-primary">Reconcile</button>
+          </form>
+          <p id="reconcile-status" class="status-msg" style="margin-top:6px"></p>
+          <div id="reconcile-history" class="reconcile-history"></div>
+          <div id="reconcile-results"></div>
+        </section>`)}
+      </div>
+    </details>
     <section class="panel" id="warnings-panel"><p class="loading">Loading flagged issues\u2026</p></section>
     <section class="panel">
       <h3>Works</h3>
@@ -3217,7 +3222,7 @@ async function renderDetail(importId) {
   if (panelEl) panelEl.innerHTML = `
     <div class="export-buttons">
       <div class="template-row">
-        <label class="export-template-label">Template</label>
+        <label class="export-template-label">InDesign Template</label>
         <select id="tmpl-select-${esc(importId)}"${templates.length ? '' : ' disabled'}>${tmplOpts}</select>
         <button class="btn btn-secondary" onclick="downloadExportWithTemplate('${esc(importId)}','tags','txt',null,this)">InDesign Tags (.txt)</button>
       </div>

@@ -1019,6 +1019,13 @@ details.section-block[open] > .section-summary::before {
 .diff-row-added td { background: #f0faf0; }
 .diff-row-removed td { background: #fde8e8; text-decoration: line-through; color: #999; }
 
+/* Tools panel (collapsed by default to keep the Works list near the top) */
+.tools-panel > .section-summary h3 { margin: 0; }
+.tools-panel[open] > .section-summary::before { transform: rotate(90deg); }
+.tools-body { margin-top: 14px; }
+.tool-block + .tool-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid #eee; }
+.tool-block h4 { margin: 0 0 8px; }
+
 /* Reconcile corrected LOW */
 .reconcile-history-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
 .recon-snap { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid #ddd; border-radius: 12px; background: #fafafa; font-size: 12px; }
