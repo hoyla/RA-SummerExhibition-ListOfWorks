@@ -48,6 +48,9 @@ class Work(Base):
     # NORMALISED LAYER
     number = Column(Integer, nullable=True)
     title = Column(Text, nullable=True)
+    # Best-effort Title Case form of `title`, derived at import (alongside the
+    # possibly all-caps title). Used by outputs that want title case (e.g. LPG).
+    title_cased = Column(Text, nullable=True)
     artist_name = Column(Text, nullable=True)
     artist_honorifics = Column(Text, nullable=True)
     price_numeric = Column(Numeric(12, 2), nullable=True)

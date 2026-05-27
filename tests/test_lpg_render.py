@@ -57,17 +57,20 @@ def _seed(db):
         [
             # plain, NFS, no edition
             Work(import_id=imp.id, section_id=sec.id, position_in_section=1,
-                 raw_cat_no="1", title="The Meddling Fiend", artist_name="Nicola Turner",
+                 raw_cat_no="1", title="The Meddling Fiend",
+                 title_cased="The Meddling Fiend", artist_name="Nicola Turner",
                  medium="mixed media", price_text="NFS", include_in_export=True),
             # priced, with an edition
             Work(import_id=imp.id, section_id=sec.id, position_in_section=2,
-                 raw_cat_no="3", title="Superhero Rabbit", artist_name="Joanna Ham",
+                 raw_cat_no="3", title="Superhero Rabbit",
+                 title_cased="Superhero Rabbit", artist_name="Joanna Ham",
                  medium="screenprint with UV neon ink", price_numeric=140,
                  price_text="140", edition_total=200, edition_price_numeric=90,
                  include_in_export=True),
             # honorifics (small caps), priced
             Work(import_id=imp.id, section_id=sec.id, position_in_section=3,
-                 raw_cat_no="5", title="Centre-Fold", artist_name="John Carter",
+                 raw_cat_no="5", title="Centre-Fold", title_cased="Centre-Fold",
+                 artist_name="John Carter",
                  artist_honorifics="RA", medium="acrylic with marble powder on plywood",
                  price_numeric=7500, price_text="7500", include_in_export=True),
         ]
@@ -100,6 +103,28 @@ def test_lpg_render_matches_sample_structure(db_session):
         "<ParaStyle:LPGARTIST>John Carter <CharStyle:LPGSMALLCAPS>ra<CharStyle:>\r"
         in out
     )
+
+
+def test_lpg_title_cased_falls_back_to_title_when_absent(db_session):
+    """Legacy data with no title_cased must not render a blank title — it falls
+    back to the plain title."""
+    imp = Import(filename="legacy.xlsx", product_type="list_of_works")
+    db_session.add(imp)
+    db_session.commit()
+    db_session.refresh(imp)
+    sec = Section(import_id=imp.id, name="Gallery I", position=1)
+    db_session.add(sec)
+    db_session.commit()
+    db_session.refresh(sec)
+    db_session.add(
+        Work(import_id=imp.id, section_id=sec.id, position_in_section=1,
+             raw_cat_no="1", title="LEGACY ALL CAPS", title_cased=None,
+             artist_name="Someone", medium="oil", price_text="NFS",
+             include_in_export=True)
+    )
+    db_session.commit()
+    out = render_import_as_tagged_text(imp.id, db_session, _lpg_config())
+    assert "<ParaStyle:LPGTITLE>1\tLEGACY ALL CAPS\r" in out
 
 
 def test_lpg_edition_paragraph_omitted_when_absent(db_session):

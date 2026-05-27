@@ -15,6 +15,7 @@ from backend.app.services.normalisation_service import (
     DEFAULT_EDITION_SUPPRESS_MAX,
     DEFAULT_HONORIFIC_TOKENS,
     DEFAULT_TEXT_SUBSTITUTIONS,
+    DEFAULT_TITLE_CASE_EXCEPTIONS,
 )
 
 router = APIRouter(tags=["config"])
@@ -44,6 +45,9 @@ def load_normalisation_settings(db: Session) -> dict:
         "text_substitutions": cfg.get(
             "text_substitutions", DEFAULT_TEXT_SUBSTITUTIONS
         ),
+        "title_case_exceptions": cfg.get(
+            "title_case_exceptions", DEFAULT_TITLE_CASE_EXCEPTIONS
+        ),
     }
 
 
@@ -60,6 +64,7 @@ def put_config(body: NormalisationIn, db: Session = Depends(get_db)):
         "honorific_tokens": body.honorific_tokens,
         "edition_suppress_max": body.edition_suppress_max,
         "text_substitutions": [s.model_dump() for s in body.text_substitutions],
+        "title_case_exceptions": body.title_case_exceptions,
     }
     config_hash = hashlib.sha256(
         json.dumps(config_dict, sort_keys=True).encode()

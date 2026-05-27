@@ -57,6 +57,7 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
                 display_name=original_name,
                 edition_suppress_max=norm["edition_suppress_max"],
                 text_substitutions=norm["text_substitutions"],
+                title_case_exceptions=norm["title_case_exceptions"],
             )
         except ExcelImportError as exc:
             # Clean up the saved file on validation failure
@@ -106,6 +107,7 @@ def reimport_upload(
                 display_name=original_name,
                 edition_suppress_max=norm["edition_suppress_max"],
                 text_substitutions=norm["text_substitutions"],
+                title_case_exceptions=norm["title_case_exceptions"],
             )
         except ExcelImportError as exc:
             storage.delete(disk_name)

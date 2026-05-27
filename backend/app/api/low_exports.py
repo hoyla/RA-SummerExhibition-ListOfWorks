@@ -137,6 +137,7 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
             "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
         ),
         title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
+        title_cased_style=cfg.get("title_cased_style", DEFAULT_CONFIG.title_cased_style),
         price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
         medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
         artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),

@@ -21,6 +21,7 @@ class EffectiveWork:
     raw_cat_no: Optional[str]
 
     title: Optional[str]
+    title_cased: Optional[str]
     artist_name: Optional[str]
     artist_honorifics: Optional[str]
 
@@ -64,6 +65,7 @@ def resolve_effective_work(work, override) -> EffectiveWork:
         return EffectiveWork(
             raw_cat_no=work.raw_cat_no,
             title=work.title,
+            title_cased=getattr(work, "title_cased", None),
             artist_name=work.artist_name,
             artist_honorifics=work.artist_honorifics,
             price_numeric=work.price_numeric,
@@ -99,6 +101,11 @@ def resolve_effective_work(work, override) -> EffectiveWork:
             override.title_override
             if override.title_override is not None
             else work.title
+        ),
+        title_cased=(
+            override.title_cased_override
+            if getattr(override, "title_cased_override", None) is not None
+            else getattr(work, "title_cased", None)
         ),
         artist_name=(
             override.artist_name_override

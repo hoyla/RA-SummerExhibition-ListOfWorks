@@ -20,6 +20,7 @@ COMPONENT_LABELS = {
     "work_number": "Work Number",
     "artist": "Artist",
     "title": "Title",
+    "title_cased": "Title Case Title",
     "edition": "Edition info",
     "price": "Price",
     "medium": "Medium",
@@ -53,6 +54,7 @@ DEFAULT_COMPONENTS: List[ComponentConfig] = [
     ComponentConfig("work_number", "tab"),
     ComponentConfig("artist", "tab"),
     ComponentConfig("title", "tab"),
+    ComponentConfig("title_cased", "tab", enabled=False),
     ComponentConfig("edition", "tab"),
     ComponentConfig("artwork", "tab", enabled=False),
     ComponentConfig("price", "none"),
@@ -76,6 +78,7 @@ class ExportConfig:
     honorifics_style: str = "Honorifics"
     honorifics_lowercase: bool = False
     title_style: str = "WorkTitle"
+    title_cased_style: str = "WorkTitle"
     price_style: str = "Price"
     medium_style: str = "Medium"
     artwork_style: str = "Artwork"
@@ -222,6 +225,7 @@ def _collect_export_data(import_id, db: Session, section_id=None) -> list[dict]:
                     "artist": ew.artist_name or "",
                     "honorifics": ew.artist_honorifics or None,
                     "title": ew.title or "",
+                    "title_cased": ew.title_cased or "",
                     "price_numeric": price_numeric,
                     "price_text": ew.price_text or "",
                     "edition_total": ew.edition_total,
@@ -363,6 +367,7 @@ def _field_char_style(config: "ExportConfig", field: str) -> str:
         "work_number": config.cat_no_style,
         "artist": config.artist_style,
         "title": config.title_style,
+        "title_cased": config.title_cased_style,
         "edition": config.edition_style,
         "artwork": config.artwork_style,
         "price": config.price_style,
@@ -375,6 +380,7 @@ def _raw_text_for_field(field: str, w: dict) -> str:
     mapping = {
         "work_number": lambda: str(w["number"]) if w["number"] else "",
         "title": lambda: w["title"] or "",
+        "title_cased": lambda: w.get("title_cased") or w.get("title") or "",
         "artist": lambda: w["artist"] or "",
         "medium": lambda: w["medium"] or "",
         "artwork": lambda: str(w["artwork"]) if w["artwork"] else "",
@@ -481,6 +487,12 @@ def _compute_component_values(w: dict, config: "ExportConfig") -> dict:
         "work_number": _cs(config.cat_no_style, w["number"] or ""),
         "artist": artist,
         "title": _cs(config.title_style, w["title"]),
+        # Fall back to the plain title when the cased form is absent (e.g. data
+        # imported before title-casing existed), so a printed guide never shows
+        # blank titles — graceful degradation; a re-import populates the casing.
+        "title_cased": _cs(
+            config.title_cased_style, w.get("title_cased") or w.get("title") or ""
+        ),
         "edition": _cs(config.edition_style, edition_display),
         "artwork": _cs(
             config.artwork_style, str(w["artwork"]) if w["artwork"] else ""

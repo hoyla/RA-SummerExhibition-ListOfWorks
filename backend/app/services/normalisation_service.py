@@ -33,6 +33,14 @@ DEFAULT_TEXT_SUBSTITUTIONS: List[dict] = [
     {"find": "...", "replace": "…", "fields": ["title", "medium"]},
 ]
 
+# Tokens whose exact casing is preserved when title-casing (acronyms, initialisms,
+# stylised names). Matched case-insensitively; the value here is the form emitted.
+# Roman numerals are handled separately (by pattern), so they don't go here.
+DEFAULT_TITLE_CASE_EXCEPTIONS: List[str] = [
+    "RA", "PRA", "PPRA", "RWS", "RE", "NEAC", "OBE", "MBE", "CBE",
+    "USA", "UK", "NYC", "LA", "BBC", "MoMA",
+]
+
 # Field keys an admin may target, mapped to the Work attribute they normalise.
 SUBSTITUTABLE_FIELDS = {
     "title": "title",
@@ -179,6 +187,62 @@ def apply_text_substitutions(value, substitutions, field_key: str):
 
 
 # -----------------------------
+# Title casing
+# -----------------------------
+
+# Strict Roman numeral (II, IV, VIII, XIV …). Single letters are excluded by the
+# length guard in the callback ("I" is handled by titlecase itself).
+_ROMAN_RE = re.compile(
+    r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$", re.IGNORECASE
+)
+# Common words / short forms that match the Roman pattern but usually aren't
+# numerals — left as ordinary title-cased words (still override-correctable).
+_ROMAN_DENYLIST = {"mix", "di", "li", "mm", "cd", "mi", "dc"}
+
+
+def _looks_roman(core: str) -> bool:
+    return (
+        len(core) > 1
+        and core.lower() not in _ROMAN_DENYLIST
+        and bool(_ROMAN_RE.match(core))
+    )
+
+
+def to_title_case(text, exceptions: Optional[List[str]] = None):
+    """Best-effort Title Case for a display string.
+
+    Uses the ``titlecase`` library (Gruber's algorithm: small words like "of",
+    "the" stay lower). All-caps input is cased correctly; intentional mixed case
+    (e.g. "iPhone") is preserved. A callback restores two things the algorithm
+    can't infer from cased-away input:
+
+      - exact-cased *exceptions* (acronyms / initialisms / stylised names), and
+      - multi-letter Roman numerals (uppercased).
+
+    Lossy by nature for all-caps input — the result is meant to be reviewed and
+    corrected per work via the title-case override.
+    """
+    if not text:
+        return text
+
+    from titlecase import titlecase  # local import: optional-feature dependency
+
+    canon = {e.upper(): e for e in (exceptions or []) if e}
+
+    def _callback(word, **kwargs):
+        core = re.sub(r"^[^0-9A-Za-z]+|[^0-9A-Za-z]+$", "", word)
+        if not core:
+            return None
+        if core.upper() in canon:
+            return word.replace(core, canon[core.upper()])
+        if _looks_roman(core):
+            return word.replace(core, core.upper())
+        return None  # let titlecase decide
+
+    return titlecase(text, callback=_callback)
+
+
+# -----------------------------
 # Work Normalisation
 # -----------------------------
 
@@ -188,12 +252,14 @@ def normalise_work(
     honorific_tokens: Optional[List[str]] = None,
     edition_suppress_max: int = DEFAULT_EDITION_SUPPRESS_MAX,
     text_substitutions: Optional[List[dict]] = None,
+    title_case_exceptions: Optional[List[str]] = None,
 ):
     """Compute a Work's derived fields from its raw_* fields.
 
     Configurable editorial rules (honorific tokens, edition suppression
-    threshold, literal text substitutions) are applied here. Only derived
-    fields are written; raw_* values are left canonical (principle 3).
+    threshold, literal text substitutions, title-case exceptions) are applied
+    here. Only derived fields are written; raw_* values are left canonical
+    (principle 3).
     """
     work.artist_name, work.artist_honorifics = normalise_artist(
         work.raw_artist, honorific_tokens
@@ -226,6 +292,16 @@ def normalise_work(
                     attr,
                     apply_text_substitutions(current, text_substitutions, field_key),
                 )
+
+    # Derived Title Case form, alongside the (possibly all-caps) title. Best
+    # effort — corrected per work via the title-case override, used by outputs
+    # like the LPG that want title case rather than the LOW's house caps.
+    exceptions = (
+        title_case_exceptions
+        if title_case_exceptions is not None
+        else DEFAULT_TITLE_CASE_EXCEPTIONS
+    )
+    work.title_cased = to_title_case(work.title, exceptions) if work.title else None
 
 
 # -----------------------------

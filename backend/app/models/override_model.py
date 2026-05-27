@@ -15,6 +15,7 @@ class WorkOverride(Base):
     )
 
     title_override = Column(Text, nullable=True)
+    title_cased_override = Column(Text, nullable=True)
     artist_name_override = Column(Text, nullable=True)
     artist_honorifics_override = Column(Text, nullable=True)
 

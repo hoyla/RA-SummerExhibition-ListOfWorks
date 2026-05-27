@@ -98,6 +98,7 @@ def import_excel(
     display_name: Optional[str] = None,
     edition_suppress_max: int = 0,
     text_substitutions: Optional[List[dict]] = None,
+    title_case_exceptions: Optional[List[str]] = None,
 ) -> Import:
     # --- Open workbook (catch corrupt / non-Excel files) ---
     try:
@@ -208,6 +209,7 @@ def import_excel(
             honorific_tokens=honorific_tokens,
             edition_suppress_max=edition_suppress_max,
             text_substitutions=text_substitutions,
+            title_case_exceptions=title_case_exceptions,
         )
         db.flush()  # ensures work.id is assigned before referencing it in warnings
 
@@ -286,6 +288,7 @@ def reimport_excel(
     display_name: Optional[str] = None,
     edition_suppress_max: int = 0,
     text_substitutions: Optional[List[dict]] = None,
+    title_case_exceptions: Optional[List[str]] = None,
 ) -> Tuple[Import, Dict[str, int]]:
     """Re-import a spreadsheet into an existing Import, preserving overrides.
 
@@ -417,6 +420,7 @@ def reimport_excel(
             honorific_tokens=honorific_tokens,
             edition_suppress_max=edition_suppress_max,
             text_substitutions=text_substitutions,
+            title_case_exceptions=title_case_exceptions,
         )
         db.flush()
 

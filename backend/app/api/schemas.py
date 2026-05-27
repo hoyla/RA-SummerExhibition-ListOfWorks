@@ -252,6 +252,11 @@ class NormalisationIn(BaseModel):
     text_substitutions: list[TextSubstitutionIn] = [
         TextSubstitutionIn(find="...", replace="…", fields=["title", "medium"]),
     ]
+    # Tokens whose casing is preserved when title-casing (acronyms, stylised names).
+    title_case_exceptions: list[str] = [
+        "RA", "PRA", "PPRA", "RWS", "RE", "NEAC", "OBE", "MBE", "CBE",
+        "USA", "UK", "NYC", "LA", "BBC", "MoMA",
+    ]
 
     @field_validator("edition_suppress_max")
     @classmethod
@@ -292,6 +297,7 @@ class TemplateBodyIn(BaseModel):
     honorifics_style: str = "Honorifics"
     honorifics_lowercase: bool = False
     title_style: str = "WorkTitle"
+    title_cased_style: str = "WorkTitle"
     price_style: str = "Price"
     medium_style: str = "Medium"
     artwork_style: str = "Artwork"
@@ -307,6 +313,7 @@ class TemplateBodyIn(BaseModel):
         ComponentConfigIn(field="work_number", separator_after="tab"),
         ComponentConfigIn(field="artist", separator_after="tab"),
         ComponentConfigIn(field="title", separator_after="tab"),
+        ComponentConfigIn(field="title_cased", separator_after="tab", enabled=False),
         ComponentConfigIn(field="edition", separator_after="tab"),
         ComponentConfigIn(field="artwork", separator_after="tab", enabled=False),
         ComponentConfigIn(field="price", separator_after="none"),

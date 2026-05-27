@@ -12,8 +12,18 @@
       "next_component_position": "end_of_text"
     },
     {
-      "field": "title",
+      "field": "title_cased",
       "enabled": true,
+      "separator_after": "none",
+      "omit_sep_when_empty": false,
+      "paragraph_style": null,
+      "max_line_chars": null,
+      "balance_lines": false,
+      "next_component_position": "end_of_text"
+    },
+    {
+      "field": "title",
+      "enabled": false,
       "separator_after": "none",
       "omit_sep_when_empty": false,
       "paragraph_style": null,
@@ -79,6 +89,7 @@
   "section_separator_style": "",
   "cat_no_style": "",
   "title_style": "",
+  "title_cased_style": "",
   "artist_style": "",
   "medium_style": "",
   "edition_style": "",
