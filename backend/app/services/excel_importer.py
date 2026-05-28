@@ -16,6 +16,13 @@ from backend.app.services.normalisation_service import (
     normalise_work,
     collect_work_warnings,
 )
+from backend.app.services.reimport_matcher import (
+    MatchPlan,
+    NewWorkRow,
+    OldWorkSnapshot,
+    compute_fingerprint,
+    match_overrides,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +289,20 @@ def _open_and_parse_workbook(file_path: str) -> Tuple[List[str], List[dict], Lis
     return headers, rows, header_warnings
 
 
+OVERRIDE_FIELDS = [
+    "title_override",
+    "artist_name_override",
+    "artist_honorifics_override",
+    "price_numeric_override",
+    "price_text_override",
+    "edition_total_override",
+    "edition_price_numeric_override",
+    "artwork_override",
+    "medium_override",
+    "notes",
+]
+
+
 def reimport_excel(
     import_id: _uuid.UUID,
     file_path: str,
@@ -291,15 +312,35 @@ def reimport_excel(
     edition_suppress_max: int = 0,
     text_substitutions: Optional[List[dict]] = None,
     title_case_exceptions: Optional[List[str]] = None,
-) -> Tuple[Import, Dict[str, int]]:
+    gallery_scope: Optional[set] = None,
+    dry_run: bool = False,
+) -> Tuple[Import, MatchPlan]:
     """Re-import a spreadsheet into an existing Import, preserving overrides.
 
-    Works are matched by ``raw_cat_no``.  Overrides and ``include_in_export``
-    flags are restored for matched works.  Unmatched old works are removed;
-    new works without a match are created fresh.
+    Override preservation goes through ``reimport_matcher.match_overrides``
+    which combines a cat-no match (gated on fingerprint agreement, so a
+    renumbered cat-no can't silently transplant an override onto a different
+    work) with a fingerprint fallback (so a work whose cat-no shifted but
+    whose content is unchanged keeps its override).
 
-    Returns ``(import_record, stats)`` where *stats* has keys:
-    ``matched``, ``added``, ``removed``, ``overrides_preserved``.
+    Parameters
+    ----------
+    gallery_scope
+        When provided, the operation is **scoped**: only galleries whose
+        name is in this set are deleted-and-rebuilt; works in any other
+        gallery stay physically untouched. New-spreadsheet rows for
+        out-of-scope galleries are ignored. Cross-gallery moves into/out of
+        the scope are detected and surfaced as warnings in the returned plan.
+    dry_run
+        When True, parse + compute the plan and return it without mutating
+        the DB. The transaction is rolled back at the end so any flushed
+        snapshot state is discarded.
+
+    Returns
+    -------
+    ``(import_record, MatchPlan)``. The plan carries the per-gallery
+    summary, counts, and per-finding details (unmatched, ambiguous,
+    cross-gallery-move warnings).
     """
 
     import_record = db.query(Import).filter(Import.id == import_id).first()
@@ -309,73 +350,172 @@ def reimport_excel(
     # 1. Parse & validate new file — fail fast before touching existing data
     _headers, rows, header_warnings = _open_and_parse_workbook(file_path)
 
-    # 2. Snapshot existing overrides + include_in_export, keyed by cat_no
+    # 2. Snapshot existing works + overrides as inputs to the matcher
     existing_works = db.query(Work).filter(Work.import_id == import_id).all()
     work_ids = [w.id for w in existing_works]
-    existing_overrides: Dict[str, WorkOverride] = {}
+    existing_overrides_by_work: Dict = {}
     if work_ids:
-        existing_overrides = {
-            str(o.work_id): o
+        existing_overrides_by_work = {
+            o.work_id: o
             for o in db.query(WorkOverride)
             .filter(WorkOverride.work_id.in_(work_ids))
             .all()
         }
 
-    # Build preservation map:  cat_no → {include_in_export, override_fields}
-    OVERRIDE_FIELDS = [
-        "title_override",
-        "artist_name_override",
-        "artist_honorifics_override",
-        "price_numeric_override",
-        "price_text_override",
-        "edition_total_override",
-        "edition_price_numeric_override",
-        "artwork_override",
-        "medium_override",
-        "notes",
-    ]
-
-    preserve: Dict[str, dict] = {}
+    # Side-table for restoring overrides keyed by old cat_no (the matcher
+    # tells us which OLD cat_no maps to which NEW row; we re-create works
+    # in document order, then look up by the matcher's mapping).
+    preserve_data: Dict[str, dict] = {}
+    old_snapshots: List[OldWorkSnapshot] = []
     for w in existing_works:
-        key = str(w.raw_cat_no).strip() if w.raw_cat_no is not None else None
-        if key is None:
-            continue
-        entry: dict = {"include_in_export": w.include_in_export}
-        ovr = existing_overrides.get(str(w.id))
-        if ovr:
-            entry["override"] = {f: getattr(ovr, f) for f in OVERRIDE_FIELDS}
-        preserve[key] = entry
-
-    # 3. Delete old data (order matters for FK constraints in SQLite tests)
-    if work_ids:
-        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).delete(
-            synchronize_session=False
+        cat_key = str(w.raw_cat_no).strip() if w.raw_cat_no is not None else ""
+        ovr_obj = existing_overrides_by_work.get(w.id)
+        ovr_dict = (
+            {f: getattr(ovr_obj, f) for f in OVERRIDE_FIELDS} if ovr_obj else None
         )
-    db.query(ValidationWarning).filter(ValidationWarning.import_id == import_id).delete(
-        synchronize_session=False
-    )
-    db.query(Work).filter(Work.import_id == import_id).delete(synchronize_session=False)
-    db.query(Section).filter(Section.import_id == import_id).delete(
-        synchronize_session=False
-    )
-    db.flush()
-
-    # 4. Re-create sections & works from the new spreadsheet
-    sections_map: Dict[str, Section] = {}
-    section_positions: Dict[str, int] = {}
-    matched_cat_nos: set = set()
-    stats = {"matched": 0, "added": 0, "removed": 0, "overrides_preserved": 0}
-
-    # Import-level warnings (header issues)
-    for msg in header_warnings:
-        db.add(
-            ValidationWarning(
-                import_id=import_id,
-                work_id=None,
-                warning_type="missing_column",
-                message=msg,
+        old_snapshots.append(
+            OldWorkSnapshot(
+                cat_no=cat_key,
+                gallery=str(w.raw_gallery or ""),
+                fingerprint=compute_fingerprint(
+                    w.raw_title, w.raw_artist, w.raw_medium
+                ),
+                include_in_export=w.include_in_export,
+                override=ovr_dict,
+                raw_title=w.raw_title,
+                raw_artist=w.raw_artist,
             )
         )
+        # Last-write-wins by cat_no for restore (mirrors the historical
+        # behaviour for the pathological "two old works with the same
+        # cat_no" case — should be vanishingly rare in real data).
+        if cat_key:
+            preserve_data[cat_key] = {
+                "include_in_export": w.include_in_export,
+                "override": ovr_dict,
+            }
+
+    # 3. Build new-side rows (no DB writes yet — the matcher needs to see
+    # the spreadsheet first so we can decide before mutating).
+    new_rows: List[NewWorkRow] = []
+    for row_dict in rows:
+        raw_cat_no = row_dict.get("Cat No")
+        gallery_name = row_dict.get("Gallery") or "Uncategorised"
+        new_rows.append(
+            NewWorkRow(
+                cat_no=(
+                    str(raw_cat_no).strip() if raw_cat_no is not None else ""
+                ),
+                gallery=str(gallery_name),
+                fingerprint=compute_fingerprint(
+                    row_dict.get("Title"),
+                    row_dict.get("Artist"),
+                    row_dict.get("Medium"),
+                ),
+                raw_title=row_dict.get("Title"),
+                raw_artist=row_dict.get("Artist"),
+            )
+        )
+
+    # 4. Compute the plan (pure, no side effects)
+    plan = match_overrides(old_snapshots, new_rows, gallery_scope=gallery_scope)
+
+    # 5. Dry-run: return the plan without touching the DB
+    if dry_run:
+        # Roll back any implicit reads so the next call sees a clean session.
+        db.rollback()
+        return import_record, plan
+
+    # 6. Delete the scope. Two paths:
+    #    - Full re-import (scope None): wipe everything for this import.
+    #    - Selective: only delete sections in the scope; out-of-scope
+    #      sections, works, overrides, and per-work warnings stay intact.
+    section_positions: Dict[str, int] = {}
+    sections_map: Dict[str, Section] = {}
+    preserved_section_positions: Dict[str, int] = {}
+
+    if gallery_scope is None:
+        if work_ids:
+            db.query(WorkOverride).filter(
+                WorkOverride.work_id.in_(work_ids)
+            ).delete(synchronize_session=False)
+        db.query(ValidationWarning).filter(
+            ValidationWarning.import_id == import_id
+        ).delete(synchronize_session=False)
+        db.query(Work).filter(Work.import_id == import_id).delete(
+            synchronize_session=False
+        )
+        db.query(Section).filter(Section.import_id == import_id).delete(
+            synchronize_session=False
+        )
+        db.flush()
+        next_position = 1
+    else:
+        in_scope_sections = (
+            db.query(Section)
+            .filter(
+                Section.import_id == import_id,
+                Section.name.in_(gallery_scope),
+            )
+            .all()
+        )
+        # Remember each in-scope section's position so we can put the
+        # re-created section back in the same slot — UI ordering stays stable.
+        for s in in_scope_sections:
+            preserved_section_positions[s.name] = s.position
+        in_scope_section_ids = [s.id for s in in_scope_sections]
+        in_scope_work_ids = [
+            w.id for w in existing_works if w.section_id in set(in_scope_section_ids)
+        ]
+        if in_scope_work_ids:
+            db.query(WorkOverride).filter(
+                WorkOverride.work_id.in_(in_scope_work_ids)
+            ).delete(synchronize_session=False)
+            # Per-work validation warnings only (header warnings keyed by
+            # work_id=NULL are global and survive a selective re-import).
+            db.query(ValidationWarning).filter(
+                ValidationWarning.work_id.in_(in_scope_work_ids)
+            ).delete(synchronize_session=False)
+        if in_scope_section_ids:
+            db.query(Work).filter(
+                Work.section_id.in_(in_scope_section_ids)
+            ).delete(synchronize_session=False)
+            db.query(Section).filter(
+                Section.id.in_(in_scope_section_ids)
+            ).delete(synchronize_session=False)
+        db.flush()
+        # New galleries (in scope but no pre-existing section) get
+        # positions after the current max.
+        current_max = (
+            db.query(Section.position)
+            .filter(Section.import_id == import_id)
+            .order_by(Section.position.desc())
+            .limit(1)
+            .scalar()
+            or 0
+        )
+        next_position = current_max + 1
+
+    # 7. Re-create sections + works (only those in scope).
+    # Header warnings only on full re-import — they apply to the spreadsheet
+    # as a whole and would duplicate noise on every selective re-upload.
+    if gallery_scope is None:
+        for msg in header_warnings:
+            db.add(
+                ValidationWarning(
+                    import_id=import_id,
+                    work_id=None,
+                    warning_type="missing_column",
+                    message=msg,
+                )
+            )
+
+    # Map (in_scope_row_index → matched item) so we can restore override
+    # data as each new Work is created.
+    matched_by_in_scope_idx: Dict[int, object] = {
+        m.new_row_index: m for m in plan.matched
+    }
+    in_scope_counter = 0
 
     for row_dict in rows:
         raw_cat_no = row_dict.get("Cat No")
@@ -389,11 +529,21 @@ def reimport_excel(
 
         gallery_name = raw_gallery or "Uncategorised"
 
+        # Skip rows outside the requested scope
+        if gallery_scope is not None and gallery_name not in gallery_scope:
+            continue
+
         if gallery_name not in sections_map:
+            # Reuse the original position when possible so the UI keeps
+            # showing galleries in the original order; otherwise append.
+            position = preserved_section_positions.get(gallery_name)
+            if position is None:
+                position = next_position
+                next_position += 1
             section = Section(
                 import_id=import_id,
                 name=gallery_name,
-                position=len(sections_map) + 1,
+                position=position,
             )
             db.add(section)
             db.flush()
@@ -426,19 +576,16 @@ def reimport_excel(
         )
         db.flush()
 
-        # Restore override / include_in_export if cat_no matches
-        key = str(raw_cat_no).strip() if raw_cat_no is not None else None
-        if key and key in preserve and key not in matched_cat_nos:
-            matched_cat_nos.add(key)
-            entry = preserve[key]
-            work.include_in_export = entry["include_in_export"]
-            if "override" in entry:
-                ovr = WorkOverride(work_id=work.id, **entry["override"])
-                db.add(ovr)
-                stats["overrides_preserved"] += 1
-            stats["matched"] += 1
-        else:
-            stats["added"] += 1
+        # Restore override + include_in_export when the matcher paired this
+        # row with an old work.
+        matched_item = matched_by_in_scope_idx.get(in_scope_counter)
+        if matched_item is not None:
+            preserved = preserve_data.get(matched_item.old_cat_no)
+            if preserved is not None:
+                work.include_in_export = preserved["include_in_export"]
+                if preserved["override"]:
+                    db.add(WorkOverride(work_id=work.id, **preserved["override"]))
+        in_scope_counter += 1
 
         # Work-level validation warnings
         for warning_type, message in collect_work_warnings(
@@ -455,7 +602,7 @@ def reimport_excel(
                 )
             )
 
-    if not sections_map:
+    if not sections_map and gallery_scope is None:
         db.add(
             ValidationWarning(
                 import_id=import_id,
@@ -465,14 +612,23 @@ def reimport_excel(
             )
         )
 
-    # 5. Count removed works
-    stats["removed"] = len(set(preserve.keys()) - matched_cat_nos)
-
-    # 6. Update import record
-    if display_name:
+    # 8. Update display name only on a full re-import — selective uploads
+    # don't represent a new master file.
+    if display_name and gallery_scope is None:
         import_record.filename = display_name
 
-    # 7. Audit log entry
+    # 9. Audit log entry with the full plan summary
+    audit_parts = [
+        f"matched={plan.matched_by_cat_no + plan.matched_by_fingerprint}",
+        f"added={plan.added}",
+        f"removed={plan.removed}",
+        f"overrides_preserved={plan.overrides_preserved}",
+        f"matched_by_cat_no={plan.matched_by_cat_no}",
+        f"matched_by_fingerprint={plan.matched_by_fingerprint}",
+        f"overrides_at_risk={plan.overrides_at_risk}",
+    ]
+    if gallery_scope:
+        audit_parts.append(f"scope={sorted(gallery_scope)}")
     db.add(
         AuditLog(
             import_id=import_id,
@@ -480,13 +636,9 @@ def reimport_excel(
             action="reimport",
             field=None,
             old_value=None,
-            new_value=(
-                f"matched={stats['matched']}, added={stats['added']}, "
-                f"removed={stats['removed']}, "
-                f"overrides_preserved={stats['overrides_preserved']}"
-            ),
+            new_value=", ".join(audit_parts),
         )
     )
 
     db.commit()
-    return import_record, stats
+    return import_record, plan

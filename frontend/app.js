@@ -3625,21 +3625,231 @@ async function handleDelete(id, filename, btnEl) {
   }
 }
 
-async function handleReimport(importId, file) {
+// Per-import preview state. Holds the selected file, the most recent plan
+// returned by the backend, and the user's gallery-scope selection. Reset by
+// _resetReimportPreview() (e.g. after a successful commit or when the file
+// input is cleared).
+let _reimportState = null;
+
+function _resetReimportPreview() {
+  _reimportState = null;
+  const preview = document.getElementById('reimport-preview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
   const statusEl = document.getElementById('reimport-status');
-  const btn = document.querySelector('#reimport-form .btn-primary');
+  if (statusEl) { statusEl.textContent = ''; statusEl.className = 'status-msg'; }
+}
+
+// Light debounce so toggling several checkboxes in quick succession only
+// fires one scoped dry-run request.
+let _reimportRefreshTimer = null;
+function _scheduleScopedRefresh(importId) {
+  if (_reimportRefreshTimer) clearTimeout(_reimportRefreshTimer);
+  _reimportRefreshTimer = setTimeout(
+    () => _refreshScopedPlan(importId).catch(() => {}), 250
+  );
+}
+
+async function _fetchReimportPlan(importId, file, { dryRun, galleries }) {
+  // Build the query string. ``galleries`` is a Set; the server takes
+  // comma-separated names. Server-side URL parsing handles encoding.
+  const params = new URLSearchParams();
+  if (dryRun) params.set('dry_run', 'true');
+  if (galleries && galleries.size > 0) {
+    params.set('galleries', Array.from(galleries).join(','));
+  }
+  const url = `/imports/${importId}/reimport${params.toString() ? '?' + params : ''}`;
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(url, { method: 'PUT', body: form, headers: _apiHeaders() });
+  if (res.status === 401) { renderLogin('Invalid or missing API key.'); throw new Error('Auth'); }
+  if (!res.ok) { const t = await res.text(); throw new Error(t); }
+  return await res.json();
+}
+
+async function _startReimportPreview(importId, file) {
+  const preview = document.getElementById('reimport-preview');
+  preview.style.display = '';
+  preview.innerHTML = '<p class="loading">Reading spreadsheet\u2026</p>';
+  try {
+    // Initial dry-run with no gallery filter \u2014 gives us the gallery list
+    // (with cat ranges) AND a baseline "everything in scope" plan.
+    const plan = await _fetchReimportPlan(importId, file, { dryRun: true });
+    _reimportState = {
+      importId,
+      file,
+      plan,
+      // Default selection: every gallery in the new spreadsheet.
+      selectedGalleries: new Set(plan.galleries.map(g => g.name)),
+    };
+    _renderReimportPreview();
+  } catch (err) {
+    if (err.message === 'Auth') return;
+    preview.innerHTML = `<p class="status-msg error">Preview failed: ${esc(err.message)}</p>`;
+  }
+}
+
+async function _refreshScopedPlan(importId) {
+  if (!_reimportState) return;
+  const { file, selectedGalleries } = _reimportState;
+  const summaryEl = document.querySelector('#reimport-preview .reimport-plan-summary');
+  if (summaryEl) summaryEl.innerHTML = '<p class="muted">Recomputing\u2026</p>';
+  try {
+    const plan = await _fetchReimportPlan(importId, file, {
+      dryRun: true,
+      galleries: selectedGalleries,
+    });
+    _reimportState.plan = plan;
+    _renderReimportPreview();
+  } catch (err) {
+    if (err.message === 'Auth') return;
+    if (summaryEl) summaryEl.innerHTML = `<p class="status-msg error">${esc(err.message)}</p>`;
+  }
+}
+
+function _renderReimportPreview() {
+  const { plan, selectedGalleries } = _reimportState;
+  const preview = document.getElementById('reimport-preview');
+
+  // Gallery table \u2014 uses .data-table for shared visual treatment, no new
+  // selectors are introduced (see frontend-class-blast-map memory).
+  const rows = plan.galleries.map(g => {
+    const checked = selectedGalleries.has(g.name) ? ' checked' : '';
+    const range = (g.cat_no_min !== null && g.cat_no_max !== null)
+      ? (g.cat_no_min === g.cat_no_max
+          ? `number ${g.cat_no_min}`
+          : `numbers ${g.cat_no_min}\u2013${g.cat_no_max}`)
+      : '\u2014';
+    return `<tr>
+      <td><input type="checkbox" class="reimport-gallery-cb" data-gallery="${esc(g.name)}"${checked}></td>
+      <td>${g.position}</td>
+      <td>${esc(g.name)}</td>
+      <td style="text-align:right">${g.work_count}</td>
+      <td>${range}</td>
+    </tr>`;
+  }).join('');
+
+  // Plan summary \u2014 counts plus a finding-by-finding breakdown for any
+  // override at risk (unmatched, ambiguous, cross-gallery moves).
+  const counts = [];
+  counts.push(`${plan.matched_by_cat_no + plan.matched_by_fingerprint} matched`);
+  if (plan.matched_by_fingerprint) {
+    counts.push(`${plan.matched_by_fingerprint} via fingerprint (renumbered)`);
+  }
+  if (plan.added) counts.push(`${plan.added} new`);
+  if (plan.removed) counts.push(`${plan.removed} removed`);
+  if (plan.overrides_preserved) counts.push(`${plan.overrides_preserved} overrides preserved`);
+  if (plan.overrides_at_risk) counts.push(`<strong>${plan.overrides_at_risk} overrides at risk</strong>`);
+
+  const findingsBlocks = [];
+  if (plan.cross_gallery_warnings.length) {
+    findingsBlocks.push(`
+      <div class="reimport-findings-block">
+        <h6>Cross-gallery moves \u2014 extend the selection or these will duplicate</h6>
+        <ul class="reimport-findings-list">${
+          plan.cross_gallery_warnings.map(w => `<li>${esc(w.raw_title || '(no title)')} \u2014 currently in <em>${esc(w.old_gallery)}</em> (cat ${esc(w.old_cat_no)}), new file places in <em>${esc(w.new_gallery)}</em> (cat ${esc(w.new_cat_no)})</li>`).join('')
+        }</ul>
+      </div>`);
+  }
+  if (plan.ambiguous.length) {
+    findingsBlocks.push(`
+      <div class="reimport-findings-block">
+        <h6>Ambiguous \u2014 the matcher refuses to guess; review manually</h6>
+        <ul class="reimport-findings-list">${
+          plan.ambiguous.map(a => `<li>old cat ${esc(a.old_cat_no)} \u2014 ${esc(a.raw_title || '(no title)')} by ${esc(a.raw_artist || '?')} \u2014 ${esc(a.reason.replace(/_/g, ' '))} (candidates: ${a.candidate_new_cat_nos.map(esc).join(', ')})</li>`).join('')
+        }</ul>
+      </div>`);
+  }
+  if (plan.unmatched.length) {
+    findingsBlocks.push(`
+      <div class="reimport-findings-block">
+        <h6>Unmatched \u2014 overrides will be lost unless you re-apply</h6>
+        <ul class="reimport-findings-list">${
+          plan.unmatched.map(u => `<li>old cat ${esc(u.old_cat_no)} \u2014 ${esc(u.raw_title || '(no title)')} by ${esc(u.raw_artist || '?')}${u.had_override ? ' \u2014 <strong>has override</strong>' : ''}</li>`).join('')
+        }</ul>
+      </div>`);
+  }
+
+  const selectedCount = selectedGalleries.size;
+  const totalCount = plan.galleries.length;
+  const confirmLabel = selectedCount === totalCount
+    ? `Re-import all ${totalCount} galleries`
+    : `Re-import ${selectedCount} of ${totalCount} galleries`;
+
+  preview.innerHTML = `
+    <h5 style="margin:0 0 8px">Galleries in the new spreadsheet</h5>
+    <table class="data-table reimport-gallery-table" style="margin-bottom:10px">
+      <thead><tr>
+        <th style="width:28px"></th>
+        <th style="width:40px">#</th>
+        <th>Gallery</th>
+        <th style="text-align:right;width:60px">Works</th>
+        <th style="width:140px">Cat numbers</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="margin-bottom:10px;font-size:12px">
+      <button type="button" class="btn btn-xs btn-secondary" id="reimport-select-all">Select all</button>
+      <button type="button" class="btn btn-xs btn-secondary" id="reimport-select-none">Clear</button>
+    </div>
+    <div class="reimport-plan-summary" style="margin-bottom:10px;padding:8px 10px;background:#f4f4f4;border-radius:4px;font-size:13px">
+      ${counts.join(' \u00b7 ')}
+    </div>
+    ${findingsBlocks.join('')}
+    <div style="margin-top:12px">
+      <button type="button" class="btn btn-primary" id="reimport-confirm"${selectedCount === 0 ? ' disabled' : ''}>${confirmLabel}</button>
+      <button type="button" class="btn btn-secondary" id="reimport-cancel" style="margin-left:8px">Cancel</button>
+    </div>
+  `;
+
+  // Wire up
+  preview.querySelectorAll('.reimport-gallery-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const name = cb.dataset.gallery;
+      if (cb.checked) _reimportState.selectedGalleries.add(name);
+      else _reimportState.selectedGalleries.delete(name);
+      _scheduleScopedRefresh(_reimportState.importId);
+    });
+  });
+  preview.querySelector('#reimport-select-all')?.addEventListener('click', () => {
+    _reimportState.selectedGalleries = new Set(_reimportState.plan.galleries.map(g => g.name));
+    _scheduleScopedRefresh(_reimportState.importId);
+  });
+  preview.querySelector('#reimport-select-none')?.addEventListener('click', () => {
+    _reimportState.selectedGalleries = new Set();
+    _scheduleScopedRefresh(_reimportState.importId);
+  });
+  preview.querySelector('#reimport-cancel')?.addEventListener('click', () => {
+    document.getElementById('reimport-file').value = '';
+    _resetReimportPreview();
+  });
+  preview.querySelector('#reimport-confirm')?.addEventListener('click', () => {
+    _commitReimport();
+  });
+}
+
+async function _commitReimport() {
+  if (!_reimportState) return;
+  const { importId, file, selectedGalleries, plan } = _reimportState;
+
+  // Belt-and-braces confirm if there are overrides at risk
+  if (plan.overrides_at_risk > 0) {
+    const ok = window.confirm(
+      `${plan.overrides_at_risk} override${plan.overrides_at_risk === 1 ? '' : 's'} will be lost or are ambiguous and won\u2019t be re-applied. ` +
+      `Continue anyway? You\u2019ll need to re-apply them manually after.`
+    );
+    if (!ok) return;
+  }
+
+  const btn = document.getElementById('reimport-confirm');
   const restore = btnLoading(btn, 'Re-importing');
+  const statusEl = document.getElementById('reimport-status');
   statusEl.textContent = 'Re-importing\u2026';
   statusEl.className = 'status-msg';
   try {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await fetch(`/imports/${importId}/reimport`, {
-      method: 'PUT', body: form, headers: _apiHeaders(),
+    const data = await _fetchReimportPlan(importId, file, {
+      dryRun: false,
+      galleries: selectedGalleries,
     });
-    if (res.status === 401) { renderLogin('Invalid or missing API key.'); return; }
-    if (!res.ok) { const t = await res.text(); throw new Error(t); }
-    const data = await res.json();
     const parts = [];
     if (data.matched)  parts.push(`${data.matched} matched`);
     if (data.added)    parts.push(`${data.added} added`);
@@ -3650,9 +3860,10 @@ async function handleReimport(importId, file) {
     statusEl.className = 'status-msg success';
     showToast(`Re-import complete: ${summary}`, 'success', 5000);
     document.getElementById('reimport-file').value = '';
-    // Refresh the detail view to show updated data
+    _resetReimportPreview();
     await renderDetail(importId);
   } catch (err) {
+    if (err.message === 'Auth') return;
     statusEl.textContent = `Re-import failed: ${err.message}`;
     statusEl.className = 'status-msg error';
     showToast(`Re-import failed: ${err.message}`, 'error');
@@ -3735,13 +3946,11 @@ async function renderDetail(importId) {
         </section>
         ${ifEditor(`<section class="tool-block reimport-panel">
           <h4>Update Import</h4>
-          <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the same spreadsheet. Existing overrides and exclusions will be preserved where possible.</p>
-          <form id="reimport-form" class="upload-form">
-            <input type="file" id="reimport-file" accept=".xlsx,.xls" required>
-            <button type="submit" class="btn btn-primary">Re-import</button>
-          </form>
+          <p class="muted" style="font-size:12px;margin-bottom:10px">Select an updated version of the spreadsheet. A preview shows which galleries you can choose to update; overrides on works whose content (title/artist/medium) hasn\u2019t changed are preserved, even if their catalogue number shifted.</p>
+          <input type="file" id="reimport-file" accept=".xlsx,.xls">
           <p id="reimport-warn" class="status-msg" style="margin-top:4px;display:none"></p>
           <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
+          <div id="reimport-preview" style="display:none;margin-top:14px"></div>
         </section>`)}
         ${ifEditor(`<section class="tool-block" id="reconcile-panel">
           <h4>Reconcile corrected LOW</h4>
@@ -3771,11 +3980,18 @@ async function renderDetail(importId) {
     </section>
     <section class="panel" id="audit-panel"><p class="loading">Loading audit log\u2026</p></section>`;
 
-  // Wire up re-import form
-  document.getElementById('reimport-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const file = document.getElementById('reimport-file').files[0];
-    if (file) await handleReimport(importId, file);
+  // Wire up the re-import preview flow. File selection triggers a dry-run
+  // (no gallery filter) that returns the list of galleries with cat ranges,
+  // plus the full match plan; the preview UI lets the user pick which
+  // galleries to scope the commit to, and shows a scoped re-run of the plan
+  // before the actual confirm.
+  document.getElementById('reimport-file')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      _startReimportPreview(importId, file);
+    } else {
+      _resetReimportPreview();
+    }
   });
 
   // Fetch import metadata for filename mismatch detection + heading

@@ -2,7 +2,8 @@
 Import management routes: upload, list, sections, preview, warnings, delete.
 """
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
+from dataclasses import asdict
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -81,9 +82,33 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
 def reimport_upload(
     import_id: UUID,
     file: UploadFile = File(...),
+    dry_run: bool = Query(
+        False,
+        description=(
+            "When true, parse the file and compute the override-preservation "
+            "plan but make no DB changes. Use this to preview the re-import "
+            "and let the user pick a gallery scope before committing."
+        ),
+    ),
+    galleries: str | None = Query(
+        None,
+        description=(
+            "Comma-separated gallery names to limit the re-import to. When "
+            "omitted, all galleries in the new file are processed. Out-of-"
+            "scope galleries stay physically untouched in the DB. Cross-"
+            "gallery moves into/out of the scope are surfaced as warnings."
+        ),
+    ),
     db: Session = Depends(get_db),
 ):
-    """Re-import a spreadsheet, preserving overrides matched by Cat No."""
+    """Re-import a spreadsheet with override preservation and optional
+    dry-run + selective gallery scope.
+
+    Override preservation goes through the matcher
+    (``backend/app/services/reimport_matcher.py``): cat-no matches gated on
+    fingerprint agreement, with a fingerprint fallback for renumbered
+    works. The dry-run mode returns the full plan without mutating the DB.
+    """
     # Verify the import exists
     import_record = db.query(Import).filter(Import.id == import_id).first()
     if not import_record:
@@ -92,6 +117,12 @@ def reimport_upload(
             detail="Import not found",
         )
 
+    gallery_scope: set[str] | None = None
+    if galleries:
+        gallery_scope = {g.strip() for g in galleries.split(",") if g.strip()}
+        if not gallery_scope:
+            gallery_scope = None  # treat empty list as "no filter"
+
     original_name = file.filename or "upload.xlsx"
     disk_name = _make_key(original_name)
     storage.save(disk_name, file.file)
@@ -99,7 +130,7 @@ def reimport_upload(
     with storage.open_path(disk_name) as file_path:
         norm = load_normalisation_settings(db)
         try:
-            _record, stats = reimport_excel(
+            _record, plan = reimport_excel(
                 import_id,
                 file_path,
                 db,
@@ -108,6 +139,8 @@ def reimport_upload(
                 edition_suppress_max=norm["edition_suppress_max"],
                 text_substitutions=norm["text_substitutions"],
                 title_case_exceptions=norm["title_case_exceptions"],
+                gallery_scope=gallery_scope,
+                dry_run=dry_run,
             )
         except ExcelImportError as exc:
             storage.delete(disk_name)
@@ -115,18 +148,30 @@ def reimport_upload(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
             )
 
-    # Remove the previous upload file if it exists
-    storage.delete(import_record.disk_filename or "")
-    # Track the new storage key
-    import_record.disk_filename = disk_name
-    db.commit()
+    if dry_run:
+        # Don't persist the uploaded file — caller will re-upload on commit.
+        storage.delete(disk_name)
+    else:
+        # Remove the previous upload file and track the new storage key.
+        storage.delete(import_record.disk_filename or "")
+        import_record.disk_filename = disk_name
+        db.commit()
 
     return ReimportOut(
         import_id=str(import_id),
-        matched=stats["matched"],
-        added=stats["added"],
-        removed=stats["removed"],
-        overrides_preserved=stats["overrides_preserved"],
+        # Legacy aggregate (matches both cat-no and fingerprint mechanisms)
+        matched=plan.matched_by_cat_no + plan.matched_by_fingerprint,
+        added=plan.added,
+        removed=plan.removed,
+        overrides_preserved=plan.overrides_preserved,
+        dry_run=dry_run,
+        matched_by_cat_no=plan.matched_by_cat_no,
+        matched_by_fingerprint=plan.matched_by_fingerprint,
+        overrides_at_risk=plan.overrides_at_risk,
+        galleries=[asdict(g) for g in plan.galleries],
+        unmatched=[asdict(u) for u in plan.unmatched],
+        ambiguous=[asdict(a) for a in plan.ambiguous],
+        cross_gallery_warnings=[asdict(w) for w in plan.cross_gallery_warnings],
     )
 
 
