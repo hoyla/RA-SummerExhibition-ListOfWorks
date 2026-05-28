@@ -270,11 +270,19 @@ class TextSubstitutionIn(BaseModel):
     """A literal find→replace rule scoped to one or more derived fields.
 
     Spaces in find/replace are significant and preserved (so " - " only matches a
-    spaced hyphen). find must be non-empty."""
+    spaced hyphen). find must be non-empty.
+
+    When ``whole_word`` is true the find is wrapped in regex word boundaries
+    so it only matches standalone occurrences — e.g. ``pla`` → ``PLA`` won't
+    mangle ``plaster`` or ``display``. Default false to preserve the legacy
+    plain-substring behaviour for existing rules (notably the ellipsis
+    ``...`` → ``…`` rule, which can't use word boundaries because ``.`` isn't
+    a word char on either side)."""
 
     find: str
     replace: str = ""
     fields: list[str] = ["title", "medium"]
+    whole_word: bool = False
 
     @field_validator("find")
     @classmethod

@@ -173,7 +173,19 @@ def parse_edition(raw_edition, suppress_max: int = DEFAULT_EDITION_SUPPRESS_MAX)
 def apply_text_substitutions(value, substitutions, field_key: str):
     """Apply each literal find→replace whose ``fields`` includes ``field_key``,
     in list order. Spaces in ``find``/``replace`` are significant. A blank
-    ``find`` is skipped (a no-op guard, also enforced at the API)."""
+    ``find`` is skipped (a no-op guard, also enforced at the API).
+
+    When a rule has ``whole_word`` set, the find is wrapped in regex word
+    boundaries (``\\b...\\b``) so e.g. ``pla`` → ``PLA`` only matches the
+    standalone token and leaves ``plaster`` / ``display`` alone. The find
+    is regex-escaped first so any metacharacters in it (``.``, ``(``,
+    ``+`` …) are treated as literals; the replace string is also handled
+    literally (no backreference parsing) by passing it through a lambda.
+
+    Without ``whole_word`` the rule is a plain substring replace — needed
+    by rules whose find is non-alphanumeric (the ``...`` → ``…`` ellipsis
+    rule can't use word boundaries because ``.`` isn't a word char on
+    either side, so ``\\b...\\b`` would never match)."""
     if not value or not substitutions:
         return value
     out = value
@@ -181,8 +193,14 @@ def apply_text_substitutions(value, substitutions, field_key: str):
         find = (sub or {}).get("find")
         if not find:
             continue
-        if field_key in (sub.get("fields") or []):
-            out = out.replace(find, sub.get("replace", "") or "")
+        if field_key not in (sub.get("fields") or []):
+            continue
+        replace = sub.get("replace", "") or ""
+        if sub.get("whole_word"):
+            pattern = r"\b" + re.escape(find) + r"\b"
+            out = re.sub(pattern, lambda _m, r=replace: r, out)
+        else:
+            out = out.replace(find, replace)
     return out
 
 
