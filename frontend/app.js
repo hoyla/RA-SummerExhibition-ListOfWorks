@@ -4075,11 +4075,26 @@ function renderSections(importId, sections, cfg) {
     filterCount.textContent = '';
     filterInput.addEventListener('input', () => _applyWorksFilter(filterInput.value, filterCount, totalWorks));
   }
-  container.innerHTML = sections.map(section => `
+  container.innerHTML = sections.map(section => {
+    // Cat-number range in the gallery header, alongside the work count.
+    // Only numeric raw_cat_nos contribute (catalogue numbers are integer in
+    // practice — a non-numeric entry would skew min/max meaninglessly).
+    const catNos = section.works
+      .map(w => Number(w.raw_cat_no))
+      .filter(n => Number.isFinite(n));
+    let rangeText = '';
+    if (catNos.length) {
+      const min = Math.min(...catNos);
+      const max = Math.max(...catNos);
+      rangeText = min === max
+        ? ` | number ${min}`
+        : ` | numbers ${min}\u2013${max}`;  // en-dash for numeric ranges
+    }
+    return `
     <details class="section-block" open>
       <summary class="section-summary">
         <span class="section-name">${esc(section.name)}</span>
-        <span class="section-meta">${section.works.length} work${section.works.length !== 1 ? 's' : ''}</span>
+        <span class="section-meta">${section.works.length} work${section.works.length !== 1 ? 's' : ''}${rangeText}</span>
         <button type="button" class="btn btn-xs btn-secondary section-export-btn"
           onclick="event.preventDefault();downloadExportWithTemplate('${esc(importId)}','tags','txt','${esc(section.id)}',this,'${esc(section.name)}')">
           Export section
@@ -4100,7 +4115,8 @@ function renderSections(importId, sections, cfg) {
           ${section.works.map(w => workRowHTML(importId, w, cfg)).join('')}
         </tbody>
       </table>
-    </details>`).join('');
+    </details>`;
+  }).join('');
 }
 
 // ---------------------------------------------------------------------------
