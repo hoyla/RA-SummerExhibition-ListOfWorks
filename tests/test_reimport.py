@@ -156,14 +156,23 @@ class TestReimportBasic:
 
     def test_reimport_returns_correct_stats(self, client):
         import_id = _do_import(client)
-        # Original: cat_no 1, 2, 3
-        # Reimport: cat_no 1, 2, 4 → matched=2/added=1/removed=1
-
+        # Original: cat 1 "Sunset", cat 2 "Dawn", cat 3 "Noon"
+        # Reimport: cat 1 "Sunset UPDATED" (title changed!), cat 2 "Dawn", cat 4 "New Work"
+        #
+        # Matcher behaviour:
+        #   cat 2: cat_no AND fingerprint match → matched_by_cat_no = 1
+        #   cat 1: cat_no matches but fingerprint differs (title edit) → refused
+        #          (this is the silent-misapplication guard)
+        #   cat 4: new content with no preserved fingerprint → added
+        #   cat 1 "Sunset UPDATED" also counts as added (no preserved match)
+        #   old cat 1 "Sunset" and old cat 3 "Noon" both have no target → removed = 2
         r = _do_reimport(client, import_id)
         data = r.json()
-        assert data["matched"] == 2
-        assert data["added"] == 1
-        assert data["removed"] == 1
+        assert data["matched"] == 1
+        assert data["matched_by_cat_no"] == 1
+        assert data["matched_by_fingerprint"] == 0
+        assert data["added"] == 2
+        assert data["removed"] == 2
 
     def test_reimport_updates_filename(self, client):
         import_id = _do_import(client)
@@ -199,31 +208,32 @@ class TestReimportOverridePreservation:
         import_id = _do_import(client)
         sections = _get_sections(client, import_id)
         all_works = [w for s in sections for w in s["works"]]
-        work1 = next(w for w in all_works if w["raw_cat_no"] == "1")
+        # cat 2 "Dawn" has identical content (title/artist/medium) between the
+        # original import and the re-import — the cat-no match passes the
+        # fingerprint gate, so the override is preserved. cat 1's title is
+        # edited in the re-import, which would deliberately fail the
+        # fingerprint gate; see test_override_NOT_preserved_when_content_changed.
+        work2 = next(w for w in all_works if w["raw_cat_no"] == "2")
 
-        # Set an override on cat_no 1
         _set_override(
             client,
             import_id,
-            work1["id"],
+            work2["id"],
             title_override="Custom Title",
             price_numeric_override=999.0,
         )
 
-        # Reimport — cat_no 1 still exists
         r = _do_reimport(client, import_id)
         data = r.json()
-        assert (
-            data["overrides_preserved"] == 1
-        )  # only cat_no 1 had an override (2 matched but only 1 has override)
+        assert data["overrides_preserved"] == 1
+        assert data["matched_by_cat_no"] >= 1  # cat 2 matched cleanly
 
-        # Verify override is still there
         sections = _get_sections(client, import_id)
         all_works = [w for s in sections for w in s["works"]]
-        work1_new = next(w for w in all_works if w["raw_cat_no"] == "1")
-        assert work1_new["override"] is not None
-        assert work1_new["override"]["title_override"] == "Custom Title"
-        assert work1_new["override"]["price_numeric_override"] == 999.0
+        work2_new = next(w for w in all_works if w["raw_cat_no"] == "2")
+        assert work2_new["override"] is not None
+        assert work2_new["override"]["title_override"] == "Custom Title"
+        assert work2_new["override"]["price_numeric_override"] == 999.0
 
     def test_override_multiple_fields_preserved(self, client):
         import_id = _do_import(client)
@@ -257,30 +267,31 @@ class TestReimportOverridePreservation:
         import_id = _do_import(client)
         sections = _get_sections(client, import_id)
         all_works = [w for s in sections for w in s["works"]]
-        work1 = next(w for w in all_works if w["raw_cat_no"] == "1")
+        # cat 2 — content unchanged across re-import, so the exclusion is
+        # carried over cleanly. (Excluding cat 1 here wouldn't survive
+        # re-import because cat 1's title is edited — the matcher correctly
+        # refuses to transplant the include_in_export flag onto a different
+        # work that happens to share its cat number.)
+        work2 = next(w for w in all_works if w["raw_cat_no"] == "2")
 
-        # Exclude cat_no 1 via direct DB update
-        uid = _uuid.UUID(work1["id"])
+        uid = _uuid.UUID(work2["id"])
         w = db_session.query(Work).filter(Work.id == uid).one()
         w.include_in_export = False
         db_session.commit()
 
-        # Verify excluded
         sections = _get_sections(client, import_id)
-        work1_check = next(
-            w for s in sections for w in s["works"] if w["raw_cat_no"] == "1"
+        work2_check = next(
+            w for s in sections for w in s["works"] if w["raw_cat_no"] == "2"
         )
-        assert work1_check["include_in_export"] is False
+        assert work2_check["include_in_export"] is False
 
-        # Reimport
         _do_reimport(client, import_id)
 
-        # Exclusion should be preserved
         sections = _get_sections(client, import_id)
-        work1_after = next(
-            w for s in sections for w in s["works"] if w["raw_cat_no"] == "1"
+        work2_after = next(
+            w for s in sections for w in s["works"] if w["raw_cat_no"] == "2"
         )
-        assert work1_after["include_in_export"] is False
+        assert work2_after["include_in_export"] is False
 
     def test_override_lost_for_removed_work(self, client):
         import_id = _do_import(client)
@@ -288,14 +299,26 @@ class TestReimportOverridePreservation:
         all_works = [w for s in sections for w in s["works"]]
         work3 = next(w for w in all_works if w["raw_cat_no"] == "3")
 
-        # Set override on cat_no 3, which will be removed in reimport
+        # Set override on cat_no 3, which is genuinely removed in reimport
+        # (no cat_no 3 in new file, and no fingerprint match for "Noon"
+        # by Alice either).
         _set_override(client, import_id, work3["id"], title_override="Will Be Lost")
 
         r = _do_reimport(client, import_id)
         data = r.json()
-        # cat_no 3 is not in the new spreadsheet, so override is not preserved
-        assert data["removed"] == 1
+        # cat_no 3 ("Noon") has no target in the new file (neither by cat-no
+        # nor by fingerprint), so the override is lost. cat_no 1 ("Sunset")
+        # also has no target after the title edit, so removed = 2 — both
+        # appear in the unmatched list of the plan.
+        assert data["removed"] == 2
         assert data["overrides_preserved"] == 0
+        # And the cat 3 override appears in the unmatched/ambiguous list so
+        # the user knows what was lost.
+        flagged_cat_nos = (
+            {u["old_cat_no"] for u in data["unmatched"]}
+            | {a["old_cat_no"] for a in data["ambiguous"]}
+        )
+        assert "3" in flagged_cat_nos
 
     def test_no_overrides_all_new(self, client):
         import_id = _do_import(client)
@@ -403,23 +426,29 @@ class TestReimportEdgeCases:
         assert data["matched"] == 0
 
     def test_reimport_duplicate_cat_no_in_new_spreadsheet(self, client):
-        """If the new spreadsheet has duplicate cat_nos, only the first gets the override."""
+        """If the new spreadsheet has duplicate cat_nos, only the first
+        row whose content also fingerprints to the preserved entry gets
+        the override. The other duplicate row is treated as a new addition.
+        """
         import_id = _do_import(client)
         sections = _get_sections(client, import_id)
         all_works = [w for s in sections for w in s["works"]]
         work1 = next(w for w in all_works if w["raw_cat_no"] == "1")
         _set_override(client, import_id, work1["id"], title_override="Keep This")
 
-        # Reimport with two rows having cat_no 1
+        # Reimport with two rows having cat_no 1 — the FIRST has content
+        # matching the preserved entry (so the cat-no match passes the
+        # fingerprint gate); the second has different content.
         rows = [
-            [1, "Gallery A", "First", "Artist A", "100", None, None, None],
+            [1, "Gallery A", "Sunset", "Jane Doe", "100", None, None, "Oil"],
             [1, "Gallery A", "Second (duplicate)", "Artist B", "200", None, None, None],
         ]
         r = _do_reimport(client, import_id, rows=rows)
         data = r.json()
         assert data["overrides_preserved"] == 1
 
-        # Only the first row with cat_no 1 should have the override
+        # Only the first row with cat_no 1 (which matched by content) gets
+        # the override; the duplicate is a fresh row.
         sections = _get_sections(client, import_id)
         all_works = [w for s in sections for w in s["works"]]
         works_with_cat1 = [w for w in all_works if w["raw_cat_no"] == "1"]
@@ -427,6 +456,7 @@ class TestReimportEdgeCases:
         overridden = [w for w in works_with_cat1 if w["override"] is not None]
         assert len(overridden) == 1
         assert overridden[0]["override"]["title_override"] == "Keep This"
+        assert overridden[0]["raw_title"] == "Sunset"  # the matched row, not the dup
 
 
 class TestReimportAuditAndWarnings:
@@ -491,3 +521,210 @@ class TestReimportAuditAndWarnings:
         all_works = [w for s in sections for w in s["works"]]
         work1_final = next(w for w in all_works if w["raw_cat_no"] == "1")
         assert work1_final["override"]["title_override"] == "After First Reimport"
+
+
+# =========================================================================== #
+# Dry-run, gallery scope, and the silent-misapplication regression
+# =========================================================================== #
+
+
+class TestReimportDryRun:
+    """The dry_run query param should compute the plan but make no changes."""
+
+    def test_dry_run_returns_plan_without_mutating(self, client):
+        import_id = _do_import(client)
+        sections_before = _get_sections(client, import_id)
+        snapshot_before = [
+            (w["raw_cat_no"], w["raw_title"], w.get("raw_artist"))
+            for s in sections_before for w in s["works"]
+        ]
+
+        buf = _make_xlsx(
+            ALL_HEADERS,
+            [
+                [1, "Gallery A", "Sunset UPDATED", "Jane Doe", "600", None, None, "Oil"],
+                [2, "Gallery A", "Dawn", "John Smith RA", "1200", None, None, "Acrylic"],
+                [4, "Gallery A", "New Work", "Bob", "300", None, None, "Pastel"],
+            ],
+        )
+        r = client.put(
+            f"/imports/{import_id}/reimport?dry_run=true",
+            files={
+                "file": (
+                    "preview.xlsx", buf,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["dry_run"] is True
+        # Plan reports the same counts as a real re-import would
+        assert data["matched_by_cat_no"] == 1   # cat 2 only
+        assert data["added"] == 2
+        assert data["removed"] == 2
+
+        # DB state must be identical to before the dry-run
+        sections_after = _get_sections(client, import_id)
+        snapshot_after = [
+            (w["raw_cat_no"], w["raw_title"], w.get("raw_artist"))
+            for s in sections_after for w in s["works"]
+        ]
+        assert snapshot_before == snapshot_after
+
+    def test_dry_run_returns_gallery_summary(self, client):
+        import_id = _do_import(client)
+        buf = _make_xlsx(
+            ALL_HEADERS,
+            [
+                [1, "Gallery A", "X", "A", "100", None, None, None],
+                [2, "Gallery A", "Y", "A", "100", None, None, None],
+                [3, "Gallery B", "Z", "B", "100", None, None, None],
+            ],
+        )
+        r = client.put(
+            f"/imports/{import_id}/reimport?dry_run=true",
+            files={"file": ("p.xlsx", buf,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert r.status_code == 200
+        gs = r.json()["galleries"]
+        assert len(gs) == 2
+        by_name = {g["name"]: g for g in gs}
+        assert by_name["Gallery A"]["work_count"] == 2
+        assert by_name["Gallery A"]["cat_no_min"] == 1
+        assert by_name["Gallery A"]["cat_no_max"] == 2
+        assert by_name["Gallery A"]["in_scope"] is True   # no filter → all in scope
+        assert by_name["Gallery B"]["work_count"] == 1
+
+
+class TestReimportGalleryScope:
+    """Selective re-import: out-of-scope galleries stay physically untouched."""
+
+    def test_scope_leaves_out_of_scope_galleries_intact(self, client, db_session):
+        import_id = _do_import(client)
+        # Original has Gallery A (cat 1,2) and Gallery B (cat 3)
+
+        # Override on cat 3 (Gallery B) — must survive a scoped re-import of A only
+        sections = _get_sections(client, import_id)
+        all_works = [w for s in sections for w in s["works"]]
+        work3 = next(w for w in all_works if w["raw_cat_no"] == "3")
+        _set_override(client, import_id, work3["id"], title_override="B-only override")
+
+        # Re-import a NEW spreadsheet that only touches Gallery A
+        buf = _make_xlsx(
+            ALL_HEADERS,
+            [
+                # Gallery A rebuilt with one extra work
+                [1, "Gallery A", "Sunset", "Jane Doe", "500", None, None, "Oil"],
+                [2, "Gallery A", "Dawn", "John Smith RA", "1000", None, None, "Acrylic"],
+                [10, "Gallery A", "Newbie", "Bob", "200", None, None, "Pastel"],
+                # The new file also has a Gallery B row but we DON'T scope it in
+                [3, "Gallery B", "Noon REPLACED", "Different Artist", "999", None, None, None],
+            ],
+        )
+        r = client.put(
+            f"/imports/{import_id}/reimport?galleries=Gallery+A",
+            files={"file": ("scoped.xlsx", buf,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert r.status_code == 200, r.text
+
+        # Gallery B should be UNCHANGED — same cat 3 work, same override
+        sections = _get_sections(client, import_id)
+        b = next(s for s in sections if s["name"] == "Gallery B")
+        assert len(b["works"]) == 1
+        cat3 = b["works"][0]
+        assert cat3["raw_cat_no"] == "3"
+        assert cat3["raw_title"] == "Noon"  # not "Noon REPLACED" — out of scope
+        assert cat3["override"]["title_override"] == "B-only override"
+
+        # Gallery A rebuilt
+        a = next(s for s in sections if s["name"] == "Gallery A")
+        a_cats = sorted(w["raw_cat_no"] for w in a["works"])
+        assert a_cats == ["1", "10", "2"]
+
+    def test_scope_detects_cross_gallery_move(self, client):
+        """A work moving from Gallery B into the selected Gallery A scope
+        should generate a cross-gallery warning so the user can extend the
+        scope (otherwise the work would silently duplicate)."""
+        import_id = _do_import(client)
+        # Original cat 3 "Noon" by Alice is in Gallery B.
+        # New file moves it into Gallery A.
+        buf = _make_xlsx(
+            ALL_HEADERS,
+            [
+                [1, "Gallery A", "Sunset", "Jane Doe", "500", None, None, "Oil"],
+                [2, "Gallery A", "Dawn", "John Smith RA", "1000", None, None, "Acrylic"],
+                [3, "Gallery A", "Noon", "Alice", "NFS", None, None, None],  # moved
+            ],
+        )
+        r = client.put(
+            f"/imports/{import_id}/reimport?galleries=Gallery+A&dry_run=true",
+            files={"file": ("move.xlsx", buf,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert r.status_code == 200
+        warnings = r.json()["cross_gallery_warnings"]
+        assert any(
+            w["raw_title"] == "Noon" and w["old_gallery"] == "Gallery B"
+            and w["new_gallery"] == "Gallery A"
+            for w in warnings
+        )
+
+
+class TestReimportSilentMisapplicationRegression:
+    """Pins the fix for the silent-misapplication bug: when cat_no matches
+    but content differs (the renumber case), the override must NOT be
+    transplanted onto the new (different) work."""
+
+    def test_renumber_does_not_transplant_override(self, client):
+        import_id = _do_import(client)
+        # Override on cat 3 "Noon" by Alice
+        sections = _get_sections(client, import_id)
+        all_works = [w for s in sections for w in s["works"]]
+        work3 = next(w for w in all_works if w["raw_cat_no"] == "3")
+        _set_override(
+            client, import_id, work3["id"],
+            title_override="Noon's secret title",
+            price_numeric_override=99999,
+        )
+
+        # New spreadsheet inserts a work at cat 3, pushing Noon to cat 4.
+        # Old behaviour: new cat 3 (different work) inherits Noon's override.
+        # New behaviour: cat-no match refused (fingerprint mismatch), override
+        # follows by fingerprint to the new cat 4.
+        buf = _make_xlsx(
+            ALL_HEADERS,
+            [
+                [1, "Gallery A", "Sunset", "Jane Doe", "500", None, None, "Oil"],
+                [2, "Gallery A", "Dawn", "John Smith RA", "1000", None, None, "Acrylic"],
+                [3, "Gallery B", "Brand New Insertion", "Bob", "1", None, None, None],
+                [4, "Gallery B", "Noon", "Alice", "NFS", None, None, None],
+            ],
+        )
+        r = client.put(
+            f"/imports/{import_id}/reimport",
+            files={"file": ("insert.xlsx", buf,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["matched_by_fingerprint"] >= 1
+        assert data["overrides_preserved"] == 1
+
+        # The new cat 3 "Brand New Insertion" must NOT have inherited
+        # Noon's override.
+        sections = _get_sections(client, import_id)
+        all_works = [w for s in sections for w in s["works"]]
+        new_cat3 = next(w for w in all_works if w["raw_cat_no"] == "3")
+        assert new_cat3["raw_title"] == "Brand New Insertion"
+        assert new_cat3["override"] is None, (
+            "Noon's override was silently transplanted onto the new cat 3 — the bug"
+        )
+
+        # And the override correctly ended up on the new cat 4 (Noon).
+        new_cat4 = next(w for w in all_works if w["raw_cat_no"] == "4")
+        assert new_cat4["raw_title"] == "Noon"
+        assert new_cat4["override"]["title_override"] == "Noon's secret title"
+        assert new_cat4["override"]["price_numeric_override"] == 99999

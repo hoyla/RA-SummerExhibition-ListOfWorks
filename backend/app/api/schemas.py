@@ -24,12 +24,67 @@ class ImportOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class GallerySummaryOut(BaseModel):
+    """One gallery in the freshly-uploaded spreadsheet, for the UI picker."""
+
+    name: str
+    position: int
+    work_count: int
+    cat_no_min: int | None
+    cat_no_max: int | None
+    in_scope: bool
+
+
+class UnmatchedOut(BaseModel):
+    """A preserved override with no acceptable target in the new spreadsheet."""
+
+    old_cat_no: str
+    raw_title: str | None
+    raw_artist: str | None
+    had_override: bool
+    reason: str
+
+
+class AmbiguousOut(BaseModel):
+    """A preserved override whose match is ambiguous and refused by the matcher."""
+
+    old_cat_no: str
+    raw_title: str | None
+    raw_artist: str | None
+    candidate_new_cat_nos: List[str]
+    reason: str
+
+
+class CrossGalleryMoveWarningOut(BaseModel):
+    """A row in the selected gallery scope appears (by fingerprint) to be a
+    work currently in a non-scope gallery — selective re-import would
+    duplicate it."""
+
+    new_cat_no: str
+    raw_title: str | None
+    raw_artist: str | None
+    old_cat_no: str
+    old_gallery: str
+    new_gallery: str
+
+
 class ReimportOut(BaseModel):
     import_id: str
+    # Legacy fields preserved for backwards-compat with existing UI / tests.
+    # ``matched`` is the sum of cat-no and fingerprint matches.
     matched: int
     added: int
     removed: int
     overrides_preserved: int
+    # Plan details — new in the matcher-based re-import.
+    dry_run: bool = False
+    matched_by_cat_no: int = 0
+    matched_by_fingerprint: int = 0
+    overrides_at_risk: int = 0
+    galleries: List[GallerySummaryOut] = []
+    unmatched: List[UnmatchedOut] = []
+    ambiguous: List[AmbiguousOut] = []
+    cross_gallery_warnings: List[CrossGalleryMoveWarningOut] = []
 
 
 # ---------------------------------------------------------------------------
