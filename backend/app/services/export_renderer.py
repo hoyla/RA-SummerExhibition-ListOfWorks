@@ -267,6 +267,30 @@ def escape_for_mac_roman(text: str) -> str:
     return "".join(out)
 
 
+def escape_tagged_text_chars(text: str) -> str:
+    """
+    Escape the three InDesign Tagged Text metacharacters in user-supplied
+    content: ``\\`` → ``\\\\``, ``<`` → ``\\<``, ``>`` → ``\\>``.
+
+    Without this, a literal ``>`` in a work title (e.g.
+    ``ENTANGLEMENT (200) INTERACTION > INTRA-ACTION``) reaches InDesign as
+    a stray closing-tag bracket and the whole file is rejected:
+    "A closing tag symbol > was found without the corresponding opening tag".
+    The same applies to ``<``; ``\\`` would silently absorb the following
+    character on import.
+
+    Backslash MUST be escaped first or a literal backslash followed by
+    ``<``/``>`` would be double-escaped on the second pass.
+
+    The parser inverts these escapes (see
+    ``backend/app/services/low_tag_parser.py``), so escaped exports
+    round-trip cleanly through reconcile.
+    """
+    if not text:
+        return text
+    return text.replace("\\", "\\\\").replace("<", "\\<").replace(">", "\\>")
+
+
 # Opening punctuation that must not be left stranded at the end of a line.
 _OPEN_PUNCT = set("'\"\u2018\u201c([")
 # Closing punctuation that must not appear at the start of a line.
@@ -425,10 +449,20 @@ def _sep(name: str, entry_style: str = "") -> str:
 
 
 def _cs(style: str, text: str) -> str:
-    """Wrap text in an InDesign character style tag, or return plain text."""
-    if not style or not text:
+    """Wrap text in an InDesign character style tag, or return plain text.
+
+    The text is run through ``escape_tagged_text_chars`` so literal ``<``,
+    ``>``, and ``\\`` characters in field values can't collide with the
+    Tagged Text grammar. This is the single chokepoint for inline render
+    paths; the wrapped-mode and section-heading paths escape separately
+    because they bypass this helper to assemble custom styled blocks.
+    """
+    if not text:
         return text
-    return f"<CharStyle:{style}>{text}<CharStyle:>"
+    escaped = escape_tagged_text_chars(text)
+    if not style:
+        return escaped
+    return f"<CharStyle:{style}>{escaped}<CharStyle:>"
 
 
 def _fmt_price(amount, config: "ExportConfig") -> str:
@@ -561,9 +595,8 @@ def render_import_as_tagged_text(
     for sec_idx, section in enumerate(sections):
         # A blank section_style suppresses the heading (LPG per-room files have none).
         if config.section_style:
-            lines.append(
-                f"<ParaStyle:{config.section_style}>{section['section_name']}"
-            )
+            heading = escape_tagged_text_chars(section["section_name"] or "")
+            lines.append(f"<ParaStyle:{config.section_style}>{heading}")
             lines.append("\r")
 
         for w in section["works"]:
@@ -647,8 +680,13 @@ def render_import_as_tagged_text(
                         entry += _sep(comp.separator_after, config.entry_style)
                         entry += nc_val  # NC inserted inline (empty string if no NC)
 
-                        # Remaining lines of TC, all in one reopened char style block
-                        rest = "\n".join(wrapped[1:])
+                        # Remaining lines of TC, all in one reopened char style
+                        # block. Escape per-line so the wrap count math (which
+                        # ran on the unescaped raw text) isn't thrown off by
+                        # inflated escape sequences.
+                        rest = "\n".join(
+                            escape_tagged_text_chars(line) for line in wrapped[1:]
+                        )
                         if style:
                             entry += f"<CharStyle:{style}>\n{rest}<CharStyle:>"
                         else:
@@ -661,8 +699,12 @@ def render_import_as_tagged_text(
                             elif not nc.omit_sep_when_empty:
                                 entry += _sep(nc.separator_after, config.entry_style)
                     else:
-                        # Multi-line, normal position: join with soft returns
-                        full = "\n".join(wrapped)
+                        # Multi-line, normal position: join with soft returns.
+                        # Escape per-line — see end_of_first_line branch above
+                        # for the wrap-length-vs-escape rationale.
+                        full = "\n".join(
+                            escape_tagged_text_chars(line) for line in wrapped
+                        )
                         if style:
                             entry += f"<CharStyle:{style}>{full}<CharStyle:>"
                         else:

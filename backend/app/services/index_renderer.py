@@ -19,6 +19,7 @@ from backend.app.services.index_override_service import (
     lookup_known_artist,
 )
 from backend.app.services.index_importer import is_ra_member
+from backend.app.services.export_renderer import escape_tagged_text_chars
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +189,13 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
 
 
 def _cstyle(style: str, text: str) -> str:
-    """Wrap text in an InDesign character style tag."""
+    """Wrap text in an InDesign character style tag.
+
+    ``text`` is assumed to already be Tagged-Text safe — see
+    ``_escape_entry_fields``, which pre-escapes every user-supplied field
+    on the entry before the layout helpers run. Don't escape again here:
+    escape isn't idempotent (``<`` → ``\\<`` → ``\\\\\\<``).
+    """
     if not style:
         return text
     return f"<cstyle:{style}>{text}<cstyle:>"
@@ -389,12 +396,57 @@ def _letter_key(entry: ArtistExportEntry) -> str:
     return "#" if ch.isdigit() else ch
 
 
+_ESCAPED_TEXT_FIELDS = (
+    "title",
+    "first_name",
+    "last_name",
+    "quals",
+    "company",
+    "courtesy",
+    "artist2_first_name",
+    "artist2_last_name",
+    "artist2_quals",
+    "artist3_first_name",
+    "artist3_last_name",
+    "artist3_quals",
+)
+
+
+def _escape_entry_fields(entry: ArtistExportEntry) -> ArtistExportEntry:
+    """Return a copy of ``entry`` with every user-supplied text field
+    Tagged-Text-escaped.
+
+    Done once at the top of ``render_index_tagged_text`` rather than at each
+    layout helper because the helpers concatenate raw text in many places
+    (``surname + ", "``, ``first_name + " "``, courtesy, company name…).
+    Escaping at the source means no future raw-concat addition can leak a
+    literal ``<``/``>``/``\\`` into the tagged output.
+
+    ``sort_key`` is deliberately *not* escaped: ``_letter_key`` takes its
+    first character, and escaping would turn a (vanishingly unlikely) leading
+    ``<`` / ``>`` / ``\\`` into a backslash and break letter grouping.
+    """
+    from dataclasses import replace
+
+    updates = {}
+    for fld in _ESCAPED_TEXT_FIELDS:
+        value = getattr(entry, fld, None)
+        if value:
+            updates[fld] = escape_tagged_text_chars(value)
+    return replace(entry, **updates) if updates else entry
+
+
 def render_index_tagged_text(
     entries: List[ArtistExportEntry],
     cfg: IndexExportConfig = DEFAULT_INDEX_CONFIG,
 ) -> str:
     """Render a list of ArtistExportEntry objects as InDesign Tagged Text."""
     lines: List[str] = ["<ASCII-MAC>"]
+
+    # Pre-escape every user-supplied field on each entry once, so the
+    # downstream layout helpers can splice text into output without
+    # worrying about Tagged Text metacharacters.
+    entries = [_escape_entry_fields(e) for e in entries]
 
     current_letter: Optional[str] = None
     for entry in entries:

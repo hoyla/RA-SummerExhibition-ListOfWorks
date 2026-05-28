@@ -52,10 +52,13 @@ _SPAN_RE = re.compile(
 )
 _INDESIGN_HINT = re.compile(r"<(?:pstyle|cstyle):")
 _HEX_RE = re.compile(r"<0x([0-9A-Fa-f]+)>")
-_TAG_RE = re.compile(r"<[^>]*>")
 # InDesign escapes special characters with a backslash, in both content and
-# style names (e.g. "Work Number\/Name", "\<", "\\").
+# style names (e.g. "Work Number\/Name", "\<", "\\"). Used only for style-name
+# unescape; content is decoded by ``_decode_content`` which handles backslash
+# escapes and inline-tag stripping together (the two cannot be applied as
+# separate regex passes — see ``_decode_content``'s docstring).
 _BACKSLASH_RE = re.compile(r"\\(.)", re.DOTALL)
+_HEX_ONLY_RE = re.compile(r"^0x([0-9A-Fa-f]+)$")
 # Control characters InDesign embeds (soft returns, \x08/\x03 around headings).
 _CONTROL_RE = re.compile(r"[\x00-\x1f]")
 # A catalogue-number range in gallery titles, e.g. "works 200-286" or
@@ -87,43 +90,100 @@ class ParsedEntry:
     paragraph_index: int
 
 
+def _decode_content(value: str) -> str:
+    """Decode the body of a styled span (or a section-heading paragraph).
+
+    Walks the string left-to-right and resolves the three things that can
+    appear in tagged-text content, in one pass:
+
+    - ``\\X`` is a backslash-escaped literal — emits ``X`` verbatim. Covers
+      the renderer's ``\\<`` / ``\\>`` / ``\\\\`` escapes (without which a
+      title like ``A > B`` breaks InDesign import).
+    - ``<0x####>`` is a numeric Unicode escape — emits the character.
+      Forced line breaks come through as ``<0x000A>`` → ``\\n`` and are
+      stripped later by the caller's control-char pass.
+    - Any other ``<…>`` is an inline formatting tag InDesign may emit inside
+      a styled run (``<ccase:upper>``, ``<cs:…>``, kerning…) — discarded.
+
+    The single pass is load-bearing. A regex sequence "unescape backslashes,
+    then strip tags" would turn ``\\<x\\>`` into ``<x>`` and then delete it.
+    "Strip tags, then unescape backslashes" lets the tag regex greedily
+    consume ``<x\\>`` because the backslash doesn't break the ``[^>]*``
+    match. Neither order is correct; the walker treats ``\\<`` as a literal
+    before considering ``<`` as a tag opener.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(value)
+    while i < n:
+        ch = value[i]
+        if ch == "\\" and i + 1 < n:
+            out.append(value[i + 1])
+            i += 2
+            continue
+        if ch == "<":
+            j = value.find(">", i + 1)
+            if j < 0:
+                # Unterminated angle bracket — keep as literal so downstream
+                # comparison shows it rather than truncating the field.
+                out.append(ch)
+                i += 1
+                continue
+            tag_body = value[i + 1 : j]
+            hex_match = _HEX_ONLY_RE.match(tag_body)
+            if hex_match:
+                out.append(chr(int(hex_match.group(1), 16)))
+            # else: a foreign inline tag — drop it entirely.
+            i = j + 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _decode(s: str) -> str:
-    """Undo InDesign escaping: backslash escapes then ``<0x####>`` numeric
-    escapes (the latter incl. ``<0x000A>`` forced line breaks → ``\\n``)."""
-    s = _BACKSLASH_RE.sub(r"\1", s)
-    return _HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), s)
+    """Decode a paragraph body for non-clean uses (section heading prep)."""
+    return _decode_content(s)
+
+
+def _post_decode(value: str) -> str:
+    """Final cleanup applied AFTER ``_decode_content`` has run: strip control
+    characters (soft returns arrive as ``<0x000A>``→``\\n`` and are removed
+    here — the breaking space was kept on the previous line by the renderer,
+    so this inverts the wrap), and NFC-normalise so composed/decomposed forms
+    compare equal in the diff."""
+    return unicodedata.normalize("NFC", _CONTROL_RE.sub("", value))
 
 
 def _clean(value: str) -> str:
-    """Recover a field value from a character-style span.
+    """Recover a field value from a raw (not-yet-decoded) span body.
 
-    Order matters: decode ``<0x####>`` escapes first (so ``£`` etc. survive),
-    then strip inline formatting tags InDesign leaves *inside* a styled run
-    (``<ccase:…>``, ``<cs:…>``, kerning, …), then unescape content backslashes,
-    then drop control characters (soft returns become ``<0x000A>``→newline and
-    are removed here — the breaking space is kept on the previous line, so this
-    inverts the renderer's wrapping).
+    Full pipeline: decode escapes/strip inline tags, then post-decode cleanup.
+    NOT idempotent — call this on each raw value exactly once.
     """
-    value = _HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), value)
-    value = _TAG_RE.sub("", value)
-    value = _BACKSLASH_RE.sub(r"\1", value)
-    value = _CONTROL_RE.sub("", value)
-    return unicodedata.normalize("NFC", value)
+    return _post_decode(_decode_content(value))
 
 
 def _unescape_name(name: str) -> str:
-    """Style names are backslash-escaped by InDesign (e.g. ``Work Number\\/Name``)."""
+    """Style names are backslash-escaped by InDesign (e.g. ``Work Number\\/Name``).
+
+    Style names never contain numeric escapes or inline tags, so the simple
+    backslash unescape is sufficient — and we deliberately don't use
+    ``_decode_content`` here because we want a literal ``<`` inside a style
+    name (vanishingly unlikely, but possible) to survive."""
     return _BACKSLASH_RE.sub(r"\1", name)
 
 
 def _strip_inline(value: str) -> str:
-    """Decode ``<0x####>`` escapes, then remove inline formatting tags InDesign
-    emits *inside* a styled run (local leading ``<cl:…>``, ``<ccase:…>``, kerning,
-    …). Applied to a span value *before* splitting colliding runs on tab, so a
-    leading inline tag doesn't become a spurious piece (decode first so escaped
-    characters like ``<0x2019>`` survive the tag strip)."""
-    value = _HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), value)
-    return _TAG_RE.sub("", value)
+    """Decode a span value before splitting colliding runs on tab.
+
+    Identical to ``_decode_content``: same single-pass walker, just named for
+    intent at the callsite (``_assign_spans`` needs values decoded but with
+    ``\\t`` characters intact so it can split on them — the post-decode
+    cleanup that strips control chars happens via ``_post_decode`` on each
+    piece *after* the split).
+    """
+    return _decode_content(value)
 
 
 def enabled_field_order(config: ExportConfig) -> list[str]:
@@ -182,18 +242,24 @@ def _assign_spans(
         if not fields:
             continue  # a style we don't track
         if len(fields) == 1:
-            out[fields[0]] = _clean("".join(values))
+            # ``values`` are already _decode_content'd via _strip_inline above.
+            # Call _post_decode (control-strip + NFC) only — running the full
+            # _clean here would walk the decoded text a second time and either
+            # double-strip (`\\<x\\>` → `<x>` → ``) or double-unescape (`\\\\`
+            # → `\\` → ``X)`` for `\\X`).
+            out[fields[0]] = _post_decode("".join(values))
             continue
         # Colliding style used by several components. They may arrive as separate
         # spans OR as one span with the inter-component tab(s) embedded (InDesign
         # collapses adjacent runs of the same character style). Split on tab,
-        # clean each piece, and keep only those with real content — so ANY local
-        # modification (inline tag, control char, stray whitespace), wherever it
-        # sits in the run, is ignored and the cat number is the first real piece.
+        # post-decode each piece, and keep only those with real content — so ANY
+        # local modification (inline tag, control char, stray whitespace),
+        # wherever it sits in the run, is ignored and the cat number is the
+        # first real piece.
         pieces: list[str] = []
         for v in values:
             for p in v.split("\t"):
-                c = _clean(p)
+                c = _post_decode(p)
                 if c.strip():
                     pieces.append(c)
         for i, fld in enumerate(fields[:-1]):
@@ -239,10 +305,13 @@ def parse_low_tags(
         body = para[m.end() :]
 
         if para_style in section_styles:
-            # Decode escapes, strip inline tags, replace control chars, drop any
-            # "works N-NN" catalogue-range suffix, and collapse whitespace to get
-            # the clean gallery name.
-            name = _TAG_RE.sub("", _decode(body))
+            # Decode content escapes + strip inline tags in one pass, replace
+            # control chars (incl. soft returns from ``<0x000A>``) with spaces,
+            # drop any "works N-NN" catalogue-range suffix, collapse whitespace.
+            # ``_decode`` is the single-pass walker, so an escaped ``\<`` in
+            # the gallery name survives as a literal ``<`` rather than being
+            # consumed as a tag opener.
+            name = _decode(body)
             name = _CONTROL_RE.sub(" ", name)
             name = _WORKS_RANGE_RE.sub("", name)
             name = re.sub(r"\s+", " ", name)
