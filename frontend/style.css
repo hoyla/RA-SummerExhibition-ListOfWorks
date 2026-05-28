@@ -678,6 +678,45 @@ details.section-block[open] > .section-summary::before {
 .works-table .col-flags .badge { white-space: nowrap; }
 .work-row.row-excluded td.col-no::after { content: ' ✕'; color: #c0392b; font-size: 0.85em; text-decoration: none; }
 
+/* Row density — tighten the title cell (the two-line UPPERCASE + Title Case
+   block is the main driver of row height on large imports). The base .data-table
+   td padding is already 7px; not increasing per the design spec because that
+   would work against the spec's "denser rows" intent on this codebase. */
+.works-table tbody td { line-height: 1.35; }
+.works-table .title-cased-scan {
+  font-size: 12.5px;
+  margin-top: 1px;
+  line-height: 1.35;
+}
+
+/* Row hover affordance — rows open the work detail panel on click. The
+   .data-table tr:hover background already ships at #fafafa, so we only add
+   the cursor + transition, and a slide-in chevron on hover. */
+.works-table tbody tr.work-row {
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.works-table tbody tr.work-row:hover .works-row-chev {
+  opacity: 1;
+  transform: translateX(0);
+}
+.works-row-chev {
+  display: inline-block;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.12s, transform 0.12s;
+  color: #888;
+  font-size: 14px;
+  line-height: 1;
+}
+.works-table .col-chev {
+  width: 28px;
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 0;
+}
+.work-row.row-excluded td.col-chev { text-decoration: none; }
+
 .index-row.row-excluded td { opacity: 0.45; text-decoration: line-through; text-decoration-color: #999; }
 .index-row.row-excluded td.col-flags { text-decoration: none; }
 
@@ -899,6 +938,64 @@ details.section-block[open] > .section-summary::before {
   gap: 10px;
   padding-top: 4px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Import notes panel — new "Import notes" layout (shared LoW + Index) */
+/* ------------------------------------------------------------------ */
+
+.import-notes-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ra-dark);
+  margin: 0 0 4px;
+}
+.import-notes-counts {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.import-notes-counts strong { color: var(--ra-dark); font-weight: 600; }
+.import-notes-group { margin-bottom: 10px; }
+.import-notes-grouplbl {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.import-notes-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.import-notes-dot.dot-auto   { background: #5fb8ca; }   /* matches badge-info palette */
+.import-notes-dot.dot-review { background: #f0c040; }   /* matches badge-warning palette */
+.import-notes-hint {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
+  margin: 4px 0 8px;
+}
+.import-notes-hint kbd {
+  display: inline-block;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #fafafa;
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--ra-dark);
+  font-style: normal;
+}
+
+/* Calmer info-blue border when only auto-normalised notes remain (nothing to review) */
+.panel.has-warnings.all-auto-normalised { border-left-color: #5fb8ca; }
 
 /* ------------------------------------------------------------------ */
 /* Warning filter badges (clickable summary row)                       */

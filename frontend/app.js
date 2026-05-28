@@ -4114,8 +4114,12 @@ function renderWarningsPanel(warnings) {
 const _LOW_WARNING_LABELS = {
   // Changed: normalisation engine modified data
   whitespace_trimmed:     'Whitespace trimmed',
-  zero_edition_suppressed: 'Edition stripped',
-  edition_suppressed:      'Edition stripped',
+  // Distinct edition-suppression cases — see normalisation_service.py:374-477.
+  // zero_edition_suppressed: edition was explicitly 0 → there is no edition at all.
+  // edition_suppressed: edition total was within the (admin-configurable) suppress
+  // threshold → it IS the work itself, not a separate run, so it's folded in.
+  zero_edition_suppressed: 'Zero-edition dropped',
+  edition_suppressed:      'Small edition merged with work',
   // High severity: needs a decision
   edition_suppressed_no_price: 'Edition price lost',
   // Info: data quality issues needing review
@@ -4150,80 +4154,152 @@ function _lowWarnBadgeClass(type) {
   return 'badge-warning';
 }
 
-function _buildWarningsPanel() {
-  const warnings = _warningsAll;
-  const panel = document.getElementById('warnings-panel');
+// Shared "Import notes" panel renderer \u2014 used by both the LoW and Index
+// import-review pages. Same chip click/Alt-click contract as before; chips
+// split into two visually-labelled groups (auto-normalised vs needs review).
+// The Index has no high-severity tier, so opts.isHigh always returns false
+// there; that just means the red-first sort within Needs review is a no-op.
+function _renderImportNotesPanel(opts) {
+  const {
+    container, warnings, labelOf, badgeClassOf, isChanged, isHigh,
+    getHidden, setHidden, rebuild, detailColumnLabel, detailRefCellFor,
+  } = opts;
+  if (!container) return;
+
   if (!warnings.length) {
-    panel.innerHTML = '<p class="no-warnings">\u2713 No flagged issues</p>';
+    container.classList.remove('has-warnings', 'all-auto-normalised');
+    container.innerHTML = '<p class="no-warnings">\u2713 No flagged issues</p>';
     return;
   }
-  panel.classList.add('has-warnings');
+  container.classList.add('has-warnings');
 
-  // Summary counts by type
+  // Counts by type
   const counts = {};
   for (const w of warnings) {
     counts[w.warning_type] = (counts[w.warning_type] || 0) + 1;
   }
-  const summaryBadges = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([type, n]) => {
-      const muted = _hiddenWarningTypes.has(type);
-      const badgeClass = `badge ${_lowWarnBadgeClass(type)} warning-filter-btn`;
-      return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_lowWarnLabel(type))}: ${n}</button>`;
-    }).join('');
+  const allTypes = Object.keys(counts);
+  const hidden = getHidden();
 
-  // Detailed rows — filtered by hidden types
-  const visible = warnings.filter(w => !_hiddenWarningTypes.has(w.warning_type));
-  const rows = visible.map(w => {
-    const who = [w.cat_no, w.artist_name, w.title].filter(Boolean).join(' \u2013 ');
-    const workCell = (w.work_id && who)
-      ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(w.work_id)}')">${esc(who)}</button>`
-      : (esc(who) || '\u2014');
-    return `<tr>
-      <td><span class="badge ${_lowWarnBadgeClass(w.warning_type)}">${esc(_lowWarnLabel(w.warning_type))}</span></td>
+  // Group types: auto-normalised (engine changed data) vs needs review.
+  // Within Needs review, high-severity (red) types sort first, then by count.
+  const changedTypes = allTypes.filter(t => isChanged(t))
+    .sort((a, b) => counts[b] - counts[a]);
+  const reviewTypes = allTypes.filter(t => !isChanged(t))
+    .sort((a, b) => {
+      const aHi = isHigh(a) ? 1 : 0;
+      const bHi = isHigh(b) ? 1 : 0;
+      if (aHi !== bHi) return bHi - aHi;
+      return counts[b] - counts[a];
+    });
+
+  const autoTotal = changedTypes.reduce((s, t) => s + counts[t], 0);
+  const reviewTotal = reviewTypes.reduce((s, t) => s + counts[t], 0);
+  const total = warnings.length;
+
+  // Calmer border when nothing needs review (all auto-normalised)
+  container.classList.toggle('all-auto-normalised', reviewTotal === 0);
+
+  function chipHTML(type) {
+    const muted = hidden.has(type);
+    const cls = `badge ${badgeClassOf(type)} warning-filter-btn${muted ? ' badge-muted' : ''}`;
+    const title = `${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only`;
+    return `<button type="button" class="${cls}" data-type="${esc(type)}" title="${title}">${esc(labelOf(type))}: ${counts[type]}</button>`;
+  }
+
+  const autoChipsHTML = changedTypes.map(chipHTML).join('');
+  const reviewChipsHTML = reviewTypes.map(chipHTML).join('');
+
+  // Detail rows — filtered by hidden types
+  const visible = warnings.filter(w => !hidden.has(w.warning_type));
+  const rows = visible.map(w => `
+    <tr>
+      <td><span class="badge ${badgeClassOf(w.warning_type)}">${esc(labelOf(w.warning_type))}</span></td>
       <td>${esc(w.message)}</td>
-      <td class="muted col-work">${workCell}</td>
-    </tr>`;
-  }).join('');
+      <td class="muted col-work">${detailRefCellFor(w)}</td>
+    </tr>`).join('');
 
-  const hiddenCount = warnings.length - visible.length;
-  const countLabel = hiddenCount > 0
-    ? `${visible.length} shown of ${warnings.length}`
-    : String(warnings.length);
+  const detailSummary = visible.length === total
+    ? `${total.toLocaleString()} items`
+    : `${visible.length.toLocaleString()} of ${total.toLocaleString()} items`;
 
-  panel.innerHTML = `
-    <h3>\u26a0 Flagged Issues (${countLabel})</h3>
-    <div class="warning-filter-bar">${summaryBadges}</div>
-    <details>
-      <summary class="warnings-toggle">Show detail</summary>
-      <table class="data-table warnings-table" style="margin-top:10px">
-        <thead><tr><th>Type</th><th>Message</th><th>Work</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </details>`;
+  // Counts line — only mention sub-counts that are non-zero
+  const countsLineParts = [`<strong>${total.toLocaleString()}</strong> item${total !== 1 ? 's' : ''}`];
+  if (autoTotal) countsLineParts.push(`<strong>${autoTotal.toLocaleString()}</strong> auto-normalised`);
+  if (reviewTotal) countsLineParts.push(`<strong>${reviewTotal.toLocaleString()}</strong> need${reviewTotal === 1 ? 's' : ''} review`);
+  const countsLine = countsLineParts.join(' · ');
 
-  // Attach badge click handlers after innerHTML
-  panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
+  const groupsHTML = [
+    autoChipsHTML ? `
+      <div class="import-notes-group">
+        <div class="import-notes-grouplbl"><span class="import-notes-dot dot-auto"></span>Auto-normalised — applied automatically</div>
+        <div class="warning-filter-bar">${autoChipsHTML}</div>
+      </div>` : '',
+    reviewChipsHTML ? `
+      <div class="import-notes-group">
+        <div class="import-notes-grouplbl"><span class="import-notes-dot dot-review"></span>Needs review — may affect export</div>
+        <div class="warning-filter-bar">${reviewChipsHTML}</div>
+      </div>` : '',
+  ].join('');
+
+  container.innerHTML = `
+    <div class="import-notes">
+      <h3 class="import-notes-title">⚠ Import notes</h3>
+      <div class="import-notes-counts">${countsLine}</div>
+      ${groupsHTML}
+      <div class="import-notes-hint">Click a chip to hide that type · <kbd>⌥</kbd> Alt-click to show only that type</div>
+      <details class="import-notes-detail">
+        <summary class="warnings-toggle">Show detail — ${detailSummary}</summary>
+        <table class="data-table warnings-table" style="margin-top:10px">
+          <thead><tr><th>Type</th><th>Message</th><th>${esc(detailColumnLabel)}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </details>
+    </div>`;
+
+  // Chip click handlers — preserve the two-action contract:
+  //   Click     — toggle this type in the hidden set
+  //   Alt+click — solo this type; Alt+click the lone visible type to restore all
+  container.querySelectorAll('.warning-filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const type = btn.dataset.type;
-      const allTypes = Object.keys(counts);
+      const h = getHidden();
+      let next;
       if (e.altKey) {
-        // Solo / unsolo: Alt+click shows only this type
-        const visibleTypes = allTypes.filter(t => !_hiddenWarningTypes.has(t));
+        const visibleTypes = allTypes.filter(t => !h.has(t));
         if (visibleTypes.length === 1 && visibleTypes[0] === type) {
-          _hiddenWarningTypes = new Set();  // unsolo — restore all
+          next = new Set();  // unsolo
         } else {
-          _hiddenWarningTypes = new Set(allTypes.filter(t => t !== type));
+          next = new Set(allTypes.filter(t => t !== type));
         }
       } else {
-        if (_hiddenWarningTypes.has(type)) {
-          _hiddenWarningTypes.delete(type);
-        } else {
-          _hiddenWarningTypes.add(type);
-        }
+        next = new Set(h);
+        if (next.has(type)) next.delete(type); else next.add(type);
       }
-      _buildWarningsPanel();
+      setHidden(next);
+      rebuild();
     });
+  });
+}
+
+function _buildWarningsPanel() {
+  _renderImportNotesPanel({
+    container: document.getElementById('warnings-panel'),
+    warnings: _warningsAll,
+    labelOf: _lowWarnLabel,
+    badgeClassOf: _lowWarnBadgeClass,
+    isChanged: (t) => _LOW_CHANGED_TYPES.has(t),
+    isHigh: (t) => _LOW_HIGH_SEVERITY_TYPES.has(t),
+    getHidden: () => _hiddenWarningTypes,
+    setHidden: (s) => { _hiddenWarningTypes = s; },
+    rebuild: _buildWarningsPanel,
+    detailColumnLabel: 'Work',
+    detailRefCellFor: (w) => {
+      const who = [w.cat_no, w.artist_name, w.title].filter(Boolean).join(' \u2013 ');
+      return (w.work_id && who)
+        ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(w.work_id)}')">${esc(who)}</button>`
+        : (esc(who) || '\u2014');
+    },
   });
 }
 
@@ -4339,6 +4415,7 @@ function renderSections(importId, sections, cfg) {
           ${cfg.show_artwork_column ? '<th>Artwork</th>' : ''}
           <th>Medium</th>
           <th class="col-flags">Flags</th>
+          <th class="col-chev" aria-hidden="true"></th>
         </tr></thead>
         <tbody id="tbody-${esc(section.id)}">
           ${section.works.map(w => workRowHTML(importId, w, cfg)).join('')}
@@ -4669,7 +4746,7 @@ function workRowHTML(importId, w, cfg) {
   }
 
   return `
-    <tr id="wr-${esc(w.id)}" class="work-row ${included ? '' : 'row-excluded'}" style="cursor:pointer"
+    <tr id="wr-${esc(w.id)}" class="work-row ${included ? '' : 'row-excluded'}"
       onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">
       <td class="col-no">${esc(w.raw_cat_no ?? '')}</td>
       <td class="${hasOverride && o?.artist_name_override ? 'cell-overridden' : ''}">${esc(eff.artist_name ?? '')}${honorifics}</td>
@@ -4679,9 +4756,10 @@ function workRowHTML(importId, w, cfg) {
       ${cfg.show_artwork_column ? `<td class="${hasOverride && o?.artwork_override ? 'cell-overridden' : ''}">${w.artwork != null ? esc(String(w.artwork)) : ''}</td>` : ''}
       <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
       <td class="col-flags">${flags.join(' ')}</td>
+      <td class="col-chev" aria-hidden="true"><span class="works-row-chev">&rsaquo;</span></td>
     </tr>
     <tr id="ovr-${esc(w.id)}" class="override-form-row" style="display:none">
-      <td colspan="${cfg.show_artwork_column ? 8 : 7}" id="ovc-${esc(w.id)}"></td>
+      <td colspan="${cfg.show_artwork_column ? 9 : 8}" id="ovc-${esc(w.id)}"></td>
     </tr>`;
 }
 
@@ -5806,79 +5884,20 @@ function _idxWarningsBadges(artistId) {
 }
 
 function _buildIndexWarningsPanel() {
-  const warnings = _indexWarningsAll;
-  const panel = document.getElementById('index-warnings-panel');
-  if (!warnings.length) {
-    panel.innerHTML = '<p class="no-warnings">\u2713 No flagged issues</p>';
-    return;
-  }
-  panel.classList.add('has-warnings');
-
-  // Summary counts by type
-  const counts = {};
-  for (const w of warnings) {
-    counts[w.warning_type] = (counts[w.warning_type] || 0) + 1;
-  }
-  const summaryBadges = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([type, n]) => {
-      const muted = _hiddenIndexWarningTypes.has(type);
-      const isChanged = _IDX_CHANGED_TYPES.has(type);
-      const badgeClass = isChanged ? 'badge badge-info warning-filter-btn' : 'badge badge-warning warning-filter-btn';
-      return `<button type="button" class="${badgeClass}${muted ? ' badge-muted' : ''}" data-type="${esc(type)}" title="${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only">${esc(_idxWarnLabel(type))}: ${n}</button>`;
-    }).join('');
-
-  // Detailed rows — filtered by hidden types
-  const visible = warnings.filter(w => !_hiddenIndexWarningTypes.has(w.warning_type));
-  const rows = visible.map(w => {
-    const rowCell = (w.artist_id && w.row_number)
-      ? `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(w.artist_id)}')">${esc('Row ' + w.row_number)}</button>`
-      : (w.row_number ? esc('Row ' + w.row_number) : '\u2014');
-    return `<tr>
-      <td><span class="badge ${_IDX_CHANGED_TYPES.has(w.warning_type) ? 'badge-info' : 'badge-warning'}">${esc(_idxWarnLabel(w.warning_type))}</span></td>
-      <td>${esc(w.message)}</td>
-      <td class="muted col-work">${rowCell}</td>
-    </tr>`;
-  }).join('');
-
-  const hiddenCount = warnings.length - visible.length;
-  const countLabel = hiddenCount > 0
-    ? `${visible.length} shown of ${warnings.length}`
-    : String(warnings.length);
-
-  panel.innerHTML = `
-    <h3>\u26a0 Flagged Issues (${countLabel})</h3>
-    <div class="warning-filter-bar">${summaryBadges}</div>
-    <details>
-      <summary class="warnings-toggle">Show detail</summary>
-      <table class="data-table warnings-table" style="margin-top:10px">
-        <thead><tr><th>Type</th><th>Message</th><th>Row</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </details>`;
-
-  // Attach badge click handlers
-  panel.querySelectorAll('.warning-filter-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const type = btn.dataset.type;
-      const allTypes = Object.keys(counts);
-      if (e.altKey) {
-        // Solo / unsolo: Alt+click shows only this type
-        const visibleTypes = allTypes.filter(t => !_hiddenIndexWarningTypes.has(t));
-        if (visibleTypes.length === 1 && visibleTypes[0] === type) {
-          _hiddenIndexWarningTypes = new Set();  // unsolo — restore all
-        } else {
-          _hiddenIndexWarningTypes = new Set(allTypes.filter(t => t !== type));
-        }
-      } else {
-        if (_hiddenIndexWarningTypes.has(type)) {
-          _hiddenIndexWarningTypes.delete(type);
-        } else {
-          _hiddenIndexWarningTypes.add(type);
-        }
-      }
-      _buildIndexWarningsPanel();
-    });
+  _renderImportNotesPanel({
+    container: document.getElementById('index-warnings-panel'),
+    warnings: _indexWarningsAll,
+    labelOf: _idxWarnLabel,
+    badgeClassOf: (t) => _IDX_CHANGED_TYPES.has(t) ? 'badge-info' : 'badge-warning',
+    isChanged: (t) => _IDX_CHANGED_TYPES.has(t),
+    isHigh: () => false,  // Index has no high-severity warning tier
+    getHidden: () => _hiddenIndexWarningTypes,
+    setHidden: (s) => { _hiddenIndexWarningTypes = s; },
+    rebuild: _buildIndexWarningsPanel,
+    detailColumnLabel: 'Row',
+    detailRefCellFor: (w) => (w.artist_id && w.row_number)
+      ? `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(w.artist_id)}')">Row ${esc(String(w.row_number))}</button>`
+      : (w.row_number ? `Row ${esc(String(w.row_number))}` : '\u2014'),
   });
 }
 
