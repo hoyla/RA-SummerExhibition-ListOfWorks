@@ -672,11 +672,63 @@ details.section-block[open] > .section-summary::before {
 .works-table td:nth-child(2) { min-width: 180px; } /* Artist column */
 .works-table .col-actions { width: 70px; text-align: center; }
 
+/* Tabular numerals so cat numbers and prices vertically align across rows. */
+.works-table .col-no,
+.works-table .col-price { font-variant-numeric: tabular-nums; }
+
 .work-row.row-excluded td { opacity: 0.45; text-decoration: line-through; text-decoration-color: #999; }
 .work-row.row-excluded td.col-flags { text-decoration: none; }
-.works-table .col-flags { text-align: right; max-width: 160px; white-space: normal; line-height: 1.8; }
+.works-table .col-flags { text-align: right; max-width: 160px; white-space: normal; }
 .works-table .col-flags .badge { white-space: nowrap; }
+/* Flag pills laid out via flex+gap (replaces the old line-height: 1.8 hack)
+   — gives consistent 4px gaps in both axes when pills wrap. */
+.cell-flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;     /* keep each pill at its natural height (no stretch) */
+  gap: 4px;
+  justify-content: flex-end;
+}
 .work-row.row-excluded td.col-no::after { content: ' ✕'; color: #c0392b; font-size: 0.85em; text-decoration: none; }
+
+/* Row density — tighten the title cell (the two-line UPPERCASE + Title Case
+   block is the main driver of row height on large imports). The base .data-table
+   td padding is already 7px; not increasing per the design spec because that
+   would work against the spec's "denser rows" intent on this codebase. */
+.works-table tbody td { line-height: 1.35; }
+.works-table .title-cased-scan {
+  font-size: 12.5px;
+  margin-top: 1px;
+  line-height: 1.35;
+}
+
+/* Row hover affordance — rows open the work detail panel on click. The
+   .data-table tr:hover background already ships at #fafafa, so we only add
+   the cursor + transition, and a slide-in chevron on hover. */
+.works-table tbody tr.work-row {
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.works-table tbody tr.work-row:hover .works-row-chev {
+  opacity: 1;
+  transform: translateX(0);
+}
+.works-row-chev {
+  display: inline-block;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.12s, transform 0.12s;
+  color: #888;
+  font-size: 14px;
+  line-height: 1;
+}
+.works-table .col-chev {
+  width: 28px;
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 0;
+}
+.work-row.row-excluded td.col-chev { text-decoration: none; }
 
 .index-row.row-excluded td { opacity: 0.45; text-decoration: line-through; text-decoration-color: #999; }
 .index-row.row-excluded td.col-flags { text-decoration: none; }
@@ -901,15 +953,140 @@ details.section-block[open] > .section-summary::before {
 }
 
 /* ------------------------------------------------------------------ */
+/* Import notes panel — new "Import notes" layout (shared LoW + Index) */
+/* ------------------------------------------------------------------ */
+
+/* Title + counts share one row at the top of the panel; wraps on narrow widths. */
+.import-notes-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 12px;
+}
+.import-notes-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ra-dark);
+  margin: 0;
+}
+.import-notes-counts {
+  font-size: 13px;
+  color: var(--muted);
+}
+.import-notes-counts .sep {
+  color: var(--border-strong);
+  margin: 0 8px;
+}
+.import-notes-counts strong { color: var(--ra-dark); font-weight: 600; }
+
+/* Two-column grid on wide viewports; auto-stacks when there isn't room for
+   two ~280px columns side by side. Gap handles inter-group spacing in both
+   axes, so no margin-bottom on .import-notes-group. */
+.import-notes-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.import-notes-group { min-width: 0; }  /* let chips wrap inside narrow columns */
+.import-notes-grouplbl {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.import-notes-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.import-notes-dot.dot-auto   { background: #5fb8ca; }   /* matches badge-info palette */
+.import-notes-dot.dot-review { background: #f0c040; }   /* matches badge-warning palette */
+.import-notes-hint {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
+  margin: 4px 0 8px;
+}
+.import-notes-hint kbd {
+  display: inline-block;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #f0f0f0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ra-dark);
+  font-style: normal;
+}
+
+/* Calmer info-blue border when only auto-normalised notes remain (nothing to review) */
+.panel.has-warnings.all-auto-normalised { border-left-color: #5fb8ca; }
+
+/* "Show detail" disclosure — reads as a clickable action (RA red, rotating
+   marker, dashed top border) rather than a subheading. */
+.import-notes-detail {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.import-notes-detail > summary {
+  cursor: pointer;
+  color: var(--ra-red);
+  font-weight: 500;
+  font-size: 13px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+.import-notes-detail > summary::-webkit-details-marker { display: none; }
+.import-notes-detail > summary::before {
+  content: "▶";
+  font-size: 9px;
+  color: var(--ra-red);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.import-notes-detail[open] > summary::before { transform: rotate(90deg); }
+
+/* ------------------------------------------------------------------ */
 /* Warning filter badges (clickable summary row)                       */
 /* ------------------------------------------------------------------ */
 
 .warning-filter-bar { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
 
 .warning-filter-btn {
-  /* inherits .badge sizing via class; override to behave as a button */
+  /* inherits .badge palette via class; override sizing for chip shape
+     (pill, slightly larger than the base .badge). Scoped to the chip class
+     so it doesn't propagate to row-level badges — those keep their 3px
+     radius until the house-style pill update lands (see roadmap). */
   cursor: pointer;
   transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+  padding: 3px 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  border-radius: 9999px;
+}
+
+/* Chip count — sits inside each filter chip, separated from the label by a
+   subtle vertical divider (currentColor so it inherits the chip's text colour
+   across blue/amber/red variants). */
+.warning-filter-btn .chip-count {
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid currentColor;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Hover: deepen the existing colour */
@@ -1475,11 +1652,10 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .badge-ra {
   background: var(--ra-red);
   color: #fff;
-  font-size: 10px;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
   letter-spacing: 0.5px;
+  /* Inherits font-size, padding, border-radius from base .badge so it sits at
+     the same intrinsic height as Trimmed/Override/Norm in the flags column. */
 }
 
 .badge-company {
@@ -1526,10 +1702,9 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   background: #e8f4f0;
   color: #1a7a5a;
   border: 1px solid #8fd6b8;
-  font-size: 10px;
   font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
+  /* Inherits font-size/padding/border-radius from base .badge so it sits
+     at the same intrinsic height as other flag pills (was 10px / 1px 5px). */
 }
 
 .badge-known {
@@ -1542,14 +1717,16 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   border-radius: 3px;
 }
 
+/* Override = "a human has edited this work". Semantically the opposite of the
+   amber 'needs review' warnings — so it gets the editorial-layer slate-blue
+   palette that's already used for .cell-overridden (italic slate) and the
+   work-detail panel borders. Inherits font-size/padding/border-radius from
+   base .badge so it sits at the same intrinsic height as other flag pills. */
 .badge-override {
-  background: #fff3e0;
-  color: #b36b00;
-  border: 1px solid #f0c040;
-  font-size: 10px;
+  background: #eef2fa;
+  color: #5070a0;
+  border: 1px solid #c7d8f5;
   font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
 }
 
 .badge-merged {

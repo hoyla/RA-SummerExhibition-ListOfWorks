@@ -583,6 +583,14 @@ controls and editor UX around it.
     corrections by type, ranked by frequency, splitting systematic (→ a
     normalisation rule) from idiosyncratic (→ leave it). No new infrastructure.
 - Per-gallery catalogue-number styles in the LOW template (numerals vs text)
+- **House-style pill update.** Make every `.badge` instance pill-shaped
+  (`border-radius: 9999px`) for visual consistency between the import-notes
+  chips (already pill-shaped) and the row-level flag pills, honorifics pill,
+  warning labels, and other badge surfaces (currently `border-radius: 3px`).
+  Deferred from the 2026-05-28 Claude Design handoff (PR #74) — the chips were
+  made pill-shaped in isolation; doing the same to every other `.badge` is a
+  larger blast radius (touches every surface using the primitive) and worth
+  doing as its own change with before/after eyeballing.
 - Undo / revision history for overrides
 - Bulk override import from Excel
 - Multi-user conflict resolution (optimistic locking)
