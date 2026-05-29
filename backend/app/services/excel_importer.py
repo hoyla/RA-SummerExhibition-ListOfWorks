@@ -73,9 +73,7 @@ def _validate_headers(headers: list[str]) -> list[str]:
         for col in sorted(missing_required):
             matches = get_close_matches(col, list(found), n=1, cutoff=0.6)
             if matches:
-                suggestions.append(
-                    f'  - "{col}" not found (did you mean "{matches[0]}"?)'
-                )
+                suggestions.append(f'  - "{col}" not found (did you mean "{matches[0]}"?)')
             else:
                 suggestions.append(f'  - "{col}" not found')
 
@@ -126,9 +124,7 @@ def import_excel(
     record_name = display_name or file_path
 
     # Duplicate filename detection
-    duplicate_detected = (
-        db.query(Import).filter(Import.filename == record_name).first() is not None
-    )
+    duplicate_detected = db.query(Import).filter(Import.filename == record_name).first() is not None
 
     import_record = Import(filename=record_name)
     db.add(import_record)
@@ -280,10 +276,7 @@ def _open_and_parse_workbook(file_path: str) -> Tuple[List[str], List[dict], Lis
             v = "'" + v
         return v
 
-    rows = [
-        {h: _cell_value(c) for h, c in zip(headers, row)}
-        for row in sheet.iter_rows(min_row=2)
-    ]
+    rows = [{h: _cell_value(c) for h, c in zip(headers, row)} for row in sheet.iter_rows(min_row=2)]
 
     return headers, rows, header_warnings
 
@@ -356,9 +349,7 @@ def reimport_excel(
     if work_ids:
         existing_overrides_by_work = {
             o.work_id: o
-            for o in db.query(WorkOverride)
-            .filter(WorkOverride.work_id.in_(work_ids))
-            .all()
+            for o in db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all()
         }
 
     # Side-table for restoring overrides keyed by old cat_no (the matcher
@@ -369,16 +360,12 @@ def reimport_excel(
     for w in existing_works:
         cat_key = str(w.raw_cat_no).strip() if w.raw_cat_no is not None else ""
         ovr_obj = existing_overrides_by_work.get(w.id)
-        ovr_dict = (
-            {f: getattr(ovr_obj, f) for f in OVERRIDE_FIELDS} if ovr_obj else None
-        )
+        ovr_dict = {f: getattr(ovr_obj, f) for f in OVERRIDE_FIELDS} if ovr_obj else None
         old_snapshots.append(
             OldWorkSnapshot(
                 cat_no=cat_key,
                 gallery=str(w.raw_gallery or ""),
-                fingerprint=compute_fingerprint(
-                    w.raw_title, w.raw_artist, w.raw_medium
-                ),
+                fingerprint=compute_fingerprint(w.raw_title, w.raw_artist, w.raw_medium),
                 include_in_export=w.include_in_export,
                 override=ovr_dict,
                 raw_title=w.raw_title,
@@ -402,9 +389,7 @@ def reimport_excel(
         gallery_name = row_dict.get("Gallery") or "Uncategorised"
         new_rows.append(
             NewWorkRow(
-                cat_no=(
-                    str(raw_cat_no).strip() if raw_cat_no is not None else ""
-                ),
+                cat_no=(str(raw_cat_no).strip() if raw_cat_no is not None else ""),
                 gallery=str(gallery_name),
                 fingerprint=compute_fingerprint(
                     row_dict.get("Title"),
@@ -435,18 +420,14 @@ def reimport_excel(
 
     if gallery_scope is None:
         if work_ids:
-            db.query(WorkOverride).filter(
-                WorkOverride.work_id.in_(work_ids)
-            ).delete(synchronize_session=False)
-        db.query(ValidationWarning).filter(
-            ValidationWarning.import_id == import_id
-        ).delete(synchronize_session=False)
-        db.query(Work).filter(Work.import_id == import_id).delete(
+            db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(ValidationWarning).filter(ValidationWarning.import_id == import_id).delete(
             synchronize_session=False
         )
-        db.query(Section).filter(Section.import_id == import_id).delete(
-            synchronize_session=False
-        )
+        db.query(Work).filter(Work.import_id == import_id).delete(synchronize_session=False)
+        db.query(Section).filter(Section.import_id == import_id).delete(synchronize_session=False)
         db.flush()
         next_position = 1
     else:
@@ -467,21 +448,21 @@ def reimport_excel(
             w.id for w in existing_works if w.section_id in set(in_scope_section_ids)
         ]
         if in_scope_work_ids:
-            db.query(WorkOverride).filter(
-                WorkOverride.work_id.in_(in_scope_work_ids)
-            ).delete(synchronize_session=False)
+            db.query(WorkOverride).filter(WorkOverride.work_id.in_(in_scope_work_ids)).delete(
+                synchronize_session=False
+            )
             # Per-work validation warnings only (header warnings keyed by
             # work_id=NULL are global and survive a selective re-import).
             db.query(ValidationWarning).filter(
                 ValidationWarning.work_id.in_(in_scope_work_ids)
             ).delete(synchronize_session=False)
         if in_scope_section_ids:
-            db.query(Work).filter(
-                Work.section_id.in_(in_scope_section_ids)
-            ).delete(synchronize_session=False)
-            db.query(Section).filter(
-                Section.id.in_(in_scope_section_ids)
-            ).delete(synchronize_session=False)
+            db.query(Work).filter(Work.section_id.in_(in_scope_section_ids)).delete(
+                synchronize_session=False
+            )
+            db.query(Section).filter(Section.id.in_(in_scope_section_ids)).delete(
+                synchronize_session=False
+            )
         db.flush()
         # New galleries (in scope but no pre-existing section) get
         # positions after the current max.
@@ -511,9 +492,7 @@ def reimport_excel(
 
     # Map (in_scope_row_index → matched item) so we can restore override
     # data as each new Work is created.
-    matched_by_in_scope_idx: Dict[int, object] = {
-        m.new_row_index: m for m in plan.matched
-    }
+    matched_by_in_scope_idx: Dict[int, object] = {m.new_row_index: m for m in plan.matched}
     in_scope_counter = 0
 
     for row_dict in rows:

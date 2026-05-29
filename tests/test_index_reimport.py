@@ -192,9 +192,7 @@ class TestIndexReimportOverrides:
         # Verify override was restored
         artists_after = _get_artists(client, import_id)
         adams_after = next(a for a in artists_after if a["last_name"] == "Adams")
-        ovr = client.get(
-            f"/index/imports/{import_id}/artists/{adams_after['id']}/override"
-        )
+        ovr = client.get(f"/index/imports/{import_id}/artists/{adams_after['id']}/override")
         assert ovr.status_code == 200
         assert ovr.json()["first_name_override"] == "Sir Roger"
 
@@ -255,9 +253,7 @@ class TestIndexReimportOverrides:
 
         artists_after = _get_artists(client, import_id)
         adams_after = next(a for a in artists_after if a["last_name"] == "Adams")
-        ovr = client.get(
-            f"/index/imports/{import_id}/artists/{adams_after['id']}/override"
-        )
+        ovr = client.get(f"/index/imports/{import_id}/artists/{adams_after['id']}/override")
         assert ovr.status_code == 200
         assert ovr.json()["is_company_override"] is True
 
@@ -332,9 +328,7 @@ class TestIndexReimportAuditAndWarnings:
         # e.g. assert the rows have higher created_at than before, or check
         # that the warning records carry the new import's id only.
         warnings_after = (
-            db_session.query(ValidationWarning)
-            .filter(ValidationWarning.import_id == iid)
-            .all()
+            db_session.query(ValidationWarning).filter(ValidationWarning.import_id == iid).all()
         )
         assert isinstance(warnings_after, list)
 

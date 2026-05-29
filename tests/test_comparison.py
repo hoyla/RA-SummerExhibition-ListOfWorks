@@ -158,23 +158,17 @@ class TestExtractLowNameParts:
 
 class TestCompareNames:
     def test_exact_match(self):
-        level, diffs = _compare_names(
-            "Roger Adams", None, "Roger", "Adams", None, None, False
-        )
+        level, diffs = _compare_names("Roger Adams", None, "Roger", "Adams", None, None, False)
         assert level == MatchLevel.exact
 
     def test_equivalent_same_words(self):
         """LoW 'Ryan Gander RA' vs Index first='Ryan' last='Gander' quals='RA'."""
-        level, diffs = _compare_names(
-            "Ryan Gander", "RA", "Ryan", "Gander", None, "RA", False
-        )
+        level, diffs = _compare_names("Ryan Gander", "RA", "Ryan", "Gander", None, "RA", False)
         assert level in (MatchLevel.exact, MatchLevel.equivalent)
 
     def test_partial_extra_quals_in_index(self):
         """LoW 'Ryan Gander RA' vs Index 'Ryan Gander OBE RA'."""
-        level, diffs = _compare_names(
-            "Ryan Gander", "RA", "Ryan", "Gander", None, "OBE RA", False
-        )
+        level, diffs = _compare_names("Ryan Gander", "RA", "Ryan", "Gander", None, "OBE RA", False)
         assert level == MatchLevel.partial_honorific
         assert any("extra_quals_in_index" in d for d in diffs)
 
@@ -200,15 +194,11 @@ class TestCompareNames:
         assert level in (MatchLevel.exact, MatchLevel.equivalent)
 
     def test_no_match(self):
-        level, diffs = _compare_names(
-            "Alice Smith", None, "Bob", "Jones", None, None, False
-        )
+        level, diffs = _compare_names("Alice Smith", None, "Bob", "Jones", None, None, False)
         assert level == MatchLevel.none
 
     def test_last_name_match_first_name_different(self):
-        level, diffs = _compare_names(
-            "Alice Smith", None, "Bob", "Smith", None, None, False
-        )
+        level, diffs = _compare_names("Alice Smith", None, "Bob", "Smith", None, None, False)
         assert level == MatchLevel.partial_name
         assert "first_name_different" in diffs
 
@@ -432,11 +422,7 @@ class TestCompareDatasets:
         db_session.commit()
 
         # Apply override to correct the Index name
-        artist = (
-            db_session.query(IndexArtist)
-            .filter(IndexArtist.import_id == idx.id)
-            .first()
-        )
+        artist = db_session.query(IndexArtist).filter(IndexArtist.import_id == idx.id).first()
         ovr = IndexArtistOverride(
             artist_id=artist.id,
             first_name_override="Roger",

@@ -36,9 +36,7 @@ def seed_builtin_templates(db=None) -> None:
                 seed = json.load(fp)
             name = seed.pop("_name", slug)
             config_type = seed.pop("_config_type", "template")
-            cfg_hash = hashlib.sha256(
-                json.dumps(seed, sort_keys=True).encode()
-            ).hexdigest()
+            cfg_hash = hashlib.sha256(json.dumps(seed, sort_keys=True).encode()).hexdigest()
             existing = db.query(_Ruleset).filter(_Ruleset.slug == slug).first()
             if existing:
                 if existing.name != name:
@@ -62,8 +60,7 @@ def seed_builtin_templates(db=None) -> None:
 
         # Delete built-in templates that no longer have a corresponding file
         db_slugs = {
-            row[0]
-            for row in db.query(_Ruleset.slug).filter(_Ruleset.is_builtin == True).all()
+            row[0] for row in db.query(_Ruleset.slug).filter(_Ruleset.is_builtin == True).all()
         }
         deleted_slugs = db_slugs - seed_slugs
         if deleted_slugs:

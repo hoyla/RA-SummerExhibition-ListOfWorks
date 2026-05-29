@@ -29,9 +29,7 @@ from backend.app.models.work_model import Work
 
 def _seed_import(db):
     """Create a minimal LoW import with one section and one work."""
-    imp = Import(
-        filename="test.xlsx", disk_filename="test.xlsx", product_type="list_of_works"
-    )
+    imp = Import(filename="test.xlsx", disk_filename="test.xlsx", product_type="list_of_works")
     db.add(imp)
     db.flush()
     sec = Section(import_id=imp.id, name="A", position=1)
@@ -53,9 +51,7 @@ def _seed_import(db):
 
 def _seed_index_import(db):
     """Create a minimal index import with one artist."""
-    imp = Import(
-        filename="index.xlsx", disk_filename="index.xlsx", product_type="artists_index"
-    )
+    imp = Import(filename="index.xlsx", disk_filename="index.xlsx", product_type="artists_index")
     db.add(imp)
     db.flush()
     artist = IndexArtist(
@@ -81,9 +77,7 @@ def _seed_template(db, config_type="template"):
     r = Ruleset(
         name="Test Template",
         config=cfg,
-        config_hash=hashlib.sha256(
-            json.dumps(cfg, sort_keys=True).encode()
-        ).hexdigest(),
+        config_hash=hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest(),
         config_type=config_type,
         is_builtin=False,
     )
@@ -312,16 +306,12 @@ class TestIndexRoles:
 class TestIndexTemplateRoles:
     def test_viewer_cannot_create(self, client):
         body = {"name": "T", "paragraph_separator": ""}
-        r = client.post(
-            "/index/templates", json=body, headers={"X-User-Role": "viewer"}
-        )
+        r = client.post("/index/templates", json=body, headers={"X-User-Role": "viewer"})
         assert r.status_code == 403
 
     def test_editor_can_create(self, client):
         body = {"name": "T", "paragraph_separator": ""}
-        r = client.post(
-            "/index/templates", json=body, headers={"X-User-Role": "editor"}
-        )
+        r = client.post("/index/templates", json=body, headers={"X-User-Role": "editor"})
         assert r.status_code == 201
 
     def test_editor_cannot_delete(self, client, db_session):

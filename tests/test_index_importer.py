@@ -31,9 +31,7 @@ def _make_workbook(rows, tmp_path: Path) -> str:
     """
     wb = Workbook()
     ws = wb.active
-    ws.append(
-        ["Title", "First Name", "Last Name", "Quals", "Company", "Address 1", "Cat Nos"]
-    )
+    ws.append(["Title", "First Name", "Last Name", "Quals", "Company", "Address 1", "Cat Nos"])
     for row in rows:
         ws.append(list(row))
     path = str(tmp_path / "index.xlsx")
@@ -349,20 +347,13 @@ class TestMerging:
         courtesy_artists = [
             a
             for a in artists
-            if db_session.query(IndexCatNumber)
-            .filter_by(artist_id=a.id)
-            .first()
-            .courtesy
+            if db_session.query(IndexCatNumber).filter_by(artist_id=a.id).first().courtesy
             is not None
         ]
         plain_artists = [
             a
             for a in artists
-            if db_session.query(IndexCatNumber)
-            .filter_by(artist_id=a.id)
-            .first()
-            .courtesy
-            is None
+            if db_session.query(IndexCatNumber).filter_by(artist_id=a.id).first().courtesy is None
         ]
         assert len(courtesy_artists) == 1
         assert len(plain_artists) == 1

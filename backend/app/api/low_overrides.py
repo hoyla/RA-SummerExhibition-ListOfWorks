@@ -18,9 +18,7 @@ router = APIRouter(tags=["overrides"])
 
 
 def _get_work_or_404(import_id: UUID, work_id: UUID, db: Session):
-    work = (
-        db.query(Work).filter(Work.id == work_id, Work.import_id == import_id).first()
-    )
+    work = db.query(Work).filter(Work.id == work_id, Work.import_id == import_id).first()
     if not work:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

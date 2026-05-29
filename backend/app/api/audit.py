@@ -93,9 +93,7 @@ def get_import_audit_log(
     """Return audit log entries for a single import, newest first."""
     imp = db.query(Import).filter(Import.id == import_id).first()
     if not imp:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Import not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import not found")
 
     logs = (
         db.query(AuditLog)

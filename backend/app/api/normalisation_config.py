@@ -40,15 +40,9 @@ def load_normalisation_settings(db: Session) -> dict:
     cfg = row.config if row else {}
     return {
         "honorific_tokens": cfg.get("honorific_tokens", DEFAULT_HONORIFIC_TOKENS),
-        "edition_suppress_max": cfg.get(
-            "edition_suppress_max", DEFAULT_EDITION_SUPPRESS_MAX
-        ),
-        "text_substitutions": cfg.get(
-            "text_substitutions", DEFAULT_TEXT_SUBSTITUTIONS
-        ),
-        "title_case_exceptions": cfg.get(
-            "title_case_exceptions", DEFAULT_TITLE_CASE_EXCEPTIONS
-        ),
+        "edition_suppress_max": cfg.get("edition_suppress_max", DEFAULT_EDITION_SUPPRESS_MAX),
+        "text_substitutions": cfg.get("text_substitutions", DEFAULT_TEXT_SUBSTITUTIONS),
+        "title_case_exceptions": cfg.get("title_case_exceptions", DEFAULT_TITLE_CASE_EXCEPTIONS),
     }
 
 
@@ -67,9 +61,7 @@ def put_config(body: NormalisationIn, db: Session = Depends(get_db)):
         "text_substitutions": [s.model_dump() for s in body.text_substitutions],
         "title_case_exceptions": body.title_case_exceptions,
     }
-    config_hash = hashlib.sha256(
-        json.dumps(config_dict, sort_keys=True).encode()
-    ).hexdigest()
+    config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
     row = _get_normalisation_row(db)
     if row:
         row.config = config_dict

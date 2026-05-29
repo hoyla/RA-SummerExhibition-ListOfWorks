@@ -37,10 +37,7 @@ _SEED = _REPO / "backend" / "seed_templates" / "large-print-guide-2026.json"
 # A small, git-tracked excerpt of the real export (the full file is too large to
 # commit). Covers both per-work paragraph-style shapes (with / without edition).
 _SAMPLE = (
-    _REPO
-    / "test_sample_files"
-    / "tracked_samples_for_automated_tests"
-    / "lpg_sample_small.txt"
+    _REPO / "test_sample_files" / "tracked_samples_for_automated_tests" / "lpg_sample_small.txt"
 )
 
 
@@ -62,23 +59,49 @@ def _seed(db):
     db.add_all(
         [
             # plain, NFS, no edition
-            Work(import_id=imp.id, section_id=sec.id, position_in_section=1,
-                 raw_cat_no="1", title="The Meddling Fiend",
-                 title_cased="The Meddling Fiend", artist_name="Nicola Turner",
-                 medium="mixed media", price_text="NFS", include_in_export=True),
+            Work(
+                import_id=imp.id,
+                section_id=sec.id,
+                position_in_section=1,
+                raw_cat_no="1",
+                title="The Meddling Fiend",
+                title_cased="The Meddling Fiend",
+                artist_name="Nicola Turner",
+                medium="mixed media",
+                price_text="NFS",
+                include_in_export=True,
+            ),
             # priced, with an edition
-            Work(import_id=imp.id, section_id=sec.id, position_in_section=2,
-                 raw_cat_no="3", title="Superhero Rabbit",
-                 title_cased="Superhero Rabbit", artist_name="Joanna Ham",
-                 medium="screenprint with UV neon ink", price_numeric=140,
-                 price_text="140", edition_total=200, edition_price_numeric=90,
-                 include_in_export=True),
+            Work(
+                import_id=imp.id,
+                section_id=sec.id,
+                position_in_section=2,
+                raw_cat_no="3",
+                title="Superhero Rabbit",
+                title_cased="Superhero Rabbit",
+                artist_name="Joanna Ham",
+                medium="screenprint with UV neon ink",
+                price_numeric=140,
+                price_text="140",
+                edition_total=200,
+                edition_price_numeric=90,
+                include_in_export=True,
+            ),
             # honorifics (small caps), priced
-            Work(import_id=imp.id, section_id=sec.id, position_in_section=3,
-                 raw_cat_no="5", title="Centre-Fold", title_cased="Centre-Fold",
-                 artist_name="John Carter",
-                 artist_honorifics="RA", medium="acrylic with marble powder on plywood",
-                 price_numeric=7500, price_text="7500", include_in_export=True),
+            Work(
+                import_id=imp.id,
+                section_id=sec.id,
+                position_in_section=3,
+                raw_cat_no="5",
+                title="Centre-Fold",
+                title_cased="Centre-Fold",
+                artist_name="John Carter",
+                artist_honorifics="RA",
+                medium="acrylic with marble powder on plywood",
+                price_numeric=7500,
+                price_text="7500",
+                include_in_export=True,
+            ),
         ]
     )
     db.commit()
@@ -105,10 +128,7 @@ def test_lpg_render_matches_sample_structure(db_session):
     assert "<ParaStyle:LPGPRICE>£140\r" in out
 
     # Work 5: honorifics as an inline small-caps run, lowercased to match the LPG.
-    assert (
-        "<ParaStyle:LPGARTIST>John Carter <CharStyle:LPGSMALLCAPS>ra<CharStyle:>\r"
-        in out
-    )
+    assert "<ParaStyle:LPGARTIST>John Carter <CharStyle:LPGSMALLCAPS>ra<CharStyle:>\r" in out
 
 
 def test_lpg_title_cased_falls_back_to_title_when_absent(db_session):
@@ -123,10 +143,18 @@ def test_lpg_title_cased_falls_back_to_title_when_absent(db_session):
     db_session.commit()
     db_session.refresh(sec)
     db_session.add(
-        Work(import_id=imp.id, section_id=sec.id, position_in_section=1,
-             raw_cat_no="1", title="LEGACY ALL CAPS", title_cased=None,
-             artist_name="Someone", medium="oil", price_text="NFS",
-             include_in_export=True)
+        Work(
+            import_id=imp.id,
+            section_id=sec.id,
+            position_in_section=1,
+            raw_cat_no="1",
+            title="LEGACY ALL CAPS",
+            title_cased=None,
+            artist_name="Someone",
+            medium="oil",
+            price_text="NFS",
+            include_in_export=True,
+        )
     )
     db_session.commit()
     out = render_import_as_tagged_text(imp.id, db_session, _lpg_config())
@@ -173,9 +201,7 @@ def _seed_lpg_template(db):
     rs = Ruleset(
         name="Large Print Guide 2026",
         config=cfg,
-        config_hash=hashlib.sha256(
-            json.dumps(cfg, sort_keys=True).encode()
-        ).hexdigest(),
+        config_hash=hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest(),
         config_type="template",
         is_builtin=False,
         slug="lpg-test",
@@ -190,9 +216,7 @@ def test_section_export_filename_embeds_template_and_gallery(client, db_session)
     imp = _seed(db_session)
     sec = db_session.query(Section).filter(Section.import_id == imp.id).first()
     rs = _seed_lpg_template(db_session)
-    r = client.get(
-        f"/imports/{imp.id}/sections/{sec.id}/export-tags?template_id={rs.id}"
-    )
+    r = client.get(f"/imports/{imp.id}/sections/{sec.id}/export-tags?template_id={rs.id}")
     assert r.status_code == 200
     cd = r.headers.get("content-disposition", "")
     assert "Large-Print-Guide-2026" in cd

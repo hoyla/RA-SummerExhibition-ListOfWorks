@@ -350,9 +350,7 @@ class TestWarnings:
         imp = _seed_import(db_session)
         sec = _seed_section(db_session, imp)
         w = _seed_work(db_session, imp, sec, title="Untitled")
-        _seed_warning(
-            db_session, imp, w, warning_type="missing_title", message="No title"
-        )
+        _seed_warning(db_session, imp, w, warning_type="missing_title", message="No title")
 
         r = client.get(f"/imports/{imp.id}/warnings")
         assert r.status_code == 200
@@ -369,9 +367,7 @@ class TestWarnings:
 
     def test_import_level_warning_has_null_work_fields(self, client, db_session):
         imp = _seed_import(db_session)
-        _seed_warning(
-            db_session, imp, None, warning_type="duplicate_filename", message="Dup"
-        )
+        _seed_warning(db_session, imp, None, warning_type="duplicate_filename", message="Dup")
 
         r = client.get(f"/imports/{imp.id}/warnings")
         data = r.json()
@@ -433,9 +429,7 @@ class TestOverrideCRUD:
         )
         logs = db_session.query(AuditLog).filter(AuditLog.work_id == w.id).all()
         assert len(logs) >= 1
-        assert any(
-            log.action == "override_set" and log.field == "title_override" for log in logs
-        )
+        assert any(log.action == "override_set" and log.field == "title_override" for log in logs)
 
     # --- PUT override (update) ---
     def test_put_updates_existing_override(self, client, db_session):
@@ -479,19 +473,13 @@ class TestOverrideCRUD:
         # value is unambiguously newer. (SQLite's CURRENT_TIMESTAMP only has
         # second resolution, and a back-to-back PUT can otherwise land in
         # the same second.)
-        ovr = (
-            db_session.query(WorkOverride)
-            .filter(WorkOverride.work_id == w.id)
-            .one()
-        )
+        ovr = db_session.query(WorkOverride).filter(WorkOverride.work_id == w.id).one()
         original_updated_at = ovr.updated_at
         ovr.updated_at = original_updated_at - timedelta(hours=1)
         db_session.commit()
         backdated_value = ovr.updated_at
 
-        audit_count_before = (
-            db_session.query(AuditLog).filter(AuditLog.work_id == w.id).count()
-        )
+        audit_count_before = db_session.query(AuditLog).filter(AuditLog.work_id == w.id).count()
 
         # Update the override (changes title_override "First" → "Second").
         client.put(
@@ -501,11 +489,7 @@ class TestOverrideCRUD:
         db_session.expire_all()
 
         # Assertion 1: updated_at moved forward.
-        ovr2 = (
-            db_session.query(WorkOverride)
-            .filter(WorkOverride.work_id == w.id)
-            .one()
-        )
+        ovr2 = db_session.query(WorkOverride).filter(WorkOverride.work_id == w.id).one()
         assert ovr2.updated_at > backdated_value, (
             f"updated_at should have moved forward after PUT; "
             f"backdated to {backdated_value}, still {ovr2.updated_at}"
@@ -516,9 +500,7 @@ class TestOverrideCRUD:
         # created_at (SQLite has only second resolution and the two PUTs may
         # land in the same second). Query specifically for the update row
         # by its distinguishing values instead.
-        total_logs = (
-            db_session.query(AuditLog).filter(AuditLog.work_id == w.id).count()
-        )
+        total_logs = db_session.query(AuditLog).filter(AuditLog.work_id == w.id).count()
         assert total_logs == audit_count_before + 1, (
             f"expected exactly one new audit row for the changed field; "
             f"had {audit_count_before}, now {total_logs}"
@@ -585,11 +567,7 @@ class TestOverrideCRUD:
             json={"title_override": "Temp"},
         )
         client.delete(f"/imports/{imp.id}/works/{w.id}/override")
-        logs = (
-            db_session.query(AuditLog)
-            .filter(AuditLog.action == "override_deleted")
-            .all()
-        )
+        logs = db_session.query(AuditLog).filter(AuditLog.action == "override_deleted").all()
         assert len(logs) == 1
 
 
@@ -633,9 +611,7 @@ class TestExcludeInclude:
             f"/imports/{imp.id}/works/{w.id}/exclude",
             params={"exclude": True},
         )
-        logs = (
-            db_session.query(AuditLog).filter(AuditLog.action == "work_excluded").all()
-        )
+        logs = db_session.query(AuditLog).filter(AuditLog.action == "work_excluded").all()
         assert len(logs) == 1
 
     def test_noop_exclude_does_not_create_audit_log(self, client, db_session):

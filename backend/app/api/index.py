@@ -182,24 +182,18 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
 
     # Batch-fetch overrides
     overrides = (
-        db.query(IndexArtistOverride)
-        .filter(IndexArtistOverride.artist_id.in_(artist_ids))
-        .all()
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id.in_(artist_ids)).all()
         if artist_ids
         else []
     )
-    override_map: dict[str, IndexArtistOverride] = {
-        str(o.artist_id): o for o in overrides
-    }
+    override_map: dict[str, IndexArtistOverride] = {str(o.artist_id): o for o in overrides}
 
     # Build known artist cache
     known_cache = build_known_artist_cache(db)
 
     result = []
     for a in artists:
-        known = lookup_known_artist(
-            known_cache, a.raw_first_name, a.raw_last_name, a.raw_quals
-        )
+        known = lookup_known_artist(known_cache, a.raw_first_name, a.raw_last_name, a.raw_quals)
         ovr = override_map.get(str(a.id))
         eff = resolve_index_artist(a, ovr, known)
 
@@ -311,9 +305,7 @@ def list_index_artists(import_id: UUID, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 
-def _resolve_index_template(
-    db: Session, template_id: UUID | None
-) -> "IndexExportConfig":
+def _resolve_index_template(db: Session, template_id: UUID | None) -> "IndexExportConfig":
     """Load an index template by ID and convert to IndexExportConfig."""
     if not template_id:
         return DEFAULT_INDEX_CONFIG
@@ -335,32 +327,22 @@ def _resolve_index_template(
     cfg = r.config
     return IndexExportConfig(
         entry_style=cfg.get("entry_style", DEFAULT_INDEX_CONFIG.entry_style),
-        ra_surname_style=cfg.get(
-            "ra_surname_style", DEFAULT_INDEX_CONFIG.ra_surname_style
-        ),
+        ra_surname_style=cfg.get("ra_surname_style", DEFAULT_INDEX_CONFIG.ra_surname_style),
         ra_caps_style=cfg.get("ra_caps_style", DEFAULT_INDEX_CONFIG.ra_caps_style),
         cat_no_style=cfg.get("cat_no_style", DEFAULT_INDEX_CONFIG.cat_no_style),
-        honorifics_style=cfg.get(
-            "honorifics_style", DEFAULT_INDEX_CONFIG.honorifics_style
-        ),
+        honorifics_style=cfg.get("honorifics_style", DEFAULT_INDEX_CONFIG.honorifics_style),
         expert_numbers_style=cfg.get(
             "expert_numbers_style", DEFAULT_INDEX_CONFIG.expert_numbers_style
         ),
-        quals_lowercase=cfg.get(
-            "quals_lowercase", DEFAULT_INDEX_CONFIG.quals_lowercase
-        ),
+        quals_lowercase=cfg.get("quals_lowercase", DEFAULT_INDEX_CONFIG.quals_lowercase),
         expert_numbers_enabled=cfg.get(
             "expert_numbers_enabled", DEFAULT_INDEX_CONFIG.expert_numbers_enabled
         ),
-        cat_no_separator=cfg.get(
-            "cat_no_separator", DEFAULT_INDEX_CONFIG.cat_no_separator
-        ),
+        cat_no_separator=cfg.get("cat_no_separator", DEFAULT_INDEX_CONFIG.cat_no_separator),
         cat_no_separator_style=cfg.get(
             "cat_no_separator_style", DEFAULT_INDEX_CONFIG.cat_no_separator_style
         ),
-        section_separator=cfg.get(
-            "section_separator", DEFAULT_INDEX_CONFIG.section_separator
-        ),
+        section_separator=cfg.get("section_separator", DEFAULT_INDEX_CONFIG.section_separator),
         section_separator_style=cfg.get(
             "section_separator_style", DEFAULT_INDEX_CONFIG.section_separator_style
         ),
@@ -450,9 +432,7 @@ def reimport_index_upload(
             )
         except IndexImportError as exc:
             storage.delete(disk_name)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     # Remove the previous upload file if it exists
     storage.delete(import_record.disk_filename or "")
@@ -544,9 +524,7 @@ def _override_to_out(override: IndexArtistOverride) -> IndexArtistOverrideOut:
 def get_index_override(import_id: UUID, artist_id: UUID, db: Session = Depends(get_db)):
     _get_artist_or_404(import_id, artist_id, db)
     override = (
-        db.query(IndexArtistOverride)
-        .filter(IndexArtistOverride.artist_id == artist_id)
-        .first()
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id == artist_id).first()
     )
     if not override:
         raise HTTPException(
@@ -569,9 +547,7 @@ def set_index_override(
 ):
     artist = _get_artist_or_404(import_id, artist_id, db)
     override = (
-        db.query(IndexArtistOverride)
-        .filter(IndexArtistOverride.artist_id == artist_id)
-        .first()
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id == artist_id).first()
     )
 
     fields = body.model_dump()
@@ -621,14 +597,10 @@ def set_index_override(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_role("editor"))],
 )
-def delete_index_override(
-    import_id: UUID, artist_id: UUID, db: Session = Depends(get_db)
-):
+def delete_index_override(import_id: UUID, artist_id: UUID, db: Session = Depends(get_db)):
     _get_artist_or_404(import_id, artist_id, db)
     override = (
-        db.query(IndexArtistOverride)
-        .filter(IndexArtistOverride.artist_id == artist_id)
-        .first()
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id == artist_id).first()
     )
     if not override:
         raise HTTPException(
@@ -678,9 +650,7 @@ def set_artist_excluded(
             AuditLog(
                 import_id=import_id,
                 artist_id=artist_id,
-                action=(
-                    "index_artist_excluded" if new_excluded else "index_artist_included"
-                ),
+                action=("index_artist_excluded" if new_excluded else "index_artist_included"),
                 field="include_in_export",
                 old_value=str(not old_excluded),
                 new_value=str(not new_excluded),
@@ -714,9 +684,7 @@ def set_artist_company(
     artist = _get_artist_or_404(import_id, artist_id, db)
 
     override = (
-        db.query(IndexArtistOverride)
-        .filter(IndexArtistOverride.artist_id == artist_id)
-        .first()
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id == artist_id).first()
     )
 
     # Determine old effective value
@@ -738,11 +706,7 @@ def set_artist_company(
             AuditLog(
                 import_id=import_id,
                 artist_id=artist_id,
-                action=(
-                    "index_artist_company_set"
-                    if is_company
-                    else "index_artist_company_unset"
-                ),
+                action=("index_artist_company_set" if is_company else "index_artist_company_unset"),
                 field="is_company_override",
                 old_value=str(old_effective),
                 new_value=str(is_company),

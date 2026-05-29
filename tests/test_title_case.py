@@ -80,9 +80,7 @@ def test_preserved_tokens_emits_canonical_exception_casing():
 
 
 def test_preserved_tokens_dedupes_within_title():
-    assert title_case_preserved_tokens("WAVE II AND WAVE II") == [
-        ("II", "roman_numeral")
-    ]
+    assert title_case_preserved_tokens("WAVE II AND WAVE II") == [("II", "roman_numeral")]
 
 
 def test_preserved_tokens_empty_for_clean_title():
@@ -105,11 +103,24 @@ def test_preserved_tokens_none_and_empty():
 
 def _raw_work(**kwargs):
     defaults = dict(
-        raw_cat_no="1", raw_gallery="G", raw_title=None, raw_artist=None,
-        raw_price=None, raw_edition=None, raw_artwork=None, raw_medium=None,
-        title=None, title_cased=None, artist_name=None, artist_honorifics=None,
-        price_numeric=None, price_text=None, edition_total=None,
-        edition_price_numeric=None, artwork=None, medium=None,
+        raw_cat_no="1",
+        raw_gallery="G",
+        raw_title=None,
+        raw_artist=None,
+        raw_price=None,
+        raw_edition=None,
+        raw_artwork=None,
+        raw_medium=None,
+        title=None,
+        title_cased=None,
+        artist_name=None,
+        artist_honorifics=None,
+        price_numeric=None,
+        price_text=None,
+        edition_total=None,
+        edition_price_numeric=None,
+        artwork=None,
+        medium=None,
     )
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -141,11 +152,18 @@ def test_normalise_work_title_cased_none_when_no_title():
 
 def _work(**kw):
     d = dict(
-        raw_cat_no="1", title="WHAT DO ANIMALS DREAM OF?",
-        title_cased="What Do Animals Dream Of?", artist_name="A",
-        artist_honorifics=None, price_numeric=None, price_text="*",
-        edition_total=None, edition_price_numeric=None, artwork=None,
-        medium=None, include_in_export=True,
+        raw_cat_no="1",
+        title="WHAT DO ANIMALS DREAM OF?",
+        title_cased="What Do Animals Dream Of?",
+        artist_name="A",
+        artist_honorifics=None,
+        price_numeric=None,
+        price_text="*",
+        edition_total=None,
+        edition_price_numeric=None,
+        artwork=None,
+        medium=None,
+        include_in_export=True,
     )
     d.update(kw)
     return SimpleNamespace(**d)
@@ -153,11 +171,17 @@ def _work(**kw):
 
 def _override(**kw):
     d = dict(
-        title_override=None, title_cased_override=None, artist_name_override=None,
-        artist_honorifics_override=None, price_numeric_override=None,
-        price_text_override=None, edition_total_override=None,
-        edition_price_numeric_override=None, artwork_override=None,
-        medium_override=None, notes=None,
+        title_override=None,
+        title_cased_override=None,
+        artist_name_override=None,
+        artist_honorifics_override=None,
+        price_numeric_override=None,
+        price_text_override=None,
+        edition_total_override=None,
+        edition_price_numeric_override=None,
+        artwork_override=None,
+        medium_override=None,
+        notes=None,
     )
     d.update(kw)
     return SimpleNamespace(**d)
@@ -196,9 +220,13 @@ def _seed_one_work(db):
     db.commit()
     db.refresh(sec)
     work = Work(
-        import_id=imp.id, section_id=sec.id, position_in_section=1,
-        raw_cat_no="1", title="WHAT DO ANIMALS DREAM OF?",
-        title_cased="What Do Animals Dream Of?", artist_name="A",
+        import_id=imp.id,
+        section_id=sec.id,
+        position_in_section=1,
+        raw_cat_no="1",
+        title="WHAT DO ANIMALS DREAM OF?",
+        title_cased="What Do Animals Dream Of?",
+        artist_name="A",
         include_in_export=True,
     )
     db.add(work)

@@ -23,9 +23,7 @@ from backend.app.services.low_tag_parser import parse_low_tags
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Git-tracked fixtures required by the test suite live here; the rest of
 # test_sample_files/ is disposable/local-only working data.
-_SAMPLES = os.path.join(
-    _REPO, "test_sample_files", "tracked_samples_for_automated_tests"
-)
+_SAMPLES = os.path.join(_REPO, "test_sample_files", "tracked_samples_for_automated_tests")
 _TXT = os.path.join(_SAMPLES, "Sample 26-05-26 with edition cstyle.txt")
 _XLSX = os.path.join(_SAMPLES, "Catalogue List 2025_renamed.xlsx")
 _SEED = os.path.join(_REPO, "backend", "seed_templates", "list-of-works-2026.json")
@@ -71,9 +69,7 @@ def test_real_export_parses_all_entries_and_fields():
 
 def test_real_export_diffs_clean_against_source(db_session):
     config = _config_2026()
-    imp = import_excel(
-        _XLSX, db_session, display_name="Catalogue List 2025_renamed.xlsx"
-    )
+    imp = import_excel(_XLSX, db_session, display_name="Catalogue List 2025_renamed.xlsx")
     collected = _collect_export_data(imp.id, db_session)
     result = diff_low(_parse_real(), collected, config)
 

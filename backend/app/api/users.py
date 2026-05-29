@@ -62,7 +62,9 @@ def _user_to_dict(user: dict, groups: list[str] | None = None) -> dict:
         "status": user.get("UserStatus", "UNKNOWN"),
         "enabled": user.get("Enabled", True),
         "role": role,
-        "created_at": user.get("UserCreateDate", "").isoformat() if hasattr(user.get("UserCreateDate", ""), "isoformat") else str(user.get("UserCreateDate", "")),
+        "created_at": user.get("UserCreateDate", "").isoformat()
+        if hasattr(user.get("UserCreateDate", ""), "isoformat")
+        else str(user.get("UserCreateDate", "")),
     }
 
 

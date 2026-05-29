@@ -24,9 +24,7 @@ def _make_ruleset(db, *, name, config_type="template", is_builtin=False, slug=No
     r = Ruleset(
         name=name,
         config=cfg,
-        config_hash=hashlib.sha256(
-            json.dumps(cfg, sort_keys=True).encode()
-        ).hexdigest(),
+        config_hash=hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest(),
         config_type=config_type,
         is_builtin=is_builtin,
         slug=slug,
@@ -356,9 +354,7 @@ def test_resolve_export_config_returns_ruleset_for_valid_id(db_session):
 
 def test_resolve_export_config_ignores_normalisation_rows(db_session):
     """A normalisation row must never be used as a template."""
-    norm = _make_ruleset(
-        db_session, name="global_normalisation", config_type="normalisation"
-    )
+    norm = _make_ruleset(db_session, name="global_normalisation", config_type="normalisation")
     result = resolve_export_config(db_session, ruleset_id=norm.id)
     assert result is None
 

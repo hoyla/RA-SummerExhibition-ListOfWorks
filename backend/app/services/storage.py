@@ -214,9 +214,7 @@ class S3Storage(StorageBackend):
         import tempfile
 
         data = self.load(key)
-        tmp = tempfile.NamedTemporaryFile(
-            delete=False, prefix="catalogue_s3_", suffix=".xlsx"
-        )
+        tmp = tempfile.NamedTemporaryFile(delete=False, prefix="catalogue_s3_", suffix=".xlsx")
         try:
             tmp.write(data)
             tmp.flush()
@@ -249,9 +247,7 @@ def _build_storage() -> StorageBackend:
     if backend == "local":
         return LocalStorage(base_dir=UPLOAD_DIR)
 
-    raise RuntimeError(
-        f"Unknown STORAGE_BACKEND: {backend!r}  (expected 'local' or 's3')"
-    )
+    raise RuntimeError(f"Unknown STORAGE_BACKEND: {backend!r}  (expected 'local' or 's3')")
 
 
 storage: StorageBackend = _build_storage()

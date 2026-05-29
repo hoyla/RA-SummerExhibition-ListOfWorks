@@ -48,8 +48,7 @@ def test_fingerprint_handles_missing_fields():
 # ---------------------------------------------------------------------------
 
 
-def _old(cat_no, title, artist, medium="oil", gallery="G1", *, override=None,
-         include=True):
+def _old(cat_no, title, artist, medium="oil", gallery="G1", *, override=None, include=True):
     return OldWorkSnapshot(
         cat_no=str(cat_no),
         gallery=gallery,
@@ -115,18 +114,18 @@ def test_insertion_shifts_cat_nos_fingerprint_recovers_overrides():
     ]
     new = [
         _new(1, "Sunset", "Jane"),
-        _new(2, "Brand New", "Bob"),   # inserted
-        _new(3, "Dawn", "John"),       # was cat 2
-        _new(4, "Noon", "Alice"),      # was cat 3
+        _new(2, "Brand New", "Bob"),  # inserted
+        _new(3, "Dawn", "John"),  # was cat 2
+        _new(4, "Noon", "Alice"),  # was cat 3
     ]
     plan = match_overrides(old, new)
 
     # All three old works are accounted for, two via fingerprint
-    assert plan.matched_by_cat_no == 1   # only "Sunset" still at cat 1
+    assert plan.matched_by_cat_no == 1  # only "Sunset" still at cat 1
     assert plan.matched_by_fingerprint == 2
     assert plan.overrides_preserved == 2  # both shifted overrides recovered
     assert plan.overrides_at_risk == 0
-    assert plan.added == 1               # "Brand New"
+    assert plan.added == 1  # "Brand New"
     assert plan.removed == 0
     assert plan.unmatched == []
     assert plan.ambiguous == []
@@ -152,12 +151,16 @@ def test_silent_misapplication_regression():
     real target elsewhere, simply matched there)."""
     old = [
         _old(1, "Sunset", "Jane"),
-        _old(2, "Dawn", "John", override={"price_numeric_override": 9999,
-                                          "title_override": "EXCLUSIVE"}),
+        _old(
+            2,
+            "Dawn",
+            "John",
+            override={"price_numeric_override": 9999, "title_override": "EXCLUSIVE"},
+        ),
     ]
     new = [
         _new(1, "Sunset", "Jane"),
-        _new(2, "Brand New", "Bob"),   # different work at cat 2 — must not steal Dawn's override
+        _new(2, "Brand New", "Bob"),  # different work at cat 2 — must not steal Dawn's override
     ]
     plan = match_overrides(old, new)
 
@@ -192,8 +195,7 @@ def test_title_edit_after_renumber_is_flagged_not_silently_lost():
     user can decide whether to re-apply it manually."""
     old = [
         _old(1, "Sunset", "Jane"),
-        _old(2, "Untitled (after dust)", "John",
-             override={"price_numeric_override": 1200}),
+        _old(2, "Untitled (after dust)", "John", override={"price_numeric_override": 1200}),
         _old(3, "Noon", "Alice"),
     ]
     new = [
@@ -236,10 +238,7 @@ def test_fingerprint_collision_is_ambiguous():
     plan = match_overrides(old, new)
     assert plan.overrides_preserved == 0
     assert plan.overrides_at_risk == 1
-    assert any(
-        x.reason == "fingerprint_collision" and x.old_cat_no == "99"
-        for x in plan.ambiguous
-    )
+    assert any(x.reason == "fingerprint_collision" and x.old_cat_no == "99" for x in plan.ambiguous)
 
 
 # ---------------------------------------------------------------------------
@@ -291,13 +290,13 @@ def test_gallery_scope_detects_cross_gallery_move():
     """A work whose fingerprint exists in a non-scope gallery shouldn't be
     silently duplicated into the selected gallery. The matcher warns."""
     old = [
-        _old(1, "A", "X", gallery="G1"),     # out of scope
-        _old(5, "Z", "Y", gallery="G2"),     # in scope
+        _old(1, "A", "X", gallery="G1"),  # out of scope
+        _old(5, "Z", "Y", gallery="G2"),  # in scope
     ]
     new = [
         # A new row in G2 looks (by content) like the work currently in G1
         _new(5, "Z", "Y", gallery="G2"),
-        _new(6, "A", "X", gallery="G2"),     # cross-gallery move into scope
+        _new(6, "A", "X", gallery="G2"),  # cross-gallery move into scope
     ]
     plan = match_overrides(old, new, gallery_scope={"G2"})
 

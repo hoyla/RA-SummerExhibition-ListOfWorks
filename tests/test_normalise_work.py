@@ -1,6 +1,5 @@
 """Unit tests for normalise_work — the orchestrator that ties all normalisation together."""
 
-
 from backend.app.services.normalisation_service import normalise_work
 
 # ---------------------------------------------------------------------------

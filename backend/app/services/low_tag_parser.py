@@ -47,9 +47,7 @@ from backend.app.services.export_renderer import DEFAULT_CONFIG, ExportConfig
 
 # Match both the verbose (our renderer) and short (InDesign) tag dialects.
 _PARA_RE = re.compile(r"^\s*<(?:ParaStyle|pstyle):([^>]*)>")
-_SPAN_RE = re.compile(
-    r"<(?:CharStyle|cstyle):([^>]+)>(.*?)<(?:CharStyle|cstyle):>", re.DOTALL
-)
+_SPAN_RE = re.compile(r"<(?:CharStyle|cstyle):([^>]+)>(.*?)<(?:CharStyle|cstyle):>", re.DOTALL)
 _INDESIGN_HINT = re.compile(r"<(?:pstyle|cstyle):")
 _HEX_RE = re.compile(r"<0x([0-9A-Fa-f]+)>")
 # InDesign escapes special characters with a backslash, in both content and
@@ -203,11 +201,7 @@ def recoverable_fields(config: ExportConfig) -> list[str]:
     """Enabled fields that carry a non-empty character style — i.e. the fields a
     parse can actually isolate (and therefore the only fields the LOW diff can
     check)."""
-    return [
-        f
-        for f in enabled_field_order(config)
-        if getattr(config, _FIELD_STYLE_ATTRS[f], "")
-    ]
+    return [f for f in enabled_field_order(config) if getattr(config, _FIELD_STYLE_ATTRS[f], "")]
 
 
 def _style_to_fields(config: ExportConfig) -> dict[str, list[str]]:
@@ -271,9 +265,7 @@ def _assign_spans(
     return out
 
 
-def parse_low_tags(
-    text: str, config: ExportConfig = DEFAULT_CONFIG
-) -> list[ParsedEntry]:
+def parse_low_tags(text: str, config: ExportConfig = DEFAULT_CONFIG) -> list[ParsedEntry]:
     """Parse a List of Works Tagged Text export into a list of ``ParsedEntry``.
 
     ``config`` must be the ExportConfig that produced the file (it supplies the

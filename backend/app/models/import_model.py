@@ -19,6 +19,4 @@ class Import(Base):
     # 'list_of_works' | 'artists_index'
     product_type = Column(Text, nullable=False, server_default="list_of_works")
 
-    uploaded_at = Column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
-    )
+    uploaded_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)

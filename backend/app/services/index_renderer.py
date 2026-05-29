@@ -54,9 +54,7 @@ class IndexExportConfig:
 
     # Letter headings (e.g. "A", "B", "C" at the start of each group)
     letter_heading_enabled: bool = False
-    letter_heading_style: str = (
-        ""  # paragraph style for the heading (empty = entry_style)
-    )
+    letter_heading_style: str = ""  # paragraph style for the heading (empty = entry_style)
 
 
 DEFAULT_INDEX_CONFIG = IndexExportConfig()
@@ -102,9 +100,7 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
     """
     artists = (
         db.query(IndexArtist)
-        .filter(
-            IndexArtist.import_id == import_id, IndexArtist.include_in_export.is_(True)
-        )
+        .filter(IndexArtist.import_id == import_id, IndexArtist.include_in_export.is_(True))
         .order_by(IndexArtist.sort_key, IndexArtist.row_number)
         .all()
     )
@@ -112,9 +108,7 @@ def collect_index_entries(db: Session, import_id: UUID) -> List[ArtistExportEntr
     # Batch-fetch overrides
     artist_ids = [a.id for a in artists]
     overrides = (
-        db.query(IndexArtistOverride)
-        .filter(IndexArtistOverride.artist_id.in_(artist_ids))
-        .all()
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id.in_(artist_ids)).all()
         if artist_ids
         else []
     )

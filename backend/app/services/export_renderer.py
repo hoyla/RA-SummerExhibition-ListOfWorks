@@ -33,13 +33,9 @@ class ComponentConfig:
 
     field: str
     separator_after: str = "tab"  # key in SEPARATOR_MAP
-    omit_sep_when_empty: bool = (
-        True  # suppress the separator when this component has no value
-    )
+    omit_sep_when_empty: bool = True  # suppress the separator when this component has no value
     enabled: bool = True  # when False the component is excluded from export entirely
-    max_line_chars: Optional[int] = (
-        None  # wrap at this many chars per line (None = no wrap)
-    )
+    max_line_chars: Optional[int] = None  # wrap at this many chars per line (None = no wrap)
     next_component_position: str = "end_of_text"  # "end_of_text" | "end_of_first_line"
     balance_lines: bool = False  # narrow column to equalise line lengths
     # When set, this component opens a NEW paragraph with this paragraph style
@@ -119,9 +115,7 @@ from uuid import UUID
 from backend.app.models.ruleset_model import Ruleset
 
 
-def resolve_export_config(
-    db: Session, ruleset_id: UUID | None = None
-) -> Ruleset | None:
+def resolve_export_config(db: Session, ruleset_id: UUID | None = None) -> Ruleset | None:
     """
     Resolve an export Ruleset from the database.
 
@@ -194,9 +188,7 @@ def _collect_export_data(import_id, db: Session, section_id=None) -> list[dict]:
     )
     work_ids = [w.id for w in all_works]
     all_overrides = (
-        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all()
-        if work_ids
-        else []
+        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all() if work_ids else []
     )
     override_map = {o.work_id: o for o in all_overrides}
 
@@ -331,9 +323,7 @@ def _wrap_lines(text: str, max_chars: int) -> list:
         # Walk the candidate backwards until we find a clean break point
         for _ in range(max_chars):  # bounded to prevent infinite loop
             char_before = remaining[candidate - 1] if candidate > 0 else ""
-            char_after = (
-                remaining[candidate + 1] if candidate + 1 < len(remaining) else ""
-            )
+            char_after = remaining[candidate + 1] if candidate + 1 < len(remaining) else ""
             bad = (
                 char_before in _OPEN_PUNCT
                 or char_before in _NO_BREAK_AFTER
@@ -495,9 +485,7 @@ def _compute_component_values(w: dict, config: "ExportConfig") -> dict:
     layouts."""
     artist = _cs(config.artist_style, w["artist"])
     if w["honorifics"]:
-        hon_text = (
-            w["honorifics"].lower() if config.honorifics_lowercase else w["honorifics"]
-        )
+        hon_text = w["honorifics"].lower() if config.honorifics_lowercase else w["honorifics"]
         artist += " " + _cs(config.honorifics_style, hon_text)
 
     if w["price_numeric"]:
@@ -525,13 +513,9 @@ def _compute_component_values(w: dict, config: "ExportConfig") -> dict:
         # Fall back to the plain title when the cased form is absent (e.g. data
         # imported before title-casing existed), so a printed guide never shows
         # blank titles — graceful degradation; a re-import populates the casing.
-        "title_cased": _cs(
-            config.title_cased_style, w.get("title_cased") or w.get("title") or ""
-        ),
+        "title_cased": _cs(config.title_cased_style, w.get("title_cased") or w.get("title") or ""),
         "edition": _cs(config.edition_style, edition_display),
-        "artwork": _cs(
-            config.artwork_style, str(w["artwork"]) if w["artwork"] else ""
-        ),
+        "artwork": _cs(config.artwork_style, str(w["artwork"]) if w["artwork"] else ""),
         "price": _cs(config.price_style, raw_price),
         "medium": _cs(config.medium_style, w["medium"] or ""),
     }
@@ -641,13 +625,9 @@ def render_import_as_tagged_text(
                     raw = _raw_text_for_field(comp.field, w)
                     # Manual line breaks (\n in overridden text) bypass auto-wrap
                     if raw and "\n" in raw:
-                        wrapped = [
-                            line.lstrip() for line in raw.split("\n") if line.strip()
-                        ]
+                        wrapped = [line.lstrip() for line in raw.split("\n") if line.strip()]
                     else:
-                        _wrap_fn = (
-                            _balance_wrap_lines if comp.balance_lines else _wrap_lines
-                        )
+                        _wrap_fn = _balance_wrap_lines if comp.balance_lines else _wrap_lines
                         wrapped = _wrap_fn(raw, comp.max_line_chars) if raw else []
                     style = _field_char_style(config, comp.field)
                     eff_sep = (
@@ -665,11 +645,7 @@ def render_import_as_tagged_text(
                             entry += _sep(eff_sep, config.entry_style)
                     elif end_of_first_line:
                         # Multi-line + end_of_first_line: interleave next component
-                        nc = (
-                            enabled_comps[idx + 1]
-                            if idx + 1 < len(enabled_comps)
-                            else None
-                        )
+                        nc = enabled_comps[idx + 1] if idx + 1 < len(enabled_comps) else None
                         if nc:
                             skip_fields.add(nc.field)
                             nc_val = comp_values.get(nc.field, "")
@@ -685,9 +661,7 @@ def render_import_as_tagged_text(
                         # block. Escape per-line so the wrap count math (which
                         # ran on the unescaped raw text) isn't thrown off by
                         # inflated escape sequences.
-                        rest = "\n".join(
-                            escape_tagged_text_chars(line) for line in wrapped[1:]
-                        )
+                        rest = "\n".join(escape_tagged_text_chars(line) for line in wrapped[1:])
                         if style:
                             entry += f"<CharStyle:{style}>\n{rest}<CharStyle:>"
                         else:
@@ -703,9 +677,7 @@ def render_import_as_tagged_text(
                         # Multi-line, normal position: join with soft returns.
                         # Escape per-line — see end_of_first_line branch above
                         # for the wrap-length-vs-escape rationale.
-                        full = "\n".join(
-                            escape_tagged_text_chars(line) for line in wrapped
-                        )
+                        full = "\n".join(escape_tagged_text_chars(line) for line in wrapped)
                         if style:
                             entry += f"<CharStyle:{style}>{full}<CharStyle:>"
                         else:
@@ -867,21 +839,13 @@ def render_import_as_csv(import_id, db: Session) -> str:
                     "artist": w["artist"],
                     "honorifics": w["honorifics"] or "",
                     "title": w["title"],
-                    "price_numeric": (
-                        w["price_numeric"] if w["price_numeric"] is not None else ""
-                    ),
+                    "price_numeric": (w["price_numeric"] if w["price_numeric"] is not None else ""),
                     "price_text": w["price_text"],
-                    "edition_total": (
-                        w["edition_total"] if w["edition_total"] is not None else ""
-                    ),
+                    "edition_total": (w["edition_total"] if w["edition_total"] is not None else ""),
                     "edition_price_numeric": (
-                        w["edition_price_numeric"]
-                        if w["edition_price_numeric"] is not None
-                        else ""
+                        w["edition_price_numeric"] if w["edition_price_numeric"] is not None else ""
                     ),
-                    "artwork": (
-                        w["artwork"] if w["artwork"] is not None else ""
-                    ),
+                    "artwork": (w["artwork"] if w["artwork"] is not None else ""),
                     "medium": w["medium"] or "",
                 }
             )

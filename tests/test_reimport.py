@@ -81,9 +81,7 @@ def _do_import(client, headers=None, rows=None) -> str:
     return r.json()["import_id"]
 
 
-def _do_reimport(
-    client, import_id: str, headers=None, rows=None, filename="updated.xlsx"
-):
+def _do_reimport(client, import_id: str, headers=None, rows=None, filename="updated.xlsx"):
     """Re-import into an existing import and return the response."""
     hdrs = headers or ALL_HEADERS
     data = rows or [
@@ -276,17 +274,13 @@ class TestReimportOverridePreservation:
         db_session.commit()
 
         sections = _get_sections(client, import_id)
-        work2_check = next(
-            w for s in sections for w in s["works"] if w["raw_cat_no"] == "2"
-        )
+        work2_check = next(w for s in sections for w in s["works"] if w["raw_cat_no"] == "2")
         assert work2_check["include_in_export"] is False
 
         _do_reimport(client, import_id)
 
         sections = _get_sections(client, import_id)
-        work2_after = next(
-            w for s in sections for w in s["works"] if w["raw_cat_no"] == "2"
-        )
+        work2_after = next(w for s in sections for w in s["works"] if w["raw_cat_no"] == "2")
         assert work2_after["include_in_export"] is False
 
     def test_override_lost_for_removed_work(self, client):
@@ -310,10 +304,9 @@ class TestReimportOverridePreservation:
         assert data["overrides_preserved"] == 0
         # And the cat 3 override appears in the unmatched/ambiguous list so
         # the user knows what was lost.
-        flagged_cat_nos = (
-            {u["old_cat_no"] for u in data["unmatched"]}
-            | {a["old_cat_no"] for a in data["ambiguous"]}
-        )
+        flagged_cat_nos = {u["old_cat_no"] for u in data["unmatched"]} | {
+            a["old_cat_no"] for a in data["ambiguous"]
+        }
         assert "3" in flagged_cat_nos
 
     def test_no_overrides_all_new(self, client):
@@ -503,9 +496,7 @@ class TestReimportAuditAndWarnings:
         sections = _get_sections(client, import_id)
         all_works = [w for s in sections for w in s["works"]]
         work1 = next(w for w in all_works if w["raw_cat_no"] == "1")
-        _set_override(
-            client, import_id, work1["id"], title_override="After First Reimport"
-        )
+        _set_override(client, import_id, work1["id"], title_override="After First Reimport")
 
         # Second reimport — override should still be preserved
         r2 = _do_reimport(client, import_id)
@@ -532,7 +523,8 @@ class TestReimportDryRun:
         sections_before = _get_sections(client, import_id)
         snapshot_before = [
             (w["raw_cat_no"], w["raw_title"], w.get("raw_artist"))
-            for s in sections_before for w in s["works"]
+            for s in sections_before
+            for w in s["works"]
         ]
 
         buf = _make_xlsx(
@@ -547,7 +539,8 @@ class TestReimportDryRun:
             f"/imports/{import_id}/reimport?dry_run=true",
             files={
                 "file": (
-                    "preview.xlsx", buf,
+                    "preview.xlsx",
+                    buf,
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
             },
@@ -556,7 +549,7 @@ class TestReimportDryRun:
         data = r.json()
         assert data["dry_run"] is True
         # Plan reports the same counts as a real re-import would
-        assert data["matched_by_cat_no"] == 1   # cat 2 only
+        assert data["matched_by_cat_no"] == 1  # cat 2 only
         assert data["added"] == 2
         assert data["removed"] == 2
 
@@ -564,7 +557,8 @@ class TestReimportDryRun:
         sections_after = _get_sections(client, import_id)
         snapshot_after = [
             (w["raw_cat_no"], w["raw_title"], w.get("raw_artist"))
-            for s in sections_after for w in s["works"]
+            for s in sections_after
+            for w in s["works"]
         ]
         assert snapshot_before == snapshot_after
 
@@ -580,8 +574,13 @@ class TestReimportDryRun:
         )
         r = client.put(
             f"/imports/{import_id}/reimport?dry_run=true",
-            files={"file": ("p.xlsx", buf,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            files={
+                "file": (
+                    "p.xlsx",
+                    buf,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
         )
         assert r.status_code == 200
         gs = r.json()["galleries"]
@@ -590,7 +589,7 @@ class TestReimportDryRun:
         assert by_name["Gallery A"]["work_count"] == 2
         assert by_name["Gallery A"]["cat_no_min"] == 1
         assert by_name["Gallery A"]["cat_no_max"] == 2
-        assert by_name["Gallery A"]["in_scope"] is True   # no filter → all in scope
+        assert by_name["Gallery A"]["in_scope"] is True  # no filter → all in scope
         assert by_name["Gallery B"]["work_count"] == 1
 
 
@@ -621,8 +620,13 @@ class TestReimportGalleryScope:
         )
         r = client.put(
             f"/imports/{import_id}/reimport?galleries=Gallery+A",
-            files={"file": ("scoped.xlsx", buf,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            files={
+                "file": (
+                    "scoped.xlsx",
+                    buf,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
         )
         assert r.status_code == 200, r.text
 
@@ -657,13 +661,19 @@ class TestReimportGalleryScope:
         )
         r = client.put(
             f"/imports/{import_id}/reimport?galleries=Gallery+A&dry_run=true",
-            files={"file": ("move.xlsx", buf,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            files={
+                "file": (
+                    "move.xlsx",
+                    buf,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
         )
         assert r.status_code == 200
         warnings = r.json()["cross_gallery_warnings"]
         assert any(
-            w["raw_title"] == "Noon" and w["old_gallery"] == "Gallery B"
+            w["raw_title"] == "Noon"
+            and w["old_gallery"] == "Gallery B"
             and w["new_gallery"] == "Gallery A"
             for w in warnings
         )
@@ -681,7 +691,9 @@ class TestReimportSilentMisapplicationRegression:
         all_works = [w for s in sections for w in s["works"]]
         work3 = next(w for w in all_works if w["raw_cat_no"] == "3")
         _set_override(
-            client, import_id, work3["id"],
+            client,
+            import_id,
+            work3["id"],
             title_override="Noon's secret title",
             price_numeric_override=99999,
         )
@@ -701,8 +713,13 @@ class TestReimportSilentMisapplicationRegression:
         )
         r = client.put(
             f"/imports/{import_id}/reimport",
-            files={"file": ("insert.xlsx", buf,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            files={
+                "file": (
+                    "insert.xlsx",
+                    buf,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
         )
         assert r.status_code == 200, r.text
         data = r.json()

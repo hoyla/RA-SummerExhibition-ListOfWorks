@@ -387,11 +387,8 @@ def resolve_index_artist(artist, override, known_artist=None) -> EffectiveIndexA
     raw_company = getattr(artist, "raw_company", None)
     has_raw_company = bool(raw_company and str(raw_company).strip())
     has_explicit_company = (
-        known_artist is not None
-        and getattr(known_artist, "resolved_company", None) is not None
-    ) or (
-        override is not None and getattr(override, "company_override", None) is not None
-    )
+        known_artist is not None and getattr(known_artist, "resolved_company", None) is not None
+    ) or (override is not None and getattr(override, "company_override", None) is not None)
     if effective_company and not has_raw_company and not has_explicit_company:
         company = last_name
 

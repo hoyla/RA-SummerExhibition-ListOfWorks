@@ -204,11 +204,7 @@ def update_known_artist(
     db: Session = Depends(get_db),
 ):
     """Update an existing known artist entry."""
-    ka = (
-        db.query(KnownArtist)
-        .filter(KnownArtist.id == uuid.UUID(known_artist_id))
-        .first()
-    )
+    ka = db.query(KnownArtist).filter(KnownArtist.id == uuid.UUID(known_artist_id)).first()
     if not ka:
         raise HTTPException(status_code=404, detail="Known artist not found")
     if ka.is_seeded:
@@ -248,11 +244,7 @@ def delete_known_artist(
     db: Session = Depends(get_db),
 ):
     """Remove a known artist entry."""
-    ka = (
-        db.query(KnownArtist)
-        .filter(KnownArtist.id == uuid.UUID(known_artist_id))
-        .first()
-    )
+    ka = db.query(KnownArtist).filter(KnownArtist.id == uuid.UUID(known_artist_id)).first()
     if not ka:
         raise HTTPException(status_code=404, detail="Known artist not found")
     if ka.is_seeded:
@@ -285,11 +277,7 @@ def duplicate_known_artist(
     preserving the original.  The copy has ``is_seeded=False`` and can
     be freely edited or deleted.
     """
-    source = (
-        db.query(KnownArtist)
-        .filter(KnownArtist.id == uuid.UUID(known_artist_id))
-        .first()
-    )
+    source = db.query(KnownArtist).filter(KnownArtist.id == uuid.UUID(known_artist_id)).first()
     if not source:
         raise HTTPException(status_code=404, detail="Known artist not found")
 
@@ -344,9 +332,7 @@ def duplicate_known_artist(
 # ---------------------------------------------------------------------------
 
 
-@router.post(
-    "/seed", response_model=dict, dependencies=[Depends(require_role("admin"))]
-)
+@router.post("/seed", response_model=dict, dependencies=[Depends(require_role("admin"))])
 def seed_known_artists(db: Session = Depends(get_db)):
     """Load known artists from the seed file (known-artists.json).
 
@@ -354,9 +340,7 @@ def seed_known_artists(db: Session = Depends(get_db)):
     Returns a count of added/skipped entries.
     """
     seed_path = (
-        Path(__file__).resolve().parent.parent.parent
-        / "seed_templates"
-        / "known-artists.json"
+        Path(__file__).resolve().parent.parent.parent / "seed_templates" / "known-artists.json"
     )
     if not seed_path.exists():
         raise HTTPException(status_code=404, detail="Seed file not found")

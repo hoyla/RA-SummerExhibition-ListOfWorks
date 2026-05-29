@@ -89,9 +89,7 @@ class TestKnownArtistsSeed:
         for i, entry in enumerate(entries):
             first = entry.get("match_first_name")
             last = entry.get("match_last_name")
-            assert (
-                first or last
-            ), f"Entry {i} has neither match_first_name nor match_last_name"
+            assert first or last, f"Entry {i} has neither match_first_name nor match_last_name"
 
     def test_text_fields_are_strings_or_null(self, entries):
         """Text fields must be str or None, never int/bool/list."""
@@ -126,9 +124,7 @@ class TestKnownArtistsSeed:
                 (entry.get("match_last_name") or "").strip().lower(),
                 (entry.get("match_quals") or "").strip().lower(),
             )
-            assert (
-                key not in seen
-            ), f"Duplicate match pattern at entries {seen[key]} and {i}: {key}"
+            assert key not in seen, f"Duplicate match pattern at entries {seen[key]} and {i}: {key}"
             seen[key] = i
 
 
@@ -142,9 +138,7 @@ class TestTemplateSeedFiles:
 
     @pytest.fixture(scope="class")
     def template_files(self):
-        files = [
-            f for f in sorted(SEED_DIR.glob("*.json")) if f.name != "known-artists.json"
-        ]
+        files = [f for f in sorted(SEED_DIR.glob("*.json")) if f.name != "known-artists.json"]
         assert len(files) > 0, "No template seed files found"
         return files
 
@@ -153,9 +147,9 @@ class TestTemplateSeedFiles:
         for f in template_files:
             with open(f, encoding="utf-8") as fp:
                 data = json.load(fp)
-            assert isinstance(
-                data, dict
-            ), f"{f.name} must be a JSON object, got {type(data).__name__}"
+            assert isinstance(data, dict), (
+                f"{f.name} must be a JSON object, got {type(data).__name__}"
+            )
 
     def test_all_have_name(self, template_files):
         """Each template file must have a _name field."""
@@ -200,6 +194,7 @@ class TestTemplateSeedFiles:
 def test_seed_templates_deletes_orphaned_builtins(db_session):
     """Templates marked is_builtin are deleted if no corresponding file exists."""
     from backend.app.services.seed_service import seed_builtin_templates as _seed_builtin_templates
+
     # 1. Create an orphaned built-in template that has no corresponding file
     db_session.add(
         Ruleset(

@@ -21,8 +21,6 @@ class Section(Base):
 
     __table_args__ = (
         UniqueConstraint("import_id", "name", name="sections_import_id_name_key"),
-        UniqueConstraint(
-            "import_id", "position", name="sections_import_id_position_key"
-        ),
+        UniqueConstraint("import_id", "position", name="sections_import_id_position_key"),
         Index("idx_sections_import", "import_id"),
     )

@@ -255,7 +255,7 @@ def _entry_key(entry: dict) -> str:
     groups gets separate keys.
     """
     courtesy = entry.get("courtesy") or ""
-    return f'{entry.get("sort_key", "")}::{courtesy}'
+    return f"{entry.get('sort_key', '')}::{courtesy}"
 
 
 def _entry_display_name(entry: dict) -> str:
@@ -267,7 +267,7 @@ def _entry_display_name(entry: dict) -> str:
         parts.append(entry["first_name"])
     name = ", ".join(parts) if parts else "(unknown)"
     if entry.get("quals"):
-        name += f' {entry["quals"]}'
+        name += f" {entry['quals']}"
     return name
 
 

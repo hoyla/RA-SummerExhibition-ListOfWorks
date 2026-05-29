@@ -12,6 +12,4 @@ from contextvars import ContextVar
 
 # Holds the current user's email for the duration of a request.
 # Default is "anonymous" for local-dev / no-auth mode.
-current_user_email: ContextVar[str] = ContextVar(
-    "current_user_email", default="anonymous"
-)
+current_user_email: ContextVar[str] = ContextVar("current_user_email", default="anonymous")

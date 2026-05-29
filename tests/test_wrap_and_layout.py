@@ -51,9 +51,7 @@ def _section():
     return SimpleNamespace(id="sec1", import_id="imp1", name="Gallery", position=1)
 
 
-def _make_work(
-    title="Test Title", medium="Oil", price_numeric=1000, edition_total=None
-):
+def _make_work(title="Test Title", medium="Oil", price_numeric=1000, edition_total=None):
     return SimpleNamespace(
         id="w1",
         raw_cat_no="1",
@@ -256,9 +254,7 @@ def test_end_of_first_line_multiline_nc_after_first_line():
     assert "WHAT DO ANIMALS" in output or "WHAT DO" in output
     # There should be a soft return (\n) as InDesign line break within the entry
     # (the entry is a single paragraph separated by \r)
-    entry_para = [
-        p for p in output.split("\r") if "<ParaStyle:" in p and "Gallery" not in p
-    ]
+    entry_para = [p for p in output.split("\r") if "<ParaStyle:" in p and "Gallery" not in p]
     assert any("\n" in p for p in entry_para)
 
 
@@ -282,9 +278,7 @@ def test_end_of_first_line_price_before_remaining_title_lines():
     output = render_import_as_tagged_text("imp1", db, config=cfg)
     price_pos = output.index("£999")
     # "ONE TWO THREE" is the first line; remaining title text comes after price
-    first_line_end = output.index(
-        "\t", output.index("ONE")
-    )  # tab = sep after title line 1
+    first_line_end = output.index("\t", output.index("ONE"))  # tab = sep after title line 1
     assert price_pos > first_line_end  # price comes after the tab following line 1
     # And at least part of the remaining title must follow the price
     remaining_start = output.index("\n", first_line_end)
@@ -321,9 +315,7 @@ def test_final_sep_last_component_omitted_adopts_its_separator():
     # After "Artist" there should be no soft-return before the paragraph ends
     artist_idx = entry_para[0].rindex("Artist")
     tail = entry_para[0][artist_idx + len("Artist") :]
-    assert (
-        "\n" not in tail
-    )  # no soft return — artist adopted Edition's separator (none)
+    assert "\n" not in tail  # no soft return — artist adopted Edition's separator (none)
 
 
 def test_final_sep_last_component_present_normal_behaviour():
@@ -343,9 +335,7 @@ def test_final_sep_last_component_present_normal_behaviour():
     assert entry_para
     artist_idx = entry_para[0].rindex("Artist")
     tail = entry_para[0][artist_idx + len("Artist") :]
-    assert (
-        "\n" in tail
-    )  # soft return is still there (raw \n before escape_for_mac_roman)
+    assert "\n" in tail  # soft return is still there (raw \n before escape_for_mac_roman)
 
 
 def test_final_sep_disabled_no_change():

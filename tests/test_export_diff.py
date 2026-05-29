@@ -268,9 +268,7 @@ class TestComputeDiff:
     def test_changed_work_field_level(self, db_session):
         imp = _seed_import(db_session)
         sec = _seed_section(db_session, imp)
-        w = _seed_work(
-            db_session, imp, sec, raw_cat_no="10", title="Old Title", artist_name="Ann"
-        )
+        w = _seed_work(db_session, imp, sec, raw_cat_no="10", title="Old Title", artist_name="Ann")
 
         save_export_snapshot(imp.id, None, db_session)
 
@@ -284,9 +282,7 @@ class TestComputeDiff:
         ch = diff["changed"][0]
         assert ch["cat_no"] == "10"
         assert any(
-            f["field"] == "title"
-            and f["old"] == "Old Title"
-            and f["new"] == "New Title"
+            f["field"] == "title" and f["old"] == "Old Title" and f["new"] == "New Title"
             for f in ch["fields"]
         )
 
@@ -294,12 +290,8 @@ class TestComputeDiff:
         imp = _seed_import(db_session)
         sec = _seed_section(db_session, imp)
         _seed_work(db_session, imp, sec, raw_cat_no="1", title="Stays Same")
-        w_change = _seed_work(
-            db_session, imp, sec, raw_cat_no="2", position=2, title="Will Change"
-        )
-        w_remove = _seed_work(
-            db_session, imp, sec, raw_cat_no="3", position=3, title="Goes Away"
-        )
+        w_change = _seed_work(db_session, imp, sec, raw_cat_no="2", position=2, title="Will Change")
+        w_remove = _seed_work(db_session, imp, sec, raw_cat_no="3", position=3, title="Goes Away")
 
         save_export_snapshot(imp.id, None, db_session)
 

@@ -114,9 +114,7 @@ def get_index_template(template_id: UUID, db: Session = Depends(get_db)):
 def create_index_template(body: IndexTemplateBodyIn, db: Session = Depends(get_db)):
     """Create a new index export template."""
     config_dict = body.model_dump(exclude={"name"})
-    config_hash = hashlib.sha256(
-        json.dumps(config_dict, sort_keys=True).encode()
-    ).hexdigest()
+    config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
     r = Ruleset(
         name=body.name,
         config=config_dict,
@@ -170,9 +168,7 @@ def update_index_template(
     config_dict = body.model_dump(exclude={"name"})
     r.config = config_dict
     r.name = body.name
-    r.config_hash = hashlib.sha256(
-        json.dumps(config_dict, sort_keys=True).encode()
-    ).hexdigest()
+    r.config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
     db.add(
         AuditLog(
             template_id=r.id,

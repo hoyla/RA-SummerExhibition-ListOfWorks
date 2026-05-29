@@ -64,9 +64,7 @@ def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
         except ExcelImportError as exc:
             # Clean up the saved file on validation failure
             storage.delete(disk_name)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     # Persist the storage key so we can clean up later
     import_record.disk_filename = disk_name
@@ -145,9 +143,7 @@ def reimport_upload(
             )
         except ExcelImportError as exc:
             storage.delete(disk_name)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     if dry_run:
         # Don't persist the uploaded file — caller will re-upload on commit.
@@ -224,9 +220,7 @@ def list_imports(db: Session = Depends(get_db)):
                 "works": work_counts.get(iid, 0),
                 "override_count": ovr.override_count if ovr else 0,
                 "last_override_at": (
-                    ovr.last_override_at.isoformat()
-                    if ovr and ovr.last_override_at
-                    else None
+                    ovr.last_override_at.isoformat() if ovr and ovr.last_override_at else None
                 ),
             }
         )
@@ -254,9 +248,7 @@ def list_sections(import_id: UUID, db: Session = Depends(get_db)):
     # Batch-fetch all overrides in one query and build a lookup map
     work_ids = [w.id for w in all_works]
     overrides_raw = (
-        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all()
-        if work_ids
-        else []
+        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all() if work_ids else []
     )
     override_map = {str(o.work_id): o for o in overrides_raw}
 
@@ -293,14 +285,10 @@ def list_sections(import_id: UUID, db: Session = Depends(get_db)):
                 artist_name=w.artist_name,
                 artist_honorifics=w.artist_honorifics,
                 price_text=w.price_text,
-                price_numeric=(
-                    float(w.price_numeric) if w.price_numeric is not None else None
-                ),
+                price_numeric=(float(w.price_numeric) if w.price_numeric is not None else None),
                 edition_total=w.edition_total,
                 edition_price_numeric=(
-                    float(w.edition_price_numeric)
-                    if w.edition_price_numeric is not None
-                    else None
+                    float(w.edition_price_numeric) if w.edition_price_numeric is not None else None
                 ),
                 artwork=w.artwork,
                 medium=w.medium,
@@ -346,9 +334,7 @@ def preview_import(import_id: UUID, db: Session = Depends(get_db)):
         for w in works:
             edition_display = None
             if w.edition_total and w.edition_price_numeric:
-                edition_display = (
-                    f"(edition of {w.edition_total} at £{w.edition_price_numeric})"
-                )
+                edition_display = f"(edition of {w.edition_total} at £{w.edition_price_numeric})"
             elif w.edition_total:
                 edition_display = f"(edition of {w.edition_total})"
 
@@ -437,9 +423,7 @@ def cleanup_uploads(db: Session = Depends(get_db)):
     # Collect all disk_filenames that are still referenced
     referenced = {
         row.disk_filename
-        for row in db.query(Import.disk_filename)
-        .filter(Import.disk_filename.isnot(None))
-        .all()
+        for row in db.query(Import.disk_filename).filter(Import.disk_filename.isnot(None)).all()
     }
 
     removed_files: list[str] = []

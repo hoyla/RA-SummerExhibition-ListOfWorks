@@ -24,9 +24,7 @@ from backend.app.api.auth import Role, get_current_role
 from backend.app.config import API_KEY, CORS_ORIGINS, LOG_LEVEL, MAX_REQUEST_BODY_BYTES
 from backend.app.db import engine
 
-_alembic_cfg = AlembicConfig(
-    str(Path(__file__).resolve().parent.parent.parent / "alembic.ini")
-)
+_alembic_cfg = AlembicConfig(str(Path(__file__).resolve().parent.parent.parent / "alembic.ini"))
 
 # If the DB already has tables but no alembic_version table, stamp it first
 # so that upgrade() doesn't re-create existing tables.
@@ -140,14 +138,10 @@ def _seed_known_artists() -> None:
                     resolved_last_name=entry.get("resolved_last_name"),
                     resolved_quals=entry.get("resolved_quals"),
                     resolved_is_company=entry.get("resolved_is_company"),
-                    resolved_artist2_first_name=entry.get(
-                        "resolved_artist2_first_name"
-                    ),
+                    resolved_artist2_first_name=entry.get("resolved_artist2_first_name"),
                     resolved_artist2_last_name=entry.get("resolved_artist2_last_name"),
                     resolved_artist2_quals=entry.get("resolved_artist2_quals"),
-                    resolved_artist3_first_name=entry.get(
-                        "resolved_artist3_first_name"
-                    ),
+                    resolved_artist3_first_name=entry.get("resolved_artist3_first_name"),
                     resolved_artist3_last_name=entry.get("resolved_artist3_last_name"),
                     resolved_artist3_quals=entry.get("resolved_artist3_quals"),
                     resolved_artist1_ra_styled=entry.get("resolved_artist1_ra_styled"),
@@ -364,10 +358,7 @@ def health():
 
             # Active connections
             row = conn.execute(
-                text(
-                    "SELECT count(*) FROM pg_stat_activity "
-                    "WHERE datname = current_database()"
-                )
+                text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")
             ).fetchone()
             if row:
                 db_info["active_connections"] = row[0]

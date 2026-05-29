@@ -50,9 +50,7 @@ class FakeSession:
 
 
 def _section(name="Gallery 1", position=1, section_id="sec1"):
-    return SimpleNamespace(
-        id=section_id, import_id="imp1", name=name, position=position
-    )
+    return SimpleNamespace(id=section_id, import_id="imp1", name=name, position=position)
 
 
 def _work(
@@ -284,9 +282,7 @@ def test_csv_export_work_values():
 
 
 def test_csv_export_empty_edition_fields_when_none():
-    db = FakeSession(
-        [_section()], [_work(edition_total=None, edition_price_numeric=None)]
-    )
+    db = FakeSession([_section()], [_work(edition_total=None, edition_price_numeric=None)])
     rows = _parse_csv(render_import_as_csv("imp1", db))
 
     row = rows[0]

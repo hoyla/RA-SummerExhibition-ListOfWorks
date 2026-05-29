@@ -383,9 +383,7 @@ def test_manual_line_breaks_with_end_of_first_line():
 
 def test_manual_line_breaks_medium():
     """Newlines in medium should also bypass auto-wrap."""
-    db = _manual_break_db(
-        title="Normal Title", medium="oil on canvas\nmounted on board"
-    )
+    db = _manual_break_db(title="Normal Title", medium="oil on canvas\nmounted on board")
     cfg = ExportConfig(
         components=[
             ComponentConfig(field="work_number", separator_after="tab"),
