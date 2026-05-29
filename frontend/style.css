@@ -49,6 +49,23 @@
   --tok-bd:   #e8c089;
   --tok-fg:   #7a4a10;
 
+  /* --- Unified pill system (semantic intents) — Pack 01 (2026-05-29) --- */
+  /* Five intent palettes used by .pill--info/--review/--error/--edit/--id.
+     Call sites adopt these in Pack 02; until then nothing references them. */
+  --pill-info-bg:#e9f3f5; --pill-info-bd:#b3d4dc; --pill-info-fg:#1f6373;     /* auto / benign */
+  --pill-review-bg:#fdf2da; --pill-review-bd:#e6c987; --pill-review-fg:#855c12; /* needs review */
+  --pill-error-bg:#fbeae7; --pill-error-bd:#e3a89e; --pill-error-fg:#9e2c1c;  /* genuine problem */
+  --pill-edit-bg:#eef0f8; --pill-edit-bd:#c3c9e4; --pill-edit-fg:#474f86;     /* human-touched */
+  --pill-id-bg:#f6f4f0; --pill-id-bd:#d6d1c6; --pill-id-fg:#5f5b53;           /* neutral identity */
+
+  /* Compare ordinal match ramp (best → worst, + neutral missing) */
+  --ramp-1-bg:#e4f1e6; --ramp-1-bd:#a9d3ae; --ramp-1-fg:#1f6b34;  /* exact      */
+  --ramp-2-bg:#e9f3f5; --ramp-2-bd:#b3d4dc; --ramp-2-fg:#1f6373;  /* equivalent */
+  --ramp-3-bg:#fdf2da; --ramp-3-bd:#e6c987; --ramp-3-fg:#855c12;  /* partial    */
+  --ramp-4-bg:#fae6dc; --ramp-4-bd:#e8b48f; --ramp-4-fg:#9a5418;  /* weak       */
+  --ramp-5-bg:#fbeae7; --ramp-5-bd:#e3a89e; --ramp-5-fg:#9e2c1c;  /* none       */
+  --ramp-x-bg:#efece7; --ramp-x-bd:#d6d1c6; --ramp-x-fg:#6b665d;  /* missing    */
+
   --radius: 4px;
 }
 
@@ -1201,6 +1218,38 @@ details.section-block[open] > .section-summary::before {
 .badge-warning { background: #fff3cd; color: #8a6000; border: 1px solid #f0c040; }
 .badge-info { background: #d1ecf1; color: #0c5460; border: 1px solid #8dd3df; }
 .badge-audit { background: #e8f0fe; color: #1a56db; border: 1px solid #a4c3f5; }
+
+/* ------------------------------------------------------------------ */
+/* Unified pills (intent-keyed) — Pack 01 (2026-05-29)                  */
+/* Foundation for Packs 02 (row-flag migration) and 04 (drawer).        */
+/* Nothing references these yet; visual change is zero until Pack 02.   */
+/* ------------------------------------------------------------------ */
+.pill { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600;
+  line-height:1.4; padding:1px 8px; border-radius:5px; border:1px solid transparent; white-space:nowrap; }
+.pill .ct { font-variant-numeric:tabular-nums; opacity:.72; font-weight:700; border-left:1px solid; padding-left:7px; } /* count, divider before it */
+.pill--info  { background:var(--pill-info-bg);  border-color:var(--pill-info-bd);  color:var(--pill-info-fg); }
+.pill--review{ background:var(--pill-review-bg);border-color:var(--pill-review-bd);color:var(--pill-review-fg); }
+.pill--error { background:var(--pill-error-bg); border-color:var(--pill-error-bd); color:var(--pill-error-fg); }
+.pill--edit  { background:var(--pill-edit-bg);  border-color:var(--pill-edit-bd);  color:var(--pill-edit-fg); }
+.pill--id { background:var(--pill-id-bg); border-color:var(--pill-id-bd); color:var(--pill-id-fg);
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; font-weight:700; }
+.pill--id.is-ra { color:var(--ra-red); border-color:#e0b8b2; }   /* quiet brand nod — NO dot */
+
+/* Compare ordinal match ramp */
+.mp { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+  padding:3px 10px; border-radius:6px; border:1px solid transparent; }
+.mp .ct { font-variant-numeric:tabular-nums; opacity:.7; border-left:1px solid; padding-left:8px; }
+.mp--1{background:var(--ramp-1-bg);border-color:var(--ramp-1-bd);color:var(--ramp-1-fg);}
+.mp--2{background:var(--ramp-2-bg);border-color:var(--ramp-2-bd);color:var(--ramp-2-fg);}
+.mp--3{background:var(--ramp-3-bg);border-color:var(--ramp-3-bd);color:var(--ramp-3-fg);}
+.mp--4{background:var(--ramp-4-bg);border-color:var(--ramp-4-bd);color:var(--ramp-4-fg);}
+.mp--5{background:var(--ramp-5-bg);border-color:var(--ramp-5-bd);color:var(--ramp-5-fg);}
+.mp--x{background:var(--ramp-x-bg);border-color:var(--ramp-x-bd);color:var(--ramp-x-fg);}
+
+/* Opt-in sticky section (applied per page in Pack 03 — never on bare .section-block).
+   Audit log + Tools keep the base class and are provably unaffected. */
+.section-block--sticky > .section-summary { position:sticky; top:0; z-index:20; background:var(--bg); }
+.section-block--sticky > .section-summary.is-stuck { box-shadow:0 8px 10px -9px rgba(0,0,0,.25); }
 
 /* Audit log */
 .audit-table .col-ts { width: 140px; font-size: 12px; }
