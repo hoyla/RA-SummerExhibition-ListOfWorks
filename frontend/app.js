@@ -862,6 +862,8 @@ function router() {
   const indexDetailMatch = hash.match(/^#\/index\/([^/?]+)/);
   const tmplEditMatch = hash.match(/^#\/templates\/([^/]+)\/edit$/);
   const idxTmplEditMatch = hash.match(/^#\/index-templates\/([^/]+)\/edit$/);
+  // Settings deep-link: #/settings or #/settings/<users|preview|normalisation|reconciliation>
+  const settingsMatch = hash.match(/^#\/settings(?:\/([a-z]+))?\/?$/);
   if (importMatch)             renderDetail(importMatch[1]);
   else if (indexDetailMatch)   renderIndexDetail(indexDetailMatch[1]);
   else if (idxTmplEditMatch)   renderIndexTemplateEdit(idxTmplEditMatch[1]);
@@ -870,7 +872,7 @@ function router() {
   else if (hash === '#/templates')         renderTemplates();
   else if (hash === '#/audit')             renderAuditLog();
   else if (hash === '#/compare')           renderCompare();
-  else if (hash === '#/settings')          renderSettings();
+  else if (settingsMatch)                  renderSettings(settingsMatch[1] || null);
   else                                     renderList();
 }
 
@@ -1099,7 +1101,7 @@ function _reconcileRulesPanel(rc) {
     </section>`;
 }
 
-async function renderSettings() {
+async function renderSettings(initialTab) {
   const app = document.getElementById('app');
   app.innerHTML = '<p class="loading" style="padding:40px 0">Loading settings&hellip;</p>';
   let cfg, knownArtists, reconcileCfg;
@@ -1110,6 +1112,9 @@ async function renderSettings() {
       api('GET', '/reconcile-config').catch(() => null),
     ]);
   } catch (e) { app.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+
+  // Clear any prior dirty state from a previous Settings mount.
+  if (typeof _settingsDirty !== 'undefined') _settingsDirty.clear();
 
   // Load display prefs from localStorage
   const dispCfg = _getDisplayCfg();
@@ -1141,182 +1146,398 @@ async function renderSettings() {
     ? '<code>Edition of 0</code> is suppressed.'
     : `Editions of ${editionSuppressMax} or fewer are suppressed (an &ldquo;edition of 1&rdquo; is the work itself).`;
 
+  // --- Tab definitions ---
+  // Each tab carries a scope-chip explaining where its saves land. Users tab
+  // only renders for admins on Cognito auth (same guard as the old layout).
+  const isAdminCognito = canAdmin() && _authMode === 'cognito';
+  const tabDefs = [];
+  if (isAdminCognito) tabDefs.push({ key: 'users',          label: 'Users',          scope: 'access',       scopeTitle: 'User accounts and roles \u2014 saved server-side' });
+  tabDefs.push({                       key: 'preview',        label: 'Preview',        scope: 'this device',  scopeTitle: 'Stored in localStorage \u2014 affects this browser only' });
+  tabDefs.push({                       key: 'normalisation',  label: 'Normalisation',  scope: 'next import',  scopeTitle: 'Server config \u2014 applies on the next import' });
+  tabDefs.push({                       key: 'reconciliation', label: 'Reconciliation', scope: 'read-only',    scopeTitle: 'Hard-coded for now (not yet editable)' });
+  const validKeys = tabDefs.map(t => t.key);
+  // Default tab: respect deep-link; otherwise admin\u2192users, viewer\u2192preview.
+  let activeTab = (initialTab && validKeys.includes(initialTab))
+    ? initialTab
+    : (isAdminCognito ? 'users' : 'preview');
+
+  const tabBar = `<div class="settings-tabs" role="tablist">
+    ${tabDefs.map(t => `<button type="button" class="settings-tab${t.key === activeTab ? ' is-on' : ''}" role="tab" data-settings-tab="${t.key}" onclick="_settingsActivateTab('${t.key}')">${esc(t.label)}<span class="settings-tab-scope" title="${esc(t.scopeTitle)}">${esc(t.scope)}</span></button>`).join('')}
+  </div>`;
+
+  // --- Users pane (admin + Cognito only) ---
+  const usersPane = isAdminCognito ? `
+    <div class="settings-tab-pane" data-settings-tab="users"${activeTab === 'users' ? '' : ' hidden'}>
+      <h3 class="settings-group-heading">Users</h3>
+      <p class="settings-group-desc">Manage who can access the Catalogue Tool and their permission level.</p>
+      <section class="panel" id="users-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h4 class="panel-subheading" style="margin:0">User Accounts</h4>
+          <button class="btn btn-sm btn-primary" onclick="_showCreateUserForm()">+ New User</button>
+        </div>
+        <div id="create-user-form-slot"></div>
+        <table class="data-table" id="users-table">
+          <thead><tr><th>Email</th><th>Role</th><th>Status</th><th style="width:180px">Actions</th></tr></thead>
+          <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
+        </table>
+      </section>
+    </div>` : '';
+
+  // --- Preview pane ---
+  const previewPane = `
+    <div class="settings-tab-pane" data-settings-tab="preview"${activeTab === 'preview' ? '' : ' hidden'}>
+      <h3 class="settings-group-heading">Preview</h3>
+      <p class="settings-group-desc">Controls how values appear in this browser view only &mdash; stored locally, never sent to the server.</p>
+      <section class="panel">
+        <h4 class="panel-subheading">HTML Preview Formatting</h4>
+        <div class="settings-form">
+          <div class="form-row">
+            <label>Currency symbol</label>
+            <input id="disp-currency" type="text" value="${esc(dispCurr)}" style="max-width:80px">
+          </div>
+          <div class="form-row">
+            <label>Thousands separator</label>
+            <select id="disp-thousands-sep">${sepOpts(dispSep)}</select>
+          </div>
+          <div class="form-row">
+            <label>Decimal places</label>
+            <select id="disp-decimal-places">${dpOpts(dispDp)}</select>
+          </div>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+        <div class="settings-form">
+          <div class="form-row">
+            <label>Edition prefix</label>
+            <input id="disp-edition-prefix" type="text" value="${esc(dispEdPrefix)}" style="max-width:200px">
+            <span class="form-hint">e.g. &ldquo;edition of&rdquo; &rarr; &ldquo;edition of 10 at &pound;500&rdquo;</span>
+          </div>
+          <div class="form-row">
+            <label>Edition brackets</label>
+            <label class="inline-check" style="text-transform:none;font-weight:normal">
+              <input type="checkbox" id="disp-edition-brackets"${dispEdBrackets ? ' checked' : ''}>
+              Wrap edition info in brackets
+            </label>
+          </div>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+        <div class="settings-form">
+          <div class="form-row">
+            <label>Artwork column</label>
+            <label class="inline-check" style="text-transform:none;font-weight:normal">
+              <input type="checkbox" id="disp-show-artwork"${dispCfg.show_artwork_column ? ' checked' : ''}>
+              Show &ldquo;Artwork&rdquo; column in the List of Works
+            </label>
+            <span class="form-hint">The field remains editable in the override form regardless of this setting.</span>
+          </div>
+          <div class="form-row">
+            <label>Title case under title</label>
+            <label class="inline-check" style="text-transform:none;font-weight:normal">
+              <input type="checkbox" id="disp-show-title-cased"${dispCfg.show_title_cased ? ' checked' : ''}>
+              Show the title-cased title beneath each title in the List of Works
+            </label>
+            <span class="form-hint">A quick-scan aid for spotting title-casing mistakes. The all-caps title sits above its title-cased form.</span>
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:12px">
+          <button class="btn btn-primary btn-sm" onclick="savePreviewSettings()">Save Preview Settings</button>
+          <span id="preview-settings-status" class="status-msg"></span>
+        </div>
+      </section>
+    </div>`;
+
+  // --- Normalisation pane ---
+  // Part 4.4: "What\u2019s normalised automatically" moved to first position and
+  // wrapped in <details> so it's collapsed by default.
+  // Part 4.1: the four per-panel Save buttons are gone \u2014 replaced by a
+  // single sticky save bar at the bottom of this pane.
+  // Part 4.7: Honorifics + Title casing form-rows get the .form-row--wide modifier.
+  const normPane = `
+    <div class="settings-tab-pane" data-settings-tab="normalisation"${activeTab === 'normalisation' ? '' : ' hidden'}>
+      <h3 class="settings-group-heading">Normalisation</h3>
+      <p class="settings-group-desc">Applied when an Excel file is imported. Changes here take effect on the <em>next</em> import.</p>
+
+      <details class="settings-explainer">
+        <summary>What&rsquo;s normalised automatically</summary>
+        <div class="settings-explainer-body">
+          <p class="form-hint" style="margin:0 0 10px">Deterministic rules applied to every imported value. The raw spreadsheet value is always preserved alongside the normalised one.</p>
+          <table class="data-table">
+            <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+            <tbody>
+              <tr><td>Price</td><td>Currency symbols and separators stripped to a number. A value with no parseable number (e.g. <code>NFS</code>, <code>_</code>) is kept as-is; a blank or missing price becomes <code>*</code>.</td></tr>
+              <tr><td>Edition</td><td>Parsed from <code>Edition of N</code> or <code>Edition of N at &pound;Y</code>. ${editionRuleText} <span class="muted">Configurable below.</span></td></tr>
+              <tr><td>Honorifics</td><td>Recognised tokens (below) are split from the end of the artist name into a separate field.</td></tr>
+              <tr><td>Whitespace</td><td>Leading/trailing whitespace trimmed from every field (flagged on the work).</td></tr>
+              <tr><td>Artwork</td><td>Parsed to an integer number of pieces.</td></tr>
+              <tr><td>Title, Medium</td><td>Trimmed; otherwise preserved verbatim (plus any text substitutions below).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <section class="panel">
+        <h4 class="panel-subheading">Honorific Tokens</h4>
+        <div class="form-row form-row--wide">
+          <label>Recognised tokens</label>
+          <input id="cfg-honorific-tokens" type="text" value="${esc(honorificTokensValue)}"${canAdmin() ? '' : ' readonly'}>
+          <span class="form-hint">Comma-separated abbreviations stripped from the end of artist names, e.g. &ldquo;RA, HON, PRA&rdquo;</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h4 class="panel-subheading">Editions</h4>
+        <p class="form-hint" style="margin:0 0 10px">An &ldquo;edition of 1&rdquo; is the work itself, not a distinct copy &mdash; whether to drop it is an editorial choice, so it&rsquo;s configurable.</p>
+        <div class="form-row">
+          <label>Suppress editions of</label>
+          <input id="cfg-edition-suppress-max" type="number" min="0" max="10" value="${editionSuppressMax}" style="max-width:70px"${canAdmin() ? '' : ' disabled'}>
+          <span class="form-hint">or fewer. <strong>0</strong> drops only &ldquo;Edition of 0&rdquo;; <strong>1</strong> also drops &ldquo;Edition of 1&rdquo;. If suppressing one removes a work&rsquo;s only price, that&rsquo;s flagged for review.</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="subst-toolbar">
+          <h4 class="panel-subheading" style="margin:0">Text substitutions<span class="subst-count" id="subst-count">${substRules.length} rule${substRules.length === 1 ? '' : 's'}</span></h4>
+          ${ifAdmin('<button class="btn btn-sm" onclick="addSubstRule()">+ Add rule</button>')}
+        </div>
+        <p class="form-hint" style="margin:0 0 12px">Literal find &rarr; replace on the chosen fields, applied in order. Spaces count (shown as <span class="ws-hint">&middot;</span>), so <code><span class="ws-hint">&middot;</span>-<span class="ws-hint">&middot;</span></code> changes a spaced hyphen but never the hyphen in &ldquo;double-barrelled&rdquo;. <strong>Whole word only</strong> is the safe default for abbreviations (<code>mdf</code>&rarr;<code>MDF</code> won&rsquo;t touch <code>plaster</code>); turn it off for non-letter rules like <code>...</code>&rarr;<code>&hellip;</code>.</p>
+        <div id="subst-rules">
+          ${substRules.map(r => _substRuleRow(r)).join('')}
+        </div>
+      </section>
+
+      <section class="panel">
+        <h4 class="panel-subheading">Title casing</h4>
+        <p class="form-hint" style="margin:0 0 10px">A &ldquo;Title Case Title&rdquo; is derived for each work (used by outputs like the LPG; the List of Works keeps its house caps). All-caps input is best-effort &mdash; multi-letter Roman numerals are kept uppercase automatically, and the result is correctable per work via the Title Case Title override.</p>
+        <div class="form-row form-row--wide">
+          <label>Preserve casing for</label>
+          <input id="cfg-title-case-exceptions" type="text" value="${esc(titleCaseExceptionsValue)}"${canAdmin() ? '' : ' readonly'}>
+          <span class="form-hint">Comma-separated acronyms / stylised names kept as written, e.g. &ldquo;RA, USA, MoMA&rdquo;. Matched case-insensitively.</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ka-sticky-toolbar">
+          <h4 class="panel-subheading" style="margin:0">Known Artists<span class="ka-count" id="ka-count">${knownArtists.length} entr${knownArtists.length === 1 ? 'y' : 'ies'}</span></h4>
+          <div class="ka-toolbar-actions">
+            ${ifEditor('<button class="btn btn-sm" onclick="_kaSetAllCollapsed(false)" title="Expand every Known Artist card">Expand all</button>')}
+            ${ifEditor('<button class="btn btn-sm" onclick="_kaSetAllCollapsed(true)" title="Collapse every Known Artist card">Collapse all</button>')}
+            ${ifEditor('<button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>')}
+            ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
+            ${ifAdmin(`<button class="btn btn-sm" onclick="exportKnownArtists()" title="Download all known artists as a seed-format JSON file">Export JSON</button>`)}
+            <span id="known-artists-action-status" class="status-msg"></span>
+          </div>
+        </div>
+        <p class="form-hint" style="margin:0 0 10px">Map recurring raw spreadsheet values to corrected output. Matched during import.</p>
+        <div class="ka-filter-bar">
+          <input type="search" id="ka-filter-q" placeholder="Search match or resolved name&hellip;" oninput="_kaApplyFilter()" autocomplete="off">
+          <div class="ka-segment" role="tablist">
+            <button type="button" class="is-on" data-ka-seg="all" onclick="_kaSetSegment('all')">All</button>
+            <button type="button" data-ka-seg="builtin" onclick="_kaSetSegment('builtin')">Built-in</button>
+            <button type="button" data-ka-seg="custom" onclick="_kaSetSegment('custom')">Custom</button>
+          </div>
+          <span class="ka-count" id="ka-filter-count" style="margin-left:auto"></span>
+        </div>
+        <div id="known-artists-list">
+          ${knownArtists.map(ka => _knownArtistCard(ka)).join('')}
+        </div>
+        <span id="known-artists-status" class="status-msg" style="display:block;margin-top:8px"></span>
+      </section>
+
+      ${ifAdmin(`<div class="norm-save-bar">
+        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
+        <span class="norm-dirty-msg" id="norm-dirty-msg"></span>
+        <span id="norm-tab-status" class="status-msg"></span>
+      </div>`)}
+    </div>`;
+
+  // --- Reconciliation pane (read-only) ---
+  const reconcilePane = `
+    <div class="settings-tab-pane" data-settings-tab="reconciliation"${activeTab === 'reconciliation' ? '' : ' hidden'}>
+      ${_reconcileRulesPanel(reconcileCfg)}
+    </div>`;
+
   app.innerHTML = `
     <h2 class="page-heading">Settings</h2>
-
-    ${canAdmin() && _authMode === 'cognito' ? `
-    <h3 class="settings-group-heading">Users</h3>
-    <p class="settings-group-desc">Manage who can access the Catalogue Tool and their permission level.</p>
-    <section class="panel" id="users-panel">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <h4 class="panel-subheading" style="margin:0">User Accounts</h4>
-        <button class="btn btn-sm btn-primary" onclick="_showCreateUserForm()">+ New User</button>
-      </div>
-      <div id="create-user-form-slot"></div>
-      <table class="data-table" id="users-table">
-        <thead><tr><th>Email</th><th>Role</th><th>Status</th><th style="width:180px">Actions</th></tr></thead>
-        <tbody><tr><td colspan="4" class="muted">Loading&hellip;</td></tr></tbody>
-      </table>
-    </section>
-    ` : ''}
-
-    <h3 class="settings-group-heading">Preview</h3>
-    <p class="settings-group-desc">Controls how values appear in this browser view only &mdash; stored locally, never sent to the server.</p>
-    <section class="panel">
-      <h4 class="panel-subheading">HTML Preview Formatting</h4>
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Currency symbol</label>
-          <input id="disp-currency" type="text" value="${esc(dispCurr)}" style="max-width:80px">
-        </div>
-        <div class="form-row">
-          <label>Thousands separator</label>
-          <select id="disp-thousands-sep">${sepOpts(dispSep)}</select>
-        </div>
-        <div class="form-row">
-          <label>Decimal places</label>
-          <select id="disp-decimal-places">${dpOpts(dispDp)}</select>
-        </div>
-      </div>
-      <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Edition prefix</label>
-          <input id="disp-edition-prefix" type="text" value="${esc(dispEdPrefix)}" style="max-width:200px">
-          <span class="form-hint">e.g. &ldquo;edition of&rdquo; &rarr; &ldquo;edition of 10 at &pound;500&rdquo;</span>
-        </div>
-        <div class="form-row">
-          <label>Edition brackets</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" id="disp-edition-brackets"${dispEdBrackets ? ' checked' : ''}>
-            Wrap edition info in brackets
-          </label>
-        </div>
-      </div>
-      <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-      <div class="settings-form">
-        <div class="form-row">
-          <label>Artwork column</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" id="disp-show-artwork"${dispCfg.show_artwork_column ? ' checked' : ''}>
-            Show &ldquo;Artwork&rdquo; column in the List of Works
-          </label>
-          <span class="form-hint">The field remains editable in the override form regardless of this setting.</span>
-        </div>
-        <div class="form-row">
-          <label>Title case under title</label>
-          <label class="inline-check" style="text-transform:none;font-weight:normal">
-            <input type="checkbox" id="disp-show-title-cased"${dispCfg.show_title_cased ? ' checked' : ''}>
-            Show the title-cased title beneath each title in the List of Works
-          </label>
-          <span class="form-hint">A quick-scan aid for spotting title-casing mistakes. The all-caps title sits above its title-cased form.</span>
-        </div>
-      </div>
-      <div class="form-actions" style="margin-top:12px">
-        <button class="btn btn-primary btn-sm" onclick="savePreviewSettings()">Save Preview Settings</button>
-        <span id="preview-settings-status" class="status-msg"></span>
-      </div>
-    </section>
-
-    <h3 class="settings-group-heading">Normalisation</h3>
-    <p class="settings-group-desc">Applied when an Excel file is imported. Changes here take effect on the <em>next</em> import.</p>
-    <section class="panel">
-      <h4 class="panel-subheading">Honorific Tokens</h4>
-      <div class="form-row">
-        <label>Recognised tokens</label>
-        <input id="cfg-honorific-tokens" type="text" value="${esc(honorificTokensValue)}"${canAdmin() ? '' : ' readonly'}>
-        <span class="form-hint">Comma-separated abbreviations stripped from the end of artist names, e.g. &ldquo;RA, HON, PRA&rdquo;</span>
-      </div>
-      <div class="form-actions" style="margin-top:12px">
-        ${ifAdmin('<button class="btn btn-primary btn-sm" onclick="saveHonorificTokens()">Save Tokens</button>')}
-        <span id="honorific-status" class="status-msg"></span>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h4 class="panel-subheading">What&rsquo;s normalised automatically</h4>
-      <p class="form-hint" style="margin:0 0 10px">Deterministic rules applied to every imported value. The raw spreadsheet value is always preserved alongside the normalised one.</p>
-      <table class="data-table">
-        <thead><tr><th>Field</th><th>Rule</th></tr></thead>
-        <tbody>
-          <tr><td>Price</td><td>Currency symbols and separators stripped to a number. A value with no parseable number (e.g. <code>NFS</code>, <code>_</code>) is kept as-is; a blank or missing price becomes <code>*</code>.</td></tr>
-          <tr><td>Edition</td><td>Parsed from <code>Edition of N</code> or <code>Edition of N at &pound;Y</code>. ${editionRuleText} <span class="muted">Configurable below.</span></td></tr>
-          <tr><td>Honorifics</td><td>Recognised tokens (above) are split from the end of the artist name into a separate field.</td></tr>
-          <tr><td>Whitespace</td><td>Leading/trailing whitespace trimmed from every field (flagged on the work).</td></tr>
-          <tr><td>Artwork</td><td>Parsed to an integer number of pieces.</td></tr>
-          <tr><td>Title, Medium</td><td>Trimmed; otherwise preserved verbatim (plus any text substitutions below).</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="panel">
-      <h4 class="panel-subheading">Editions</h4>
-      <p class="form-hint" style="margin:0 0 10px">An &ldquo;edition of 1&rdquo; is the work itself, not a distinct copy &mdash; whether to drop it is an editorial choice, so it&rsquo;s configurable.</p>
-      <div class="form-row">
-        <label>Suppress editions of</label>
-        <input id="cfg-edition-suppress-max" type="number" min="0" max="10" value="${editionSuppressMax}" style="max-width:70px"${canAdmin() ? '' : ' disabled'}>
-        <span class="form-hint">or fewer. <strong>0</strong> drops only &ldquo;Edition of 0&rdquo;; <strong>1</strong> also drops &ldquo;Edition of 1&rdquo;. If suppressing one removes a work&rsquo;s only price, that&rsquo;s flagged for review.</span>
-      </div>
-      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
-        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
-        <span id="norm-rules-status" class="status-msg"></span>
-      </div>`)}
-    </section>
-
-    <section class="panel">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-        <h4 class="panel-subheading" style="margin:0">Text substitutions</h4>
-        ${ifAdmin('<button class="btn btn-sm" onclick="addSubstRule()">+ Add rule</button>')}
-      </div>
-      <p class="form-hint" style="margin:0 0 12px">Literal find &rarr; replace on the chosen fields, applied in order. Spaces count (shown as <span class="ws-hint">&middot;</span>), so <code><span class="ws-hint">&middot;</span>-<span class="ws-hint">&middot;</span></code> changes a spaced hyphen but never the hyphen in &ldquo;double-barrelled&rdquo;. <strong>Whole word only</strong> is the safe default for abbreviations (<code>mdf</code>&rarr;<code>MDF</code> won&rsquo;t touch <code>plaster</code>); turn it off for non-letter rules like <code>...</code>&rarr;<code>&hellip;</code>.</p>
-      <div id="subst-rules">
-        ${substRules.map(r => _substRuleRow(r)).join('')}
-      </div>
-      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
-        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
-        <span id="subst-status" class="status-msg"></span>
-      </div>`)}
-    </section>
-
-    <section class="panel">
-      <h4 class="panel-subheading">Title casing</h4>
-      <p class="form-hint" style="margin:0 0 10px">A &ldquo;Title Case Title&rdquo; is derived for each work (used by outputs like the LPG; the List of Works keeps its house caps). All-caps input is best-effort &mdash; multi-letter Roman numerals are kept uppercase automatically, and the result is correctable per work via the Title Case Title override.</p>
-      <div class="form-row">
-        <label>Preserve casing for</label>
-        <input id="cfg-title-case-exceptions" type="text" value="${esc(titleCaseExceptionsValue)}"${canAdmin() ? '' : ' readonly'}>
-        <span class="form-hint">Comma-separated acronyms / stylised names kept as written, e.g. &ldquo;RA, USA, MoMA&rdquo;. Matched case-insensitively.</span>
-      </div>
-      ${ifAdmin(`<div class="form-actions" style="margin-top:12px">
-        <button class="btn btn-primary btn-sm" onclick="saveNormalisationRules()">Save normalisation rules</button>
-        <span id="title-case-status" class="status-msg"></span>
-      </div>`)}
-    </section>
-
-    <section class="panel">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:12px">
-        <h4 class="panel-subheading" style="margin:0">Known Artists</h4>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${ifEditor('<button class="btn btn-sm" onclick="addKnownArtistRow()">+ Add entry</button>')}
-          ${ifAdmin(`<button class="btn btn-sm" onclick="seedKnownArtists()" title="Load built-in known artists (won&rsquo;t overwrite existing entries)">Load defaults</button>`)}
-          ${ifAdmin(`<button class="btn btn-sm" onclick="exportKnownArtists()" title="Download all known artists as a seed-format JSON file">Export JSON</button>`)}
-          <span id="known-artists-action-status" class="status-msg"></span>
-        </div>
-      </div>
-      <p class="form-hint" style="margin:0 0 16px">Map recurring raw spreadsheet values to corrected output. Matched during import.</p>
-      <div id="known-artists-list">
-        ${knownArtists.map(ka => _knownArtistCard(ka)).join('')}
-      </div>
-      <span id="known-artists-status" class="status-msg" style="display:block;margin-top:8px"></span>
-    </section>
-    ${_reconcileRulesPanel(reconcileCfg)}`;
+    ${tabBar}
+    ${usersPane}
+    ${previewPane}
+    ${normPane}
+    ${reconcilePane}`;
 
   // Populate Index Name previews now that the DOM is ready
   _refreshAllKaPreviews();
   // Initialise tri-state checkboxes (must set .indeterminate via JS)
   _initTriStateCheckboxes(document.getElementById('known-artists-list'));
+  // Wire dirty-flag tracking on the editable panes
+  _settingsWireDirty();
 
-  // Load users table (admin + Cognito only)
-  if (canAdmin() && _authMode === 'cognito') _loadUsersTable();
+  // Load users table when the Users tab is the active one on mount.
+  if (isAdminCognito && activeTab === 'users') _loadUsersTable();
+}
+
+// ===========================================================================
+// Settings tab navigation, dirty-flag tracking, leave guard
+// (2026-05-29 redesign)
+// ===========================================================================
+
+/** Track which Settings tabs hold unsaved edits. Cleared on every Settings mount. */
+const _settingsDirty = new Set();
+
+function _settingsHasDirty(tab) {
+  if (_settingsDirty.has(tab)) return true;
+  // Per-card Known Artists edits use their own dirty mechanism (saves go via
+  // dedicated /known-artists routes, not PUT /config). For tab-switch guard
+  // purposes, count any dirty KA card as Normalisation-tab dirty.
+  if (tab === 'normalisation' && document.querySelector('.ka-card[data-ka-dirty="true"]')) return true;
+  return false;
+}
+
+function _settingsMarkDirty(tab) {
+  if (!tab) return;
+  _settingsDirty.add(tab);
+  _settingsUpdateDirtyUI();
+}
+
+function _settingsMarkClean(tab) {
+  if (!tab) return;
+  _settingsDirty.delete(tab);
+  _settingsUpdateDirtyUI();
+}
+
+function _settingsUpdateDirtyUI() {
+  document.querySelectorAll('.settings-tab').forEach(btn => {
+    const tab = btn.dataset.settingsTab;
+    const dot = btn.querySelector('.tab-dirty-dot');
+    const isDirty = _settingsDirty.has(tab);
+    if (isDirty && !dot) {
+      btn.insertAdjacentHTML('beforeend', '<span class="tab-dirty-dot" title="Unsaved changes"></span>');
+    } else if (!isDirty && dot) {
+      dot.remove();
+    }
+  });
+  const msg = document.getElementById('norm-dirty-msg');
+  if (msg) msg.textContent = _settingsDirty.has('normalisation') ? '● Unsaved changes' : '';
+}
+
+/** Attach delegated input/change listeners to each editable Settings pane. */
+function _settingsWireDirty() {
+  const wireTab = (tab) => {
+    const pane = document.querySelector(`.settings-tab-pane[data-settings-tab="${tab}"]`);
+    if (!pane) return;
+    const onEdit = (e) => {
+      // Exclude view-only controls: filter bar, explainer disclosure.
+      if (e.target.closest('.ka-filter-bar')) return;
+      if (e.target.closest('.settings-explainer > summary')) return;
+      // KA card edits track via _markKaDirty per-card, not tab-level.
+      if (e.target.closest('.ka-card')) return;
+      _settingsMarkDirty(tab);
+    };
+    pane.addEventListener('input', onEdit);
+    pane.addEventListener('change', onEdit);
+  };
+  wireTab('preview');
+  wireTab('normalisation');
+}
+
+/** Show one Settings tab and hide the others. Guards tab switch when dirty. */
+function _settingsActivateTab(tabName, opts) {
+  const currentBtn = document.querySelector('.settings-tab.is-on');
+  const fromTab = currentBtn?.dataset.settingsTab;
+  if (fromTab && fromTab !== tabName && !opts?.skipDirtyCheck) {
+    if (_settingsHasDirty(fromTab)) {
+      const niceName = fromTab.charAt(0).toUpperCase() + fromTab.slice(1);
+      if (!window.confirm(`Discard unsaved changes on the ${niceName} tab?`)) return;
+      _settingsMarkClean(fromTab);
+      // Also reset per-card KA dirty state when discarding Normalisation.
+      if (fromTab === 'normalisation') {
+        document.querySelectorAll('.ka-card[data-ka-dirty="true"]').forEach(c => {
+          if (typeof _markKaClean === 'function') _markKaClean(c);
+          delete c.dataset.kaDirty;
+        });
+      }
+    }
+  }
+  document.querySelectorAll('.settings-tab').forEach(btn => {
+    btn.classList.toggle('is-on', btn.dataset.settingsTab === tabName);
+  });
+  document.querySelectorAll('.settings-tab-pane').forEach(pane => {
+    pane.hidden = pane.dataset.settingsTab !== tabName;
+  });
+  // Update hash without retriggering router.
+  const newHash = `#/settings/${tabName}`;
+  if (location.hash !== newHash) history.replaceState(null, '', newHash);
+  // Lazy-load Users table on first activation of that tab.
+  if (tabName === 'users' && canAdmin() && _authMode === 'cognito') {
+    const tbody = document.querySelector('#users-table tbody');
+    if (tbody && tbody.querySelector('td.muted, td.loading')) _loadUsersTable();
+  }
+}
+
+// Beforeunload guard — warn before losing unsaved Settings edits.
+window.addEventListener('beforeunload', (e) => {
+  if (!document.querySelector('.settings-tabs')) return;  // only on Settings
+  if (_settingsHasDirty('normalisation') || _settingsHasDirty('preview')) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// ===========================================================================
+// Known Artists: collapse/expand + filter (Parts 3, 4.5, 4.6)
+// ===========================================================================
+
+/**
+ * Toggle a Known Artist card's expanded state. Ignores clicks inside the
+ * .ka-card-actions group so Duplicate / Save / Delete don't double as toggles.
+ */
+function _toggleKaCard(headerEl, ev) {
+  if (ev && ev.target.closest('.ka-card-actions')) return;
+  headerEl.closest('.ka-card').classList.toggle('is-open');
+}
+
+function _kaSetAllCollapsed(collapsed) {
+  document.querySelectorAll('#known-artists-list .ka-card').forEach(c => {
+    c.classList.toggle('is-open', !collapsed);
+  });
+}
+
+function _kaSetSegment(seg) {
+  document.querySelectorAll('.ka-segment button').forEach(b => {
+    b.classList.toggle('is-on', b.dataset.kaSeg === seg);
+  });
+  _kaApplyFilter();
+}
+
+/**
+ * Filter the Known Artists list by segment (All / Built-in / Custom) plus
+ * a free-text search that matches BOTH the match-text (header title) AND
+ * the resolved name (the styled preview span). Matching the resolved name
+ * surfaces every match-text variant for the same group at once — the
+ * editorial reconciling task.
+ */
+function _kaApplyFilter() {
+  const q = (document.getElementById('ka-filter-q')?.value || '').trim().toLowerCase();
+  const seg = document.querySelector('.ka-segment button.is-on')?.dataset.kaSeg || 'all';
+  const cards = document.querySelectorAll('#known-artists-list .ka-card');
+  let shown = 0;
+  cards.forEach(card => {
+    const seeded = card.dataset.kaSeeded === 'true';
+    let segOk = true;
+    if (seg === 'builtin') segOk = seeded;
+    else if (seg === 'custom') segOk = !seeded;
+    let qOk = true;
+    if (q) {
+      const matchTxt = (card.querySelector('.ka-card-title')?.textContent || '').toLowerCase();
+      const previewTxt = (card.querySelector('.ka-preview')?.textContent || '').toLowerCase();
+      qOk = matchTxt.includes(q) || previewTxt.includes(q);
+    }
+    const show = segOk && qOk;
+    card.hidden = !show;
+    if (show) shown++;
+  });
+  const countEl = document.getElementById('ka-filter-count');
+  if (countEl) {
+    countEl.textContent = (q || seg !== 'all') ? `${shown} shown` : '';
+  }
 }
 
 async function saveSettings() {
@@ -1338,6 +1559,7 @@ function savePreviewSettings() {
       document.getElementById('disp-show-title-cased')?.checked ?? false,
     );
     if (statusEl) { statusEl.textContent = '\u2713 Saved'; statusEl.className = 'status-msg success'; }
+    if (typeof _settingsMarkClean === 'function') _settingsMarkClean('preview');
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${esc(e.message)}`; statusEl.className = 'status-msg error'; }
   }
@@ -1365,23 +1587,29 @@ function _substRuleRow(rule) {
   const wholeWord = isNew ? true : Boolean(r.whole_word);
   const disabled = canAdmin() ? '' : ' disabled';
   const checks = _SUBST_FIELDS.map(([key, label]) =>
-    `<label class="inline-check" style="text-transform:none;font-weight:normal;margin-right:10px">
+    `<label class="inline-check" style="text-transform:none;font-weight:normal">
        <input type="checkbox" class="subst-field" data-field="${key}"${(r.fields || []).includes(key) ? ' checked' : ''}${disabled}> ${label}
      </label>`).join('');
+  // Two-line layout: inputs on line 1, field checks + whole-word + preview on line 2.
+  // Field checks use the `.subst-fields .inline-check { display: inline-flex }`
+  // override so the four labels sit on one row instead of stacking.
   return `<div class="subst-row">
-    <div class="subst-inputs">
+    <div class="subst-line1">
       <input type="text" class="subst-find" value="${esc(r.find)}" placeholder="find" oninput="_updateSubstPreview(this)"${disabled}>
       <span class="subst-arrow">&rarr;</span>
       <input type="text" class="subst-replace" value="${esc(r.replace)}" placeholder="replace" oninput="_updateSubstPreview(this)"${disabled}>
       ${ifAdmin('<button type="button" class="btn btn-sm subst-remove" onclick="removeSubstRule(this)" title="Remove rule">&times;</button>')}
     </div>
-    <div class="subst-fields">
-      ${checks}
-      <label class="inline-check" style="text-transform:none;font-weight:normal;margin-left:14px" title="Match only when find is a standalone word (no surrounding letters/digits). Leave OFF for non-letter rules like &ldquo;...&rdquo; &rarr; &ldquo;…&rdquo;.">
-        <input type="checkbox" class="subst-whole-word"${wholeWord ? ' checked' : ''}${disabled}> Whole word only
-      </label>
+    <div class="subst-line2">
+      <div class="subst-fields">
+        ${checks}
+        <span class="subst-sep"></span>
+        <label class="inline-check" style="text-transform:none;font-weight:normal" title="Match only when find is a standalone word (no surrounding letters/digits). Leave OFF for non-letter rules like &ldquo;...&rdquo; &rarr; &ldquo;…&rdquo;.">
+          <input type="checkbox" class="subst-whole-word"${wholeWord ? ' checked' : ''}${disabled}> Whole word only
+        </label>
+      </div>
+      <div class="subst-preview"><code>${_visSpaces(r.find)}</code> &rarr; <code>${_visSpaces(r.replace)}</code></div>
     </div>
-    <div class="subst-preview"><code>${_visSpaces(r.find)}</code> &rarr; <code>${_visSpaces(r.replace)}</code></div>
   </div>`;
 }
 
@@ -1396,11 +1624,31 @@ function _updateSubstPreview(inputEl) {
 
 function addSubstRule() {
   const list = document.getElementById('subst-rules');
-  if (list) list.insertAdjacentHTML('beforeend', _substRuleRow(null));
+  if (!list) return;
+  list.insertAdjacentHTML('beforeend', _substRuleRow(null));
+  // Focus the new row's find field and scroll it into view — matches the
+  // pattern used by addKnownArtistRow.
+  const newRow = list.lastElementChild;
+  if (newRow) {
+    const find = newRow.querySelector('.subst-find');
+    if (find) find.focus();
+    newRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  _refreshSubstCount();
+  if (typeof _settingsMarkDirty === 'function') _settingsMarkDirty('normalisation');
+}
+
+function _refreshSubstCount() {
+  const el = document.getElementById('subst-count');
+  if (!el) return;
+  const n = document.querySelectorAll('#subst-rules .subst-row').length;
+  el.textContent = `${n} rule${n === 1 ? '' : 's'}`;
 }
 
 function removeSubstRule(btn) {
   btn.closest('.subst-row')?.remove();
+  _refreshSubstCount();
+  if (typeof _settingsMarkDirty === 'function') _settingsMarkDirty('normalisation');
 }
 
 function _gatherSubstitutions() {
@@ -1437,14 +1685,19 @@ async function _saveNormalisationConfig(statusIds, okMsg) {
 }
 
 function saveHonorificTokens() {
-  return _saveNormalisationConfig(['honorific-status'], '\u2713 Saved');
+  // Legacy entry point \u2014 the four per-panel save buttons were consolidated
+  // into a single Normalisation-tab save bar (2026-05-29 redesign). Kept as a
+  // shim in case any external link/test still calls it; routes through the
+  // same gather + status target as saveNormalisationRules.
+  return saveNormalisationRules();
 }
 
-function saveNormalisationRules() {
-  return _saveNormalisationConfig(
-    ['norm-rules-status', 'subst-status', 'title-case-status'],
+async function saveNormalisationRules() {
+  await _saveNormalisationConfig(
+    ['norm-tab-status'],
     '\u2713 Saved \u2014 applies to the next import',
   );
+  if (typeof _settingsMarkClean === 'function') _settingsMarkClean('normalisation');
 }
 
 // ---------------------------------------------------------------------------
@@ -1928,20 +2181,28 @@ function _knownArtistCard(ka) {
   const matchDisplay = [ka.match_first_name, ka.match_last_name].filter(Boolean).join(' ') || 'New Entry';
   const seededCls = seeded ? ' ka-card-seeded' : '';
 
-  // Header actions differ for seeded vs editable cards
+  // Header actions differ for seeded vs editable cards. The built-in/custom
+  // pill lives in the header (not in actions) so the distinction stays visible
+  // while the card is collapsed.
   let actions = '';
   if (seeded && canEdit()) {
-    actions = `<span class="badge badge-builtin">built-in</span>
-      <button class="btn btn-sm" onclick="duplicateKnownArtist(this)" title="Create an editable copy of this entry">Duplicate</button>`;
+    actions = `<button class="btn btn-sm" onclick="duplicateKnownArtist(this)" title="Create an editable copy of this entry">Duplicate</button>`;
   } else if (!seeded) {
     actions = ifEditor(`<button class="btn btn-sm ka-save-btn" onclick="saveKnownArtistRow(this)" title="Save" disabled>&#10003; Save</button>
         <button class="btn btn-sm btn-danger" onclick="deleteKnownArtist(this)" title="Delete">&times; Delete</button>
         <span class="ka-card-status status-msg"></span>`);
   }
+  const pill = seeded
+    ? '<span class="badge badge-builtin">built-in</span>'
+    : '<span class="badge badge-custom">custom</span>';
 
+  // Cards start collapsed by default (Part 3). Click anywhere on the header
+  // outside .ka-card-actions to toggle; the chevron rotates via CSS.
   return `<div class="ka-card${seededCls}" data-ka-id="${esc(id)}" data-ka-seeded="${seeded}">
-    <div class="ka-card-header">
+    <div class="ka-card-header" onclick="_toggleKaCard(this, event)">
+      <span class="ka-chev">&rsaquo;</span>
       <span class="ka-card-title">${esc(matchDisplay)}</span>
+      ${pill}
       <span class="ka-card-actions">
         ${actions}
       </span>
@@ -2053,7 +2314,23 @@ function addKnownArtistRow() {
   _initTriStateCheckboxes(newest);
   _updateKaPreview(newest);
   _markKaDirty(newest);  // new entry is always unsaved
+  // New cards open expanded so the editor is immediately visible (Part 3).
+  newest.classList.add('is-open');
+  // Clear any active filter so the new card can't land hidden (Part 4.6).
+  const filterInput = document.getElementById('ka-filter-q');
+  if (filterInput && filterInput.value) { filterInput.value = ''; }
+  if (typeof _kaSetSegment === 'function') _kaSetSegment('all');  // also re-runs the filter
   newest.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Focus the first match-pattern field so the user can start typing.
+  newest.querySelector('.ka-match-first')?.focus();
+  _refreshKaCount();
+}
+
+function _refreshKaCount() {
+  const el = document.getElementById('ka-count');
+  if (!el) return;
+  const n = document.querySelectorAll('#known-artists-list .ka-card').length;
+  el.textContent = `${n} entr${n === 1 ? 'y' : 'ies'}`;
 }
 
 function _readKaRow(tr) {
@@ -2137,11 +2414,12 @@ async function deleteKnownArtist(btn) {
   const tr = btn.closest('.ka-card');
   const id = tr.dataset.kaId;
   const statusEl = tr.querySelector('.ka-card-status');
-  if (!id) { tr.remove(); return; }
+  if (!id) { tr.remove(); _refreshKaCount(); return; }
   if (!confirm('Delete this known artist entry?')) return;
   try {
     await api('DELETE', `/known-artists/${id}`);
     tr.remove();
+    _refreshKaCount();
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'ka-card-status status-msg error'; }
   }
@@ -2159,7 +2437,9 @@ async function duplicateKnownArtist(btn) {
     _initTriStateCheckboxes(newCard);
     _updateKaPreview(newCard);
     _updateKaCompanyState(newCard);
+    newCard.classList.add('is-open');  // open the editable copy for immediate editing
     newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    _refreshKaCount();
     const newStatusEl = newCard.querySelector('.ka-card-status');
     if (newStatusEl) { newStatusEl.textContent = '\u2713 Editable copy created'; newStatusEl.className = 'ka-card-status status-msg success'; }
   } catch (e) {
@@ -2182,6 +2462,8 @@ async function seedKnownArtists() {
     list.innerHTML = knownArtists.map(ka => _knownArtistCard(ka)).join('');
     _refreshAllKaPreviews();
     _initTriStateCheckboxes(list);
+    _refreshKaCount();
+    if (typeof _kaApplyFilter === 'function') _kaApplyFilter();
   } catch (e) {
     if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.className = 'status-msg error'; }
   }

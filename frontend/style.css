@@ -2189,40 +2189,76 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .cmp-diffs-cell { max-width: 260px; }
 .cmp-diffs-cell .badge { margin: 1px 2px; }
 
-/* --- Text-substitution rule editor (Settings → Normalisation) --- */
+/* --- Text-substitution rule editor (Settings → Normalisation) ---
+ * Compacted 2026-05-29 per Settings page redesign handoff:
+ *   - Two lines per rule (was four), via .subst-line1/.subst-line2
+ *   - Field checkboxes laid out horizontally; scoped override of the global
+ *     `.inline-check { display: flex }` rule via `.subst-fields .inline-check`
+ *   - Sticky `+ Add rule` toolbar (.subst-toolbar) so Add stays reachable
+ *     however far you've scrolled. `top: var(--settings-tab-h)` pins below
+ *     the Settings tab bar.
+ *   - Pixel values applied as briefed (9px row, 4px first-child top) — see
+ *     deviations note in the handoff report.
+ */
 .subst-row {
-  padding: 10px 0;
+  padding: 9px 0;
   border-bottom: 1px solid var(--border, #e5e5e5);
 }
-.subst-row:first-child { padding-top: 0; }
-.subst-row:last-child { border-bottom: none; }
-.subst-inputs {
+.subst-row:first-child { padding-top: 4px; }
+.subst-row:last-child  { border-bottom: none; }
+
+.subst-line1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
-.subst-inputs input[type="text"] {
+.subst-line1 input[type="text"] {
   flex: 1 1 180px;
-  min-width: 120px;
+  min-width: 110px;
   padding: 5px 8px;
   border: 1px solid var(--border, #ccc);
   border-radius: 4px;
   font-family: inherit;
+  font-size: 13px;
 }
-.subst-arrow { color: var(--muted, #888); font-weight: bold; }
-.subst-remove { color: #b00; }
-.subst-fields { margin-top: 6px; font-size: 0.85rem; }
-.subst-preview {
+.subst-arrow  { color: var(--muted, #888); font-weight: bold; flex: 0 0 auto; }
+.subst-remove { flex: 0 0 auto; color: #b00; line-height: 1; padding: 4px 9px; }
+
+.subst-line2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 18px;
+  flex-wrap: wrap;
   margin-top: 6px;
-  font-size: 0.85rem;
+}
+.subst-fields {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+}
+/* Key line: keeps the four field labels on one row by scoping the override
+ * to inside .subst-fields — the global .inline-check rule stays untouched. */
+.subst-fields .inline-check { display: inline-flex; }
+.subst-sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 14px;
+  background: var(--border);
+  margin: 0 2px;
+}
+.subst-preview {
+  font-size: 12px;
   color: var(--muted, #777);
+  margin-left: auto;
+  white-space: nowrap;
 }
 .subst-preview code {
   background: #f5f5f5;
   padding: 1px 5px;
   border-radius: 3px;
-  white-space: pre-wrap;
+  white-space: nowrap;
 }
 
 /* ==================================================================== */
@@ -2527,3 +2563,265 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .fld__lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 .fld input, .fld select { padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; font-size: 13px; }
 .fld input:disabled, .fld select:disabled { background: var(--bg-alt); color: var(--muted); }
+
+
+/* ============================================================================
+ * Settings page redesign (2026-05-29 — design handoff)
+ *   Part 2: top tab bar
+ *   Part 4.3: scope badges on each tab
+ *   Part 4.4: collapsible "What's normalised automatically" panel
+ *   Part 1.C: sticky `+ Add rule` toolbar (.subst-toolbar)
+ *   Part 3 + 4.6: Known Artists collapsible cards, sticky KA toolbar,
+ *                 filter bar, custom-badge, expand/collapse-all
+ *   Part 4.1: single sticky save bar per tab (.norm-save-bar)
+ *   Part 4.2: dirty-flag indicator (.tab-dirty-dot)
+ *   Part 4.7: wide form-row modifier for honorific/title-case lists
+ * Settings is a closed surface — all new selectors are Settings-only.
+ * ============================================================================ */
+
+:root { --settings-tab-h: 44px; }
+
+/* --- Part 2: top tab bar (underline idiom, mock default) --- */
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 22px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+  padding-top: 4px;
+}
+.settings-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px 11px;
+  font: 500 13px var(--font);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: -1px;
+}
+.settings-tab:hover:not(.is-on) { color: var(--ra-dark); }
+.settings-tab.is-on {
+  color: var(--ra-dark);
+  font-weight: 600;
+  border-bottom-color: var(--ra-red);
+}
+
+/* --- Part 4.3: scope badge chips inside each tab label --- */
+.settings-tab-scope {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--bg-alt);
+  color: var(--muted-2);
+  border: 1px solid var(--border);
+  line-height: 1.2;
+}
+.settings-tab.is-on .settings-tab-scope {
+  background: #fff;
+  color: var(--ra-dark);
+  border-color: var(--border-strong);
+}
+
+/* --- Part 4.2: amber dot on tab when its content has unsaved changes --- */
+.tab-dirty-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+/* --- Settings group containers (one per tab) --- */
+.settings-tab-pane[hidden] { display: none; }
+/* The H3 group-heading inside each pane gives the tab content a clear
+ * top-of-section label (helps screen readers; visually redundant with the
+ * tab label but harmless). The first-of-type margin tweak below preserves
+ * the original look. */
+
+/* --- Part 4.4: collapsible "What's normalised automatically" reference panel --- */
+.settings-explainer { /* the <details> wrapper around the read-only reference */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+  padding: 0;
+  margin: 0 0 16px;
+}
+.settings-explainer > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ra-dark);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-explainer > summary::-webkit-details-marker { display: none; }
+.settings-explainer > summary::before {
+  content: "\203A";   /* › — rotates 90deg when open */
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  transition: transform .15s;
+  display: inline-block;
+}
+.settings-explainer[open] > summary::before { transform: rotate(90deg); }
+.settings-explainer > .settings-explainer-body { padding: 0 14px 12px; }
+.settings-explainer > .settings-explainer-body > p:first-child { margin-top: 0; }
+
+/* --- Part 1.C: sticky toolbar pinning `+ Add rule` to the viewport --- */
+.subst-toolbar {
+  position: sticky;
+  top: var(--settings-tab-h);
+  z-index: 10;
+  background: var(--card);
+  padding: 10px 0;
+  margin: -4px 0 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.subst-count, .ka-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+/* --- Part 3: Known Artists collapsible cards --- */
+.ka-card-header { cursor: pointer; gap: 10px; }
+/* Title takes leftover space so the trailing pill + actions sit at the right edge. */
+.ka-card-header .ka-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ka-card-header .ka-chev {
+  flex: 0 0 auto;
+  color: #8a93a0;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform .15s;
+  user-select: none;
+  margin-right: 4px;
+}
+.ka-card.is-open > .ka-card-header .ka-chev { transform: rotate(90deg); }
+.ka-card:not(.is-open) .ka-card-header { border-bottom: none; }
+.ka-card:not(.is-open) .ka-preview-bar {
+  border-bottom: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.ka-card:not(.is-open) .ka-card-body { display: none; }
+
+/* Custom (user-defined) badge — green mirror of the existing blue built-in. */
+.badge-custom {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: #edf6f0;
+  color: #2e7d4f;
+  border: 1px solid #bbdcc6;
+}
+
+/* --- Part 4.6: sticky KA toolbar (parallel to .subst-toolbar) --- */
+.ka-sticky-toolbar {
+  position: sticky;
+  top: var(--settings-tab-h);
+  z-index: 9;            /* below substitutions toolbar (same tab they don't co-exist, but kept ordered defensively) */
+  background: var(--card);
+  padding: 10px 0;
+  margin: -4px 0 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ka-sticky-toolbar .ka-toolbar-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* --- Part 4.5: filter / search on Known Artists --- */
+.ka-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.ka-filter-bar input[type="search"] {
+  flex: 1 1 220px;
+  min-width: 160px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: 13px var(--font);
+  background: #fff;
+}
+.ka-segment {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+}
+.ka-segment button {
+  background: transparent;
+  border: none;
+  padding: 5px 10px;
+  font: 500 12px var(--font);
+  color: var(--muted-2);
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+}
+.ka-segment button:last-child { border-right: none; }
+.ka-segment button.is-on {
+  background: var(--ra-dark);
+  color: #fff;
+}
+.ka-card[hidden] { display: none; }   /* filter hides via [hidden] attr */
+
+/* --- Part 4.1: single sticky save footer for the Normalisation tab --- */
+.norm-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  margin: 20px -16px -16px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(2px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.norm-save-bar .norm-dirty-msg {
+  font-size: 12px;
+  color: var(--warning);
+  font-weight: 500;
+}
+.norm-save-bar .norm-dirty-msg:empty { display: none; }
+
+/* --- Part 4.7: wide form-row modifier (honorifics + title-case) --- */
+.form-row--wide { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.form-row--wide > label { flex: 0 0 100%; }
+.form-row--wide > input { flex: 1 1 280px; width: auto; min-width: 200px; }
+.form-row--wide > .form-hint { flex: 0 1 36ch; margin-top: 0; }
