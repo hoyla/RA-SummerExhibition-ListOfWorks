@@ -19,7 +19,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | -------- | -------------------------------------------------- |
 | Backend  | Python 3.12, FastAPI, SQLAlchemy, Alembic          |
 | Database | PostgreSQL 16 (Docker), SQLite (tests)             |
-| Frontend | Vanilla JS SPA (`frontend/app.js`, ~5700 lines)    |
+| Frontend | Vanilla JS SPA (`frontend/app.js`, ~7400 lines)    |
 | Infra    | Docker Compose (local), ECS Fargate (staging/prod) |
 
 ### Key directories
@@ -32,7 +32,7 @@ Academy Summer Exhibition catalogue. It handles two products:
 | `backend/alembic/versions/` | Database migrations (auto-run on startup)             |
 | `backend/seed_templates/`   | Default templates and known artist seed data          |
 | `frontend/`                 | Single-page app (`app.js`, `style.css`, `index.html`) |
-| `tests/`                    | Pytest suite (~900 tests, SQLite in-memory)           |
+| `tests/`                    | Pytest suite (~960 tests, SQLite in-memory)           |
 
 ### Data flow
 
@@ -164,7 +164,7 @@ Tests run against an **in-memory SQLite database** — no Docker required.
 python -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Run all tests (~775)
+# Run all tests (~960)
 python -m pytest tests/ -q
 
 # Run a single test file
@@ -182,6 +182,58 @@ If you see `ModuleNotFoundError` when running tests, re-run:
 ```bash
 pip install -r requirements-dev.txt
 ```
+
+---
+
+## Linting (Ruff)
+
+Lint config lives in [`pyproject.toml`](../pyproject.toml). Ruff is pinned to
+the same exact version in three places (`requirements-dev.txt`,
+`.pre-commit-config.yaml`, and the CI workflow) — bump them together.
+
+### Commands
+
+| Task                                 | Command                                  |
+| ------------------------------------ | ---------------------------------------- |
+| Check (read-only)                    | `ruff check backend/ tests/`             |
+| Auto-fix what's safe                 | `ruff check backend/ tests/ --fix`       |
+| Show statistics per rule             | `ruff check backend/ tests/ --statistics` |
+| Show one rule only                   | `ruff check --select E402 --no-fix .`    |
+
+Auto-fix safely handles unused imports (`F401`) and import ordering (`I001`).
+It will *not* touch judgement-call issues like unused locals (`F841`),
+ambiguous variable names (`E741`), or mid-file imports (`E402`).
+
+### Config choices worth knowing
+
+- **`E712` (`Column == False`) is disabled globally** because SQLAlchemy filter
+  clauses need `Column == False` to build SQL expressions. Ruff's suggested
+  rewrite (`not Column`) would evaluate the column eagerly and break the
+  query. `Column.is_(False)` is cleaner long-term but hasn't been swept.
+- **`E402` (import not at top) is exempted in four files** that have
+  legitimate late-binding reasons: `main.py` imports route modules after
+  `alembic upgrade`, `services/export_renderer.py` dodges a circular import,
+  and `alembic/env.py` + `tests/conftest.py` set `sys.path` before importing
+  app modules. Don't add new files to this list — fix the import order
+  instead.
+- **`E501` (line length) is disabled.** Once `ruff format` is enabled it will
+  wrap lines; until then warnings are noise.
+- **`I` (isort) is enabled** with `backend` as the first-party package.
+- **`ruff format` is intentionally NOT enabled** in the pre-commit config.
+  Switching it on will produce a sweeping diff; do that in a dedicated PR
+  with no other content so the diff is reviewable.
+
+### Pre-commit hook
+
+Optional but recommended for local use:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+The first commit after installing may produce a wave of auto-fixed files
+(trailing whitespace, end-of-file newlines). Re-stage and commit again.
 
 ---
 
@@ -279,10 +331,13 @@ ls backend/alembic/versions/ | sort
 
 Every push triggers:
 
-1. **Test** — runs `pytest` against the full test suite
-2. **Build** — builds Docker image, pushes to ECR
-3. **Deploy staging** — updates ECS service `catalogue-staging` (non-main branches)
-4. **Deploy production** — updates ECS service `catalogue-prod` (main branch only)
+1. **Lint** — runs `ruff check backend/ tests/` (parallel to Test)
+2. **Test** — runs `pytest` against the full test suite (parallel to Lint)
+3. **Build** — builds Docker image, smoke-tests, pushes to ECR (depends on both)
+4. **Deploy staging** — updates ECS service `catalogue-staging` (non-main branches)
+5. **Deploy production** — updates ECS service `catalogue-prod` (main branch only)
+
+A lint failure blocks Build (and therefore Deploy), same as a test failure.
 
 AWS resources use **per-environment secrets** in AWS Secrets Manager:
 
