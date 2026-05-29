@@ -1250,8 +1250,33 @@ details.section-block[open] > .section-summary::before {
 
 /* Opt-in sticky section (applied per page in Pack 03 — never on bare .section-block).
    Audit log + Tools keep the base class and are provably unaffected. */
-.section-block--sticky > .section-summary { position:sticky; top:0; z-index:20; background:var(--bg); }
+.section-block--sticky > .section-summary { position:sticky; top:var(--site-header-h,0); z-index:20; background:var(--bg); }
+/* Default stuck-shadow: on the summary itself. Applies whenever the block
+   has no sticky data-table thead beneath (e.g., a hypothetical sticky
+   section with no table). The .has-sticky-thead marker (set in JS at
+   wiring time) overrides this to move the shadow to the thead. */
 .section-block--sticky > .section-summary.is-stuck { box-shadow:0 8px 10px -9px rgba(0,0,0,.25); }
+/* Pin the table column header below the sticky summary so column meaning
+   survives the scroll. Pack 03 (2026-05-29). Applies to any .data-table
+   inside a sticky block — covers LoW .works-table AND Index .index-table.
+   --site-header-h and --low-summary-h are measured at runtime by
+   _wireStickySections. The -1px is a deliberate 1px overlap with the
+   summary's bottom edge to defeat sub-pixel rounding gaps where scrolling
+   content would otherwise bleed through. */
+.section-block--sticky .data-table thead th {
+  position: sticky;
+  top: calc(var(--site-header-h, 0px) + var(--low-summary-h, 42px) - 1px);
+  background: var(--card);
+  z-index: 15;
+}
+/* Pack 03 (2026-05-29) — when the section has a sticky data-table thead
+   beneath the summary, the shadow moves DOWN to the bottom of the column
+   header. The summary + thead are functionally one pinned header block
+   while stuck; the shadow should sit below the whole block, not between
+   the two halves. JS adds .has-sticky-thead to qualifying blocks at
+   wiring time. */
+.section-block--sticky.has-sticky-thead > .section-summary.is-stuck { box-shadow:none; }
+.section-block--sticky.has-sticky-thead .section-summary.is-stuck ~ .data-table thead th { box-shadow:0 8px 10px -9px rgba(0,0,0,.25); }
 
 /* Audit log */
 .audit-table .col-ts { width: 140px; font-size: 12px; }
