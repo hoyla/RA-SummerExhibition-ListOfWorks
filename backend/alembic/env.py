@@ -18,6 +18,7 @@ import backend.app.models.index_artist_model  # noqa: F401, E402
 import backend.app.models.index_cat_number_model  # noqa: F401, E402
 import backend.app.models.index_override_model  # noqa: F401, E402
 import backend.app.models.known_artist_model  # noqa: F401, E402
+import backend.app.models.low_tag_snapshot_model  # noqa: F401, E402
 import backend.app.models.override_model  # noqa: F401, E402
 import backend.app.models.ruleset_model  # noqa: F401, E402
 import backend.app.models.section_model  # noqa: F401, E402
@@ -65,6 +66,10 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # Without these, `alembic revision --autogenerate` silently misses
+        # column-type changes and server_default changes.
+        compare_type=True,
+        compare_server_default=True,
     )
 
     with context.begin_transaction():
@@ -85,7 +90,14 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            # Without these, `alembic revision --autogenerate` silently misses
+            # column-type changes and server_default changes.
+            compare_type=True,
+            compare_server_default=True,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
