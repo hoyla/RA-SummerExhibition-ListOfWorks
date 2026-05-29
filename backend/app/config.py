@@ -39,3 +39,8 @@ AWS_REGION: str | None = os.getenv("AWS_REGION")
 CORS_ORIGINS: list[str] = [
     o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
 ]
+
+# Maximum request body size in bytes; requests exceeding this are rejected
+# with 413 before parsing. Default 50 MB — comfortably above any realistic
+# catalogue spreadsheet, low enough to catch a fat-fingered accidental upload.
+MAX_REQUEST_BODY_BYTES: int = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(50 * 1024 * 1024)))
