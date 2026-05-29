@@ -1268,7 +1268,7 @@ async function renderSettings() {
         <h4 class="panel-subheading" style="margin:0">Text substitutions</h4>
         ${ifAdmin('<button class="btn btn-sm" onclick="addSubstRule()">+ Add rule</button>')}
       </div>
-      <p class="form-hint" style="margin:0 0 12px">Literal find &rarr; replace on the chosen fields, applied in order. Spaces count (shown as <span class="ws-hint">&middot;</span>), so <code><span class="ws-hint">&middot;</span>-<span class="ws-hint">&middot;</span></code> changes a spaced hyphen but never the hyphen in &ldquo;double-barrelled&rdquo;.</p>
+      <p class="form-hint" style="margin:0 0 12px">Literal find &rarr; replace on the chosen fields, applied in order. Spaces count (shown as <span class="ws-hint">&middot;</span>), so <code><span class="ws-hint">&middot;</span>-<span class="ws-hint">&middot;</span></code> changes a spaced hyphen but never the hyphen in &ldquo;double-barrelled&rdquo;. <strong>Whole word only</strong> is the safe default for abbreviations (<code>mdf</code>&rarr;<code>MDF</code> won&rsquo;t touch <code>plaster</code>); turn it off for non-letter rules like <code>...</code>&rarr;<code>&hellip;</code>.</p>
       <div id="subst-rules">
         ${substRules.map(r => _substRuleRow(r)).join('')}
       </div>
@@ -1355,7 +1355,14 @@ function _visSpaces(s) {
 }
 
 function _substRuleRow(rule) {
-  const r = rule || { find: '', replace: '', fields: ['title', 'medium'] };
+  // New rules default whole_word ON — abbreviation expansion ("mdf"→"MDF",
+  // "pla"→"PLA") is the dominant use case and the failure mode of leaving
+  // it OFF is silent substring corruption ("plaster" → "PLAster"). Existing
+  // rules keep whatever flag they were saved with — which for legacy rules
+  // (notably "..." → "…") is the absent/false default, preserving behaviour.
+  const isNew = !rule;
+  const r = rule || { find: '', replace: '', fields: ['title', 'medium'], whole_word: true };
+  const wholeWord = isNew ? true : Boolean(r.whole_word);
   const disabled = canAdmin() ? '' : ' disabled';
   const checks = _SUBST_FIELDS.map(([key, label]) =>
     `<label class="inline-check" style="text-transform:none;font-weight:normal;margin-right:10px">
@@ -1368,7 +1375,12 @@ function _substRuleRow(rule) {
       <input type="text" class="subst-replace" value="${esc(r.replace)}" placeholder="replace" oninput="_updateSubstPreview(this)"${disabled}>
       ${ifAdmin('<button type="button" class="btn btn-sm subst-remove" onclick="removeSubstRule(this)" title="Remove rule">&times;</button>')}
     </div>
-    <div class="subst-fields">${checks}</div>
+    <div class="subst-fields">
+      ${checks}
+      <label class="inline-check" style="text-transform:none;font-weight:normal;margin-left:14px" title="Match only when find is a standalone word (no surrounding letters/digits). Leave OFF for non-letter rules like &ldquo;...&rdquo; &rarr; &ldquo;…&rdquo;.">
+        <input type="checkbox" class="subst-whole-word"${wholeWord ? ' checked' : ''}${disabled}> Whole word only
+      </label>
+    </div>
     <div class="subst-preview"><code>${_visSpaces(r.find)}</code> &rarr; <code>${_visSpaces(r.replace)}</code></div>
   </div>`;
 }
@@ -1396,6 +1408,7 @@ function _gatherSubstitutions() {
     // Spaces are significant \u2014 never trim find/replace.
     find: row.querySelector('.subst-find').value,
     replace: row.querySelector('.subst-replace').value,
+    whole_word: row.querySelector('.subst-whole-word')?.checked ?? false,
     fields: [...row.querySelectorAll('.subst-field')].filter(c => c.checked).map(c => c.dataset.field),
   })).filter(s => s.find !== '');  // drop blank-find rows (backend rejects them)
 }

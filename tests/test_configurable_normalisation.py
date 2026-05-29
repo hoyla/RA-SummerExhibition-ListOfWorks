@@ -89,6 +89,76 @@ def test_blank_find_is_skipped():
 
 
 # ---------------------------------------------------------------------------
+# whole_word matching — the safety opt-in for short alphabetic abbreviations
+# ---------------------------------------------------------------------------
+
+
+def test_whole_word_does_not_mangle_substrings():
+    """Without whole_word, "pla" → "PLA" would corrupt "plaster" and
+    "display". With whole_word set, only the standalone token matches."""
+    subs = [{"find": "pla", "replace": "PLA",
+             "fields": ["medium"], "whole_word": True}]
+    assert apply_text_substitutions(
+        "pla, plaster on display", subs, "medium"
+    ) == "PLA, plaster on display"
+
+
+def test_whole_word_off_is_legacy_substring():
+    """Existing rules (whole_word absent or False) keep the old substring
+    behaviour — needed for the ``...`` → ``…`` rule whose find has no word
+    chars and so couldn't match with word boundaries anyway."""
+    subs = [{"find": "pla", "replace": "PLA", "fields": ["medium"]}]
+    assert apply_text_substitutions(
+        "pla, plaster", subs, "medium"
+    ) == "PLA, PLAster"
+
+
+def test_whole_word_matches_at_string_boundaries():
+    """Word boundaries must fire at start-of-string, end-of-string, and
+    next to punctuation — covers the real cases of medium fields like
+    "mdf" alone, "and mdf", or "mdf, perspex"."""
+    subs = [{"find": "mdf", "replace": "MDF",
+             "fields": ["medium"], "whole_word": True}]
+    assert apply_text_substitutions("mdf", subs, "medium") == "MDF"
+    assert apply_text_substitutions("oil on mdf", subs, "medium") == "oil on MDF"
+    assert apply_text_substitutions("mdf, paint", subs, "medium") == "MDF, paint"
+    assert apply_text_substitutions(
+        "perspex, petg, and mdf", subs, "medium"
+    ) == "perspex, petg, and MDF"
+
+
+def test_whole_word_treats_hyphen_as_boundary():
+    """\\b in Python regex treats hyphen as a non-word char — so "mdf-board"
+    has a word boundary between "mdf" and "-". Worth pinning so a future
+    reader knows the behaviour (some users might expect hyphenated
+    compounds to *not* match)."""
+    subs = [{"find": "mdf", "replace": "MDF",
+             "fields": ["medium"], "whole_word": True}]
+    assert apply_text_substitutions(
+        "mdf-board on oak", subs, "medium"
+    ) == "MDF-board on oak"
+
+
+def test_whole_word_with_regex_metachars_in_find_is_literal():
+    """The find is regex-escaped before being wrapped in word boundaries,
+    so a literal ``.`` doesn't act as "any char". (Combined with whole_word,
+    this is a rare combination but the safety still has to hold.)"""
+    subs = [{"find": "a.b", "replace": "AXB",
+             "fields": ["title"], "whole_word": True}]
+    # Should NOT match "axb" — the . in the find is a literal, not wildcard
+    assert apply_text_substitutions("a.b axb", subs, "title") == "AXB axb"
+
+
+def test_whole_word_with_dollar_sign_in_replace_is_literal():
+    """The replace string is passed through a lambda so regex backreference
+    syntax (``\\1``, ``\\g<name>``) isn't interpreted — important because
+    editors writing replacement text shouldn't have to escape backslashes."""
+    subs = [{"find": "mdf", "replace": r"M\1F",
+             "fields": ["medium"], "whole_word": True}]
+    assert apply_text_substitutions("mdf", subs, "medium") == r"M\1F"
+
+
+# ---------------------------------------------------------------------------
 # normalise_work integration
 # ---------------------------------------------------------------------------
 
