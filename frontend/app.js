@@ -4429,11 +4429,14 @@ function _lowWarnLabel(type) {
   return _LOW_WARNING_LABELS[type] || type;
 }
 
-// Badge colour for a LoW warning type: red (high) / blue (benign change) / yellow (review).
+// Pill intent for a LoW warning type — Pack 02a (2026-05-29), keyed to the
+// Pack 01 token layer: error (high) / info (benign auto-change) / review
+// (needs human). Propagates to row-level flag pills AND to the Import-notes
+// chips (both call this), so the same change re-skins both surfaces.
 function _lowWarnBadgeClass(type) {
-  if (_LOW_HIGH_SEVERITY_TYPES.has(type)) return 'badge-removed';
-  if (_LOW_CHANGED_TYPES.has(type)) return 'badge-info';
-  return 'badge-warning';
+  if (_LOW_HIGH_SEVERITY_TYPES.has(type)) return 'pill pill--error';
+  if (_LOW_CHANGED_TYPES.has(type))       return 'pill pill--info';
+  return 'pill pill--review';
 }
 
 // Shared "Import notes" panel renderer \u2014 used by both the LoW and Index
@@ -4856,7 +4859,7 @@ function _workNormReasons(w) {
 function _workNormBadges(w) {
   const reasons = _workNormReasons(w);
   if (!reasons.length) return '';
-  return `<div class="norm-reasons"><strong>Normalised:</strong> <span class="badge badge-normalised" title="${esc(reasons.join('; '))}">${esc(reasons.join('; '))}</span></div>`;
+  return `<div class="norm-reasons"><strong>Normalised:</strong> <span class="pill pill--info" title="${esc(reasons.join('; '))}">${esc(reasons.join('; '))}</span></div>`;
 }
 
 // Warning types whose .message carries useful detail to show inline
@@ -4868,7 +4871,7 @@ function _workWarningsBadges(workId) {
   const warns = (_warningsByWorkId[workId] || []).filter(w => !_LOW_CHANGED_TYPES.has(w.warning_type));
   if (!warns.length) return '';
   const badges = warns.map(w => {
-    return `<span class="badge ${_lowWarnBadgeClass(w.warning_type)}" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
+    return `<span class="${_lowWarnBadgeClass(w.warning_type)}" title="${esc(w.message)}">${esc(_lowWarnLabel(w.warning_type))}</span>`;
   }).join(' ');
   // Collect detailed explanations for warning types that benefit from inline detail
   const details = warns
@@ -4942,7 +4945,7 @@ function workRowHTML(importId, w, cfg) {
 
   // Build flags
   const flags = [];
-  if (hasOverride) flags.push('<span class="badge badge-override" title="Has a user override">Override</span>');
+  if (hasOverride) flags.push('<span class="pill pill--edit" title="Has a user override">Override</span>');
   // Normalisation detection: compare raw vs normalised fields
   const _normDiffs = [];
   const _wsTrimmed = [];
@@ -4969,9 +4972,9 @@ function workRowHTML(importId, w, cfg) {
   // Show RA badge when honorifics contain RA-type tokens
   if (_hon) {
     if (_isRaMember(_hon)) {
-      flags.push('<span class="badge badge-ra" title="RA honorific extracted from artist name">RA</span>');
+      flags.push('<span class="pill pill--id is-ra" title="RA honorific extracted from artist name">RA</span>');
     } else {
-      flags.push(`<span class="badge badge-normalised" title="Honorific extracted: ${esc(_hon)}">${esc(_hon)}</span>`);
+      flags.push(`<span class="pill pill--info" title="Honorific extracted: ${esc(_hon)}">${esc(_hon)}</span>`);
     }
   }
   const _rawAFull = w.raw_artist ?? '';
@@ -4988,14 +4991,14 @@ function workRowHTML(importId, w, cfg) {
       }
     }
   }
-  if (_wsTrimmed.length) flags.push(`<span class="badge badge-info" title="Whitespace trimmed: ${esc(_wsTrimmed.join(', '))}">${esc('Trimmed')}</span>`);
-  if (_normDiffs.length) flags.push(`<span class="badge badge-normalised" title="Normalised: ${esc(_normDiffs.join(', '))}">${esc('Norm')}</span>`);
+  if (_wsTrimmed.length) flags.push(`<span class="pill pill--info" title="Whitespace trimmed: ${esc(_wsTrimmed.join(', '))}">${esc('Trimmed')}</span>`);
+  if (_normDiffs.length) flags.push(`<span class="pill pill--info" title="Normalised: ${esc(_normDiffs.join(', '))}">${esc('Norm')}</span>`);
   // Warnings from the per-work lookup (exclude "changed" types — those are normalisations)
   const wWarns = _warningsByWorkId[w.id];
   if (wWarns && wWarns.length) {
     const warnTypes = [...new Set(wWarns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
     for (const wt of warnTypes) {
-      flags.push(`<span class="badge ${_lowWarnBadgeClass(wt)}" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
+      flags.push(`<span class="${_lowWarnBadgeClass(wt)}" title="${esc(wWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
     }
   }
 
