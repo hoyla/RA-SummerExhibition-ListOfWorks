@@ -36,3 +36,6 @@ docs/
 
 # Test sample files
 test_sample_files/
+
+# Tests — not needed at runtime; the production image only needs the app.
+tests/
