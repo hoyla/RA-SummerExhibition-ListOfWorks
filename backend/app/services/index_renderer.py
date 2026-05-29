@@ -4,23 +4,22 @@ Produces InDesign Tagged Text (primary format), with the same multi-format
 support pattern as the List of Works renderer.
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
-from sqlalchemy.orm import Session
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
+from backend.app.services.export_renderer import escape_tagged_text_chars
 from backend.app.services.index_override_service import (
-    resolve_index_artist,
     build_known_artist_cache,
     lookup_known_artist,
+    resolve_index_artist,
 )
-from backend.app.services.index_importer import is_ra_member
-from backend.app.services.export_renderer import escape_tagged_text_chars
-
 
 # ---------------------------------------------------------------------------
 # Config

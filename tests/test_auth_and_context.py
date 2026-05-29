@@ -10,19 +10,15 @@ Covers:
 
 from unittest.mock import patch
 
-import pytest
-from fastapi import FastAPI, Depends, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from backend.app.api.auth import (
     Role,
-    get_current_role,
     get_current_user,
-    require_api_key,
     require_role,
 )
 from backend.app.api.user_context import current_user_email
-
 
 # ---------------------------------------------------------------------------
 # /auth/config endpoint
@@ -187,8 +183,9 @@ class TestAuditLogUserAttribution:
     """Test that AuditLog.user_email is auto-populated from the context var."""
 
     def test_default_email_is_anonymous(self):
-        from backend.app.models.audit_log_model import AuditLog
         import uuid
+
+        from backend.app.models.audit_log_model import AuditLog
 
         entry = AuditLog(
             import_id=uuid.uuid4(),
@@ -197,8 +194,9 @@ class TestAuditLogUserAttribution:
         assert entry.user_email == "anonymous"
 
     def test_email_set_from_context(self):
-        from backend.app.models.audit_log_model import AuditLog
         import uuid
+
+        from backend.app.models.audit_log_model import AuditLog
 
         tok = current_user_email.set("bob@example.com")
         try:
@@ -211,8 +209,9 @@ class TestAuditLogUserAttribution:
             current_user_email.reset(tok)
 
     def test_explicit_email_not_overridden(self):
-        from backend.app.models.audit_log_model import AuditLog
         import uuid
+
+        from backend.app.models.audit_log_model import AuditLog
 
         tok = current_user_email.set("context@example.com")
         try:

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from backend.app.models.ruleset_model import Ruleset
+
 SEED_DIR = Path(__file__).resolve().parent.parent / "backend" / "seed_templates"
 
 # ---------------------------------------------------------------------------
@@ -193,8 +195,6 @@ class TestTemplateSeedFiles:
 # ---------------------------------------------------------------------------
 # Template seeding process
 # ---------------------------------------------------------------------------
-
-from backend.app.models.ruleset_model import Ruleset
 
 
 def test_seed_templates_deletes_orphaned_builtins(db_session):

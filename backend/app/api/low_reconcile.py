@@ -23,8 +23,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from backend.app.api.deps import get_db
 from backend.app.api.auth import require_role
+from backend.app.api.deps import get_db
 from backend.app.api.low_exports import _ruleset_to_export_config
 from backend.app.models.import_model import Import
 from backend.app.models.low_tag_snapshot_model import LowTagSnapshot
@@ -32,8 +32,8 @@ from backend.app.services.export_renderer import (
     _collect_export_data,
     resolve_export_config,
 )
+from backend.app.services.low_diff import LowDiffConfig, diff_low
 from backend.app.services.low_tag_parser import parse_low_tags
-from backend.app.services.low_diff import diff_low, LowDiffConfig
 
 router = APIRouter(tags=["reconcile"])
 

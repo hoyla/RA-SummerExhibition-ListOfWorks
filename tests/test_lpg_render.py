@@ -23,8 +23,6 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from backend.app.api.low_exports import _ruleset_to_export_config
 from backend.app.models.import_model import Import
 from backend.app.models.section_model import Section

@@ -13,8 +13,8 @@ from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 
-from backend.app.api.auth import require_role, Role
-from backend.app.config import COGNITO_USER_POOL_ID, COGNITO_REGION
+from backend.app.api.auth import require_role
+from backend.app.config import COGNITO_REGION, COGNITO_USER_POOL_ID
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,7 @@
 """Unit tests for normalise_work — the orchestrator that ties all normalisation together."""
 
-import pytest
 
 from backend.app.services.normalisation_service import normalise_work
-
 
 # ---------------------------------------------------------------------------
 # Lightweight stand-in for a Work model row (avoids needing a DB session)

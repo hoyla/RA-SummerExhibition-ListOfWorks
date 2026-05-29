@@ -43,7 +43,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from backend.app.services.export_renderer import ExportConfig, DEFAULT_CONFIG
+from backend.app.services.export_renderer import DEFAULT_CONFIG, ExportConfig
 
 # Match both the verbose (our renderer) and short (InDesign) tag dialects.
 _PARA_RE = re.compile(r"^\s*<(?:ParaStyle|pstyle):([^>]*)>")

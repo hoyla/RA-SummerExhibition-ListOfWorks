@@ -5,9 +5,9 @@ export real tags, post them back, and assert the diff."""
 import uuid
 
 from backend.app.models.import_model import Import
+from backend.app.models.override_model import WorkOverride
 from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
-from backend.app.models.override_model import WorkOverride
 
 
 def _seed(db):

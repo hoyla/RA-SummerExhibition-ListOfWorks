@@ -7,22 +7,19 @@ Tests for audit log API endpoints:
 import uuid as _uuid
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
+from backend.app.api.import_routes import get_db, router
 from backend.app.db import Base
-from backend.app.api.import_routes import router, get_db
+from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.import_model import Import
+from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
-from backend.app.models.override_model import WorkOverride
-from backend.app.models.audit_log_model import AuditLog
-from backend.app.models.ruleset_model import Ruleset
-from backend.app.models.index_artist_model import IndexArtist
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

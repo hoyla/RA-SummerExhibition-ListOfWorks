@@ -3,23 +3,23 @@
 Expected columns: Title, First Name, Last Name, Quals, Company, Address 1, Cat Nos
 """
 
-from collections import defaultdict
-from openpyxl import load_workbook
-from openpyxl.utils.exceptions import InvalidFileException
-from sqlalchemy.orm import Session
-from difflib import get_close_matches
-from typing import Dict, List, Optional, Tuple
 import re
 import unicodedata
 import uuid as _uuid
+from collections import defaultdict
+from difflib import get_close_matches
+from typing import Dict, List, Optional, Tuple
 
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
+from sqlalchemy.orm import Session
+
+from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
-from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.validation_warning_model import ValidationWarning
-
 
 # ---------------------------------------------------------------------------
 # RA member detection
@@ -144,8 +144,6 @@ def parse_multi_artist(
         m = _QUAL_IN_NAME_PATTERN.search(remaining)
         if not m:
             break
-        # Only strip if it's at the end (after trimming)
-        suffix = remaining[m.start() :].strip()
         # Check the match is at the end of the remaining string
         after_match = remaining[m.end() :].strip()
         if _QUAL_IN_NAME_PATTERN.sub("", after_match).strip() == "":
@@ -177,7 +175,6 @@ def parse_multi_artist(
 
     # Parse the second artist: strip "and "/"& " prefix, then extract quals
     a2_raw = _SECOND_ARTIST_PREFIX.sub("", second_artist_raw).strip()
-    a2_words = a2_raw.split()
     a2_extracted_quals: list[str] = []
     a2_remaining = a2_raw
     while True:

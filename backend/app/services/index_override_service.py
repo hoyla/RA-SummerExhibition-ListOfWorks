@@ -23,7 +23,6 @@ from sqlalchemy.orm import Session
 from backend.app.models.known_artist_model import KnownArtist
 from backend.app.services.index_importer import build_sort_key
 
-
 # ---------------------------------------------------------------------------
 # Known artist cache
 # ---------------------------------------------------------------------------

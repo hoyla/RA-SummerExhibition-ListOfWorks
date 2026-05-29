@@ -10,23 +10,25 @@ Tests for spreadsheet validation during import:
 
 import io
 import uuid
+
 import pytest
-from openpyxl import Workbook
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from backend.app.api.import_routes import get_db, router
 from backend.app.db import Base
-from backend.app.api.import_routes import router, get_db
 from backend.app.services.excel_importer import (
-    _validate_headers,
-    ImportError as ExcelImportError,
-    REQUIRED_COLUMNS,
     KNOWN_COLUMNS,
+    REQUIRED_COLUMNS,
+    _validate_headers,
 )
-
+from backend.app.services.excel_importer import (
+    ImportError as ExcelImportError,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures

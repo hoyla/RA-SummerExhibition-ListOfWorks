@@ -31,15 +31,15 @@ from enum import IntEnum
 from functools import lru_cache
 from typing import Optional
 
-from fastapi import Header, HTTPException, Request, status, Depends
 import jwt
+from fastapi import Depends, Header, HTTPException, Request, status
 from jwt.exceptions import InvalidTokenError as JWTError
 
 from backend.app.config import (
     API_KEY,
-    COGNITO_USER_POOL_ID,
     COGNITO_CLIENT_ID,
     COGNITO_REGION,
+    COGNITO_USER_POOL_ID,
 )
 
 logger = logging.getLogger(__name__)

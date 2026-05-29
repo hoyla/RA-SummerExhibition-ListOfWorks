@@ -12,7 +12,6 @@ import io
 import uuid
 from types import SimpleNamespace
 
-import pytest
 from openpyxl import Workbook
 
 from backend.app.models.work_model import Work
@@ -22,7 +21,6 @@ from backend.app.services.normalisation_service import (
     normalise_work,
     parse_edition,
 )
-
 
 # ---------------------------------------------------------------------------
 # Edition-suppression threshold

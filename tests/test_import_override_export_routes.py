@@ -7,16 +7,14 @@ unit-level tests for rendering, normalisation, etc.
 
 import uuid as _uuid
 
-import pytest
 from sqlalchemy.orm import Session
 
-from backend.app.models.import_model import Import
-from backend.app.models.section_model import Section
-from backend.app.models.work_model import Work
-from backend.app.models.override_model import WorkOverride
-from backend.app.models.validation_warning_model import ValidationWarning
 from backend.app.models.audit_log_model import AuditLog
-
+from backend.app.models.import_model import Import
+from backend.app.models.override_model import WorkOverride
+from backend.app.models.section_model import Section
+from backend.app.models.validation_warning_model import ValidationWarning
+from backend.app.models.work_model import Work
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -436,7 +434,7 @@ class TestOverrideCRUD:
         logs = db_session.query(AuditLog).filter(AuditLog.work_id == w.id).all()
         assert len(logs) >= 1
         assert any(
-            l.action == "override_set" and l.field == "title_override" for l in logs
+            log.action == "override_set" and log.field == "title_override" for log in logs
         )
 
     # --- PUT override (update) ---

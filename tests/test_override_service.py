@@ -2,12 +2,10 @@
 Tests for override resolution service.
 """
 
-from types import SimpleNamespace
 from decimal import Decimal
+from types import SimpleNamespace
 
-import pytest
-
-from backend.app.services.override_service import resolve_effective_work, EffectiveWork
+from backend.app.services.override_service import resolve_effective_work
 
 
 def _make_work(**kwargs):

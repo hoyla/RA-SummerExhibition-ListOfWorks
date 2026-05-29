@@ -18,19 +18,17 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
-from backend.app.models.work_model import Work
 from backend.app.models.override_model import WorkOverride
-from backend.app.services.override_service import resolve_effective_work
+from backend.app.models.work_model import Work
 from backend.app.services.index_override_service import (
     build_known_artist_cache,
     lookup_known_artist,
     resolve_index_artist,
 )
-
+from backend.app.services.override_service import resolve_effective_work
 
 # ---------------------------------------------------------------------------
 # Match classification
@@ -204,7 +202,6 @@ def _extract_index_name_parts(
     fn = (first_name or "").strip()
     ln = (last_name or "").strip()
     q = (quals or "").strip()
-    t = (title or "").strip()
 
     # For companies, the "last_name" is the company name
     if is_company:

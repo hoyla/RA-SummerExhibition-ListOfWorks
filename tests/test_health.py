@@ -12,17 +12,15 @@ import platform
 import shutil
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
+from fastapi.exceptions import ResponseValidationError
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from sqlalchemy import text
-
-from backend.app.db import Base
-
 
 # ---------------------------------------------------------------------------
 # Build a minimal app that embeds the same health logic as main.py
@@ -233,9 +231,6 @@ class TestVersionEndpoint:
 # ---------------------------------------------------------------------------
 # ResponseValidationError handler
 # ---------------------------------------------------------------------------
-
-from pydantic import BaseModel
-from fastapi.exceptions import ResponseValidationError
 
 
 class TestResponseValidationErrorHandler:

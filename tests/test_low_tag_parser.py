@@ -9,18 +9,17 @@ back to the values it was rendered from, every later diff is false positives.
 from types import SimpleNamespace
 
 from backend.app.services.export_renderer import (
-    render_import_as_tagged_text,
-    _collect_export_data,
-    ExportConfig,
     ComponentConfig,
-)
-from backend.app.services.low_tag_parser import (
-    parse_low_tags,
-    recoverable_fields,
-    _FIELD_STYLE_ATTRS,
+    ExportConfig,
+    _collect_export_data,
+    render_import_as_tagged_text,
 )
 from backend.app.services.low_diff import work_display_fields
-
+from backend.app.services.low_tag_parser import (
+    _FIELD_STYLE_ATTRS,
+    parse_low_tags,
+    recoverable_fields,
+)
 
 # ---------------------------------------------------------------------------
 # Regression: a template with an enabled "title_cased" component must parse

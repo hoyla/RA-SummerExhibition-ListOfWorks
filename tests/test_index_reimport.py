@@ -18,16 +18,11 @@ Covers:
 import io
 import uuid
 
-import pytest
 from openpyxl import Workbook
 
-from backend.app.models.import_model import Import
-from backend.app.models.index_artist_model import IndexArtist
-from backend.app.models.index_cat_number_model import IndexCatNumber
-from backend.app.models.index_override_model import IndexArtistOverride
-from backend.app.models.validation_warning_model import ValidationWarning
 from backend.app.models.audit_log_model import AuditLog
-
+from backend.app.models.import_model import Import
+from backend.app.models.validation_warning_model import ValidationWarning
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -326,22 +321,21 @@ class TestIndexReimportAuditAndWarnings:
     def test_warnings_regenerated(self, client, db_session):
         _, import_id = _upload_index(client)
         iid = uuid.UUID(import_id)
-        warnings_before = (
-            db_session.query(ValidationWarning)
-            .filter(ValidationWarning.import_id == iid)
-            .count()
-        )
 
         # Reimport — warnings should be regenerated (old ones deleted)
         _reimport_index(client, import_id)
         db_session.expire_all()
 
+        # TODO: this assertion is weaker than the test name promises. Original
+        # author dropped a before/after count comparison ("count may differ
+        # based on new data") but left the dead snapshot in. Strengthen later:
+        # e.g. assert the rows have higher created_at than before, or check
+        # that the warning records carry the new import's id only.
         warnings_after = (
             db_session.query(ValidationWarning)
             .filter(ValidationWarning.import_id == iid)
             .all()
         )
-        # We just check they exist — count may differ based on new data
         assert isinstance(warnings_after, list)
 
     def test_filename_updated(self, client, db_session):

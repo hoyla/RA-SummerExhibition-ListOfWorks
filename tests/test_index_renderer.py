@@ -1,20 +1,18 @@
 """Tests for the Artists' Index renderer."""
 
-import pytest
 
 from backend.app.services.index_renderer import (
     ArtistExportEntry,
     IndexExportConfig,
-    render_index_tagged_text,
-    _render_name_part,
-    _render_quals,
-    _render_courtesy,
-    _render_cat_nos,
     _cstyle,
     _letter_key,
+    _render_cat_nos,
+    _render_courtesy,
+    _render_name_part,
+    _render_quals,
     _section_sep,
+    render_index_tagged_text,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -9,13 +9,12 @@ disparity correctly — including suppressing cosmetic noise.
 from types import SimpleNamespace
 
 from backend.app.services.export_renderer import (
-    render_import_as_tagged_text,
-    _collect_export_data,
     ExportConfig,
+    _collect_export_data,
+    render_import_as_tagged_text,
 )
-from backend.app.services.low_tag_parser import parse_low_tags, ParsedEntry
-from backend.app.services.low_diff import diff_low, LowDiffConfig
-
+from backend.app.services.low_diff import LowDiffConfig, diff_low
+from backend.app.services.low_tag_parser import ParsedEntry, parse_low_tags
 
 # --- minimal in-memory session -------------------------------------------------
 

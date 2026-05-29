@@ -10,11 +10,8 @@ import hashlib
 import json
 import uuid
 
-import pytest
-
 from backend.app.models.ruleset_model import Ruleset
 from backend.app.services.export_renderer import resolve_export_config
-
 
 # ---------------------------------------------------------------------------
 # Helpers

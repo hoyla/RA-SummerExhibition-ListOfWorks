@@ -50,7 +50,6 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
 
-
 # ---------------------------------------------------------------------------
 # Fingerprint
 # ---------------------------------------------------------------------------

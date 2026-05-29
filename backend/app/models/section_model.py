@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Text, Integer, ForeignKey, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
 import uuid
+
+from sqlalchemy import Column, ForeignKey, Index, Integer, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 
 from backend.app.db import Base
 

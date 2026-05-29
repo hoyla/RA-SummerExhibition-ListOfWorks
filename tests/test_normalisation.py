@@ -1,13 +1,11 @@
-import pytest
 from types import SimpleNamespace
 
 from backend.app.services.normalisation_service import (
     collect_work_warnings,
     normalise_artist,
-    parse_price,
     parse_edition,
+    parse_price,
 )
-
 
 # -----------------------------
 # Artist Normalisation Tests

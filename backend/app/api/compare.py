@@ -6,9 +6,10 @@ Artists' Index import by catalogue number.  The comparison is purely
 read-only and uses resolved (post-override) values.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from uuid import UUID
 
 from backend.app.api.deps import get_db
 from backend.app.api.schemas import (

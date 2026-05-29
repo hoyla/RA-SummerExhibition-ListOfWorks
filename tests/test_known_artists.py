@@ -1,10 +1,8 @@
 """Tests for the Known Artists API routes."""
 
 import uuid
-import pytest
 
 from backend.app.models.known_artist_model import KnownArtist
-
 
 # ---------------------------------------------------------------------------
 # CRUD

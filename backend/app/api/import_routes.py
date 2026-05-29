@@ -8,22 +8,22 @@ in dedicated modules under ``backend/app/api/``.
 
 from fastapi import APIRouter, Depends
 
-from backend.app.api.auth import require_api_key
-from backend.app.api.deps import get_db  # noqa: F401  re-exported for tests
 from backend.app.api import (
-    low_imports,
-    low_overrides,
-    low_exports,
-    low_reconcile,
-    low_templates,
-    normalisation_config,
     audit,
+    compare,
     index,
     index_templates,
     known_artists,
+    low_exports,
+    low_imports,
+    low_overrides,
+    low_reconcile,
+    low_templates,
+    normalisation_config,
     users,
-    compare,
 )
+from backend.app.api.auth import require_api_key
+from backend.app.api.deps import get_db  # noqa: F401  re-exported for tests
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
 

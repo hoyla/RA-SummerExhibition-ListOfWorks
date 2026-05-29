@@ -9,21 +9,18 @@ and asserts that the endpoint either allows or rejects the request with 403.
 
 import hashlib
 import json
-import uuid
-from io import BytesIO
 
 import pytest
+from fastapi import Depends
 
-from backend.app.api.auth import get_current_role, Role
-from backend.app.models.ruleset_model import Ruleset
+from backend.app.api.auth import Role, get_current_role
 from backend.app.models.import_model import Import
-from backend.app.models.section_model import Section
-from backend.app.models.work_model import Work
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.known_artist_model import KnownArtist
-from fastapi import Depends
-
+from backend.app.models.ruleset_model import Ruleset
+from backend.app.models.section_model import Section
+from backend.app.models.work_model import Work
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -3,16 +3,14 @@
 import io
 import uuid
 
-import pytest
 from openpyxl import Workbook
 
+from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
-from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.known_artist_model import KnownArtist
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -168,7 +166,7 @@ class TestListIndexImports:
         assert data[0]["product_type"] == "artists_index"
 
     def test_includes_artist_count(self, client, db_session):
-        resp = _upload_index(client)
+        _upload_index(client)
         r = client.get("/index/imports")
         data = r.json()
         assert len(data) == 1

@@ -1,0 +1,34 @@
+[tool.ruff]
+# Match the runtime Python (CI + Docker run 3.12; local devs may run newer).
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+    "venv",
+    "backend/alembic/versions",  # auto-generated migration scaffolding
+]
+
+[tool.ruff.lint]
+# Default selection (F + E + W) plus isort (I) for stable import ordering.
+# Add more rule families (B, SIM, UP) later once the baseline is clean.
+select = ["F", "E", "W", "I"]
+ignore = [
+    # SQLAlchemy filter clauses require `Column == False` / `== True` to build
+    # SQL expressions; Ruff's suggested rewrite (`not Column`) would evaluate
+    # the column eagerly and break the query. Disable globally.
+    "E712",
+    # Line-length warning — Ruff format handles wrapping; warning is noise.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# `main.py` deliberately imports route modules after `alembic upgrade` so
+# migrations apply before models are touched. `export_renderer.py` has a
+# late import to avoid a circular dependency. `alembic/env.py` sets
+# sys.path before importing app modules.
+"backend/app/main.py" = ["E402"]
+"backend/app/services/export_renderer.py" = ["E402"]
+"backend/alembic/env.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]

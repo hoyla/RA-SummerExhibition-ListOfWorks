@@ -1,20 +1,20 @@
+import uuid as _uuid
+from difflib import get_close_matches
+from typing import Dict, List, Optional, Tuple
+
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy.orm import Session
-from difflib import get_close_matches
-import uuid as _uuid
 
-from backend.app.models.import_model import Import
-from backend.app.models.section_model import Section
-from backend.app.models.work_model import Work
-from backend.app.models.override_model import WorkOverride
 from backend.app.models.audit_log_model import AuditLog
+from backend.app.models.import_model import Import
+from backend.app.models.override_model import WorkOverride
+from backend.app.models.section_model import Section
 from backend.app.models.validation_warning_model import ValidationWarning
-from typing import Dict, List, Optional, Tuple
-
+from backend.app.models.work_model import Work
 from backend.app.services.normalisation_service import (
-    normalise_work,
     collect_work_warnings,
+    normalise_work,
 )
 from backend.app.services.reimport_matcher import (
     MatchPlan,
@@ -23,7 +23,6 @@ from backend.app.services.reimport_matcher import (
     compute_fingerprint,
     match_overrides,
 )
-
 
 # ---------------------------------------------------------------------------
 # Expected column headers

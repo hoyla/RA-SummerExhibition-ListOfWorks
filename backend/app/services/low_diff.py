@@ -28,12 +28,11 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from backend.app.services.export_renderer import (
-    ExportConfig,
     DEFAULT_CONFIG,
+    ExportConfig,
     _fmt_price,
 )
 from backend.app.services.low_tag_parser import ParsedEntry, recoverable_fields
-
 
 # ---------------------------------------------------------------------------
 # DB side: render a resolved work to display strings

@@ -1,9 +1,6 @@
 from types import SimpleNamespace
 
-import pytest
-
 from backend.app.services.normalisation_service import collect_work_warnings
-
 
 # ---------------------------------------------------------------------------
 # Helpers

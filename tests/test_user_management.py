@@ -12,9 +12,7 @@ from botocore.exceptions import ClientError
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from backend.app.api.auth import require_role, Role
 from backend.app.api import users as users_module
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,7 +79,7 @@ def role_client(db_session):
     Reuses the shared ``db_session`` fixture from conftest so that FK
     enforcement and isolation are consistent across the whole test suite.
     """
-    from backend.app.api.import_routes import router, get_db
+    from backend.app.api.import_routes import get_db, router
 
     app = FastAPI()
     app.include_router(router)
