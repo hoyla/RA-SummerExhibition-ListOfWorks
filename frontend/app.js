@@ -4684,10 +4684,16 @@ function _wireStickySections() {
     sentinel.style.cssText = 'position:absolute;top:-1px;height:1px;width:1px;';
     block.style.position = 'relative';
     block.prepend(sentinel);
-    new IntersectionObserver(
+    // Retain the IntersectionObserver explicitly. Some browsers GC'd it when
+    // it had no JS reference, even though it still had an active observation
+    // — symptom: the .is-stuck class never gets toggled. Storing it on the
+    // sentinel keeps it alive as long as the sentinel is in the DOM.
+    const io = new IntersectionObserver(
       ([e]) => summary.classList.toggle('is-stuck', e.intersectionRatio === 0),
       { threshold: [0, 1] }
-    ).observe(sentinel);
+    );
+    sentinel._io = io;
+    io.observe(sentinel);
   });
 }
 
