@@ -453,6 +453,83 @@ class TestOverrideCRUD:
         assert r2.status_code == 200
         assert r2.json()["title_override"] == "Second"
 
+    def test_put_advances_updated_at_and_audits_update(self, client, db_session):
+        """Regression + coverage for the update path.
+
+        Two side-effects an update PUT must produce:
+
+        1. ``WorkOverride.updated_at`` must move forward. Before
+           backend/app/models/override_model.py gained ``onupdate=func.now()``,
+           the column was stamped on INSERT and then never moved, so it
+           lied about when the row was last touched.
+        2. An ``AuditLog`` row must be appended for each changed field.
+           The existing test_put_creates_audit_log only covers the CREATE
+           branch of the PUT handler; the UPDATE branch (which goes through
+           a separate code path in low_overrides.py) had no test.
+        """
+        from datetime import timedelta
+
+        imp, w = self._make_work(db_session)
+
+        # Create the override.
+        client.put(
+            f"/imports/{imp.id}/works/{w.id}/override",
+            json={"title_override": "First"},
+        )
+
+        # Read the initial timestamp, then backdate it so the post-update
+        # value is unambiguously newer. (SQLite's CURRENT_TIMESTAMP only has
+        # second resolution, and a back-to-back PUT can otherwise land in
+        # the same second.)
+        ovr = (
+            db_session.query(WorkOverride)
+            .filter(WorkOverride.work_id == w.id)
+            .one()
+        )
+        original_updated_at = ovr.updated_at
+        ovr.updated_at = original_updated_at - timedelta(hours=1)
+        db_session.commit()
+        backdated_value = ovr.updated_at
+
+        audit_count_before = (
+            db_session.query(AuditLog).filter(AuditLog.work_id == w.id).count()
+        )
+
+        # Update the override (changes title_override "First" → "Second").
+        client.put(
+            f"/imports/{imp.id}/works/{w.id}/override",
+            json={"title_override": "Second"},
+        )
+        db_session.expire_all()
+
+        # Assertion 1: updated_at moved forward.
+        ovr2 = (
+            db_session.query(WorkOverride)
+            .filter(WorkOverride.work_id == w.id)
+            .one()
+        )
+        assert ovr2.updated_at > backdated_value, (
+            f"updated_at should have moved forward after PUT; "
+            f"backdated to {backdated_value}, still {ovr2.updated_at}"
+        )
+
+        # Assertion 2: exactly one new audit row, capturing old → new.
+        new_logs = (
+            db_session.query(AuditLog)
+            .filter(AuditLog.work_id == w.id)
+            .order_by(AuditLog.id.desc())
+            .all()
+        )
+        assert len(new_logs) == audit_count_before + 1, (
+            f"expected exactly one new audit row for the changed field; "
+            f"had {audit_count_before}, now {len(new_logs)}"
+        )
+        latest = new_logs[0]
+        assert latest.action == "override_set"
+        assert latest.field == "title_override"
+        assert latest.old_value == "First"
+        assert latest.new_value == "Second"
+
     def test_put_partial_fields(self, client, db_session):
         imp, w = self._make_work(db_session)
         r = client.put(
