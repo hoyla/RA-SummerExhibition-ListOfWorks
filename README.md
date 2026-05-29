@@ -166,7 +166,7 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (900 tests across 37 test files)
+tests/            # pytest suite (~960 tests across 38 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/
@@ -186,6 +186,33 @@ docs/
 ```bash
 python -m pytest tests/ -q
 ```
+
+---
+
+## Linting
+
+Ruff is used for linting (and, eventually, formatting). Configuration lives
+in [`pyproject.toml`](pyproject.toml); Ruff itself is pinned in
+[`requirements-dev.txt`](requirements-dev.txt).
+
+```bash
+# Check
+ruff check backend/ tests/
+
+# Auto-fix what's safe (unused imports, import order)
+ruff check backend/ tests/ --fix
+```
+
+Optional but recommended: install the pre-commit hooks so lint runs on every
+commit and trailing whitespace etc. is fixed automatically.
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+CI runs `ruff check` as a separate job (parallel to the test job) and the
+deploy pipeline blocks on both.
 
 ---
 
