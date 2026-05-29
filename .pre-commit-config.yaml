@@ -1,0 +1,26 @@
+# Run on commit: ruff lint + format, and a handful of generic hygiene hooks.
+# Install once with:  pre-commit install
+# Run manually with:  pre-commit run --all-files
+#
+# Ruff version is pinned to match requirements-dev.txt and CI.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.15
+    hooks:
+      - id: ruff
+        args: [--fix]
+      # `ruff-format` is intentionally NOT enabled yet — running it once would
+      # produce a sweeping diff across the whole codebase. Enable in a
+      # dedicated PR when ready.
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2000]
