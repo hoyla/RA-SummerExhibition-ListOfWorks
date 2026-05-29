@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import urllib.request
 from enum import IntEnum
 from functools import lru_cache
@@ -199,7 +200,10 @@ async def require_api_key(
     if not API_KEY:
         return  # Auth disabled in development
 
-    if x_api_key != API_KEY:
+    # Constant-time comparison: avoids leaking the configured key's length
+    # or content through response-time side channels. The risk is largely
+    # theoretical for a single shared key but the change is free.
+    if not secrets.compare_digest(x_api_key, API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key",
