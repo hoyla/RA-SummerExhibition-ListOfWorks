@@ -21,7 +21,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
 
 from backend.app.api.auth import Role, get_current_role
-from backend.app.config import API_KEY, CORS_ORIGINS, LOG_LEVEL
+from backend.app.config import API_KEY, CORS_ORIGINS, LOG_LEVEL, MAX_REQUEST_BODY_BYTES
 from backend.app.db import engine
 
 _alembic_cfg = AlembicConfig(
@@ -292,6 +292,19 @@ async def _set_user_context(request: Request, call_next):
         return await call_next(request)
     finally:
         current_user_email.reset(tok)
+
+
+# ---------------------------------------------------------------------------
+# Request body size limit
+# Registered last so it runs FIRST on incoming requests — we want to reject
+# oversized uploads before any other middleware does work.  The factory
+# lives in backend.app.middlewares so it can be tested without importing
+# this module (which triggers Alembic + seed loaders).
+# ---------------------------------------------------------------------------
+
+from backend.app.middlewares import make_body_size_limit_middleware
+
+app.middleware("http")(make_body_size_limit_middleware(MAX_REQUEST_BODY_BYTES))
 
 
 # ---------------------------------------------------------------------------
