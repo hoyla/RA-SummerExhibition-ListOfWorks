@@ -1252,6 +1252,15 @@ details.section-block[open] > .section-summary::before {
    Audit log + Tools keep the base class and are provably unaffected. */
 .section-block--sticky > .section-summary { position:sticky; top:0; z-index:20; background:var(--bg); }
 .section-block--sticky > .section-summary.is-stuck { box-shadow:0 8px 10px -9px rgba(0,0,0,.25); }
+/* Pin the works-table column header below the sticky summary so column meaning
+   survives the scroll. Pack 03 (2026-05-29). --low-summary-h is the rendered
+   summary height; defaults to 42px which fits the current section-summary. */
+.section-block--sticky .works-table thead th {
+  position: sticky;
+  top: var(--low-summary-h, 42px);
+  background: var(--card);
+  z-index: 15;
+}
 
 /* Audit log */
 .audit-table .col-ts { width: 140px; font-size: 12px; }

@@ -4646,6 +4646,29 @@ function _applyWorksFilter(query, countEl, totalWorks) {
   }
 }
 
+/* Pack 03 (2026-05-29) — wire IntersectionObserver-based 'is-stuck' shadow
+   on every .section-block--sticky in the document. Idempotent via the
+   dataset.stickyWired guard, so safe to call after every renderSections /
+   renderIndexArtists. The sentinel sits 1px above the section-block; when
+   it scrolls out of the viewport the summary is "stuck". Audit log + Tools
+   panel use the bare .section-block (no --sticky modifier), so they're
+   provably unaffected by this whole mechanism. */
+function _wireStickySections() {
+  document.querySelectorAll('.section-block--sticky').forEach(block => {
+    const summary = block.querySelector('.section-summary');
+    if (!summary || summary.dataset.stickyWired) return;
+    summary.dataset.stickyWired = '1';
+    const sentinel = document.createElement('div');
+    sentinel.style.cssText = 'position:absolute;top:-1px;height:1px;width:1px;';
+    block.style.position = 'relative';
+    block.prepend(sentinel);
+    new IntersectionObserver(
+      ([e]) => summary.classList.toggle('is-stuck', e.intersectionRatio === 0),
+      { threshold: [0, 1] }
+    ).observe(sentinel);
+  });
+}
+
 function renderSections(importId, sections, cfg) {
   _currentLowImportId = importId;
   const container = document.getElementById('sections-container');
@@ -4684,7 +4707,7 @@ function renderSections(importId, sections, cfg) {
         : ` | numbers ${min}\u2013${max}`;  // en-dash for numeric ranges
     }
     return `
-    <details class="section-block" open>
+    <details class="section-block section-block--sticky" open>
       <summary class="section-summary">
         <span class="section-name">${esc(section.name)}</span>
         <span class="section-meta">${section.works.length} work${section.works.length !== 1 ? 's' : ''}${rangeText}</span>
@@ -4711,6 +4734,7 @@ function renderSections(importId, sections, cfg) {
       </table>
     </details>`;
   }).join('');
+  _wireStickySections();
 }
 
 // ---------------------------------------------------------------------------
@@ -6300,7 +6324,7 @@ function renderIndexArtists(importId, artists) {
   container.innerHTML = letterGroups.map(g => {
     const rows = g.artists.map(a => indexArtistRowHTML(importId, a, sortKeyColor[a.sort_key || ''], sortKeyNames)).join('');
     return `
-    <details class="section-block" open>
+    <details class="section-block section-block--sticky" open>
       <summary class="section-summary">
         <span class="section-name">${esc(g.letter)}</span>
         <span class="section-meta">${g.artists.length} artist${g.artists.length !== 1 ? 's' : ''}</span>
@@ -6315,6 +6339,7 @@ function renderIndexArtists(importId, artists) {
       </table>
     </details>`;
   }).join('');
+  _wireStickySections();
 }
 
 /**
