@@ -1,43 +1,28 @@
+import json
 import logging
 import os
 import platform
 import shutil
 import time
-import json
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Depends
-from fastapi.exceptions import ResponseValidationError
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import text
-
-from backend.app.config import LOG_LEVEL, CORS_ORIGINS, API_KEY
-from backend.app.db import engine, Base
-from backend.app.api.auth import get_current_role, Role
-
-from backend.app.models import import_model
-from backend.app.models import section_model
-from backend.app.models import work_model
-from backend.app.models import override_model
-from backend.app.models import ruleset_model
-from backend.app.models import validation_warning_model
-from backend.app.models import audit_log_model
-from backend.app.models import export_snapshot_model
-from backend.app.models import index_artist_model
-from backend.app.models import index_cat_number_model
-from backend.app.models import index_override_model
-from backend.app.models import known_artist_model
+from alembic import command as alembic_command
 
 # ---------------------------------------------------------------------------
 # Run Alembic migrations on startup (replaces Base.metadata.create_all)
 # ---------------------------------------------------------------------------
-
 from alembic.config import Config as AlembicConfig
-from alembic import command as alembic_command
+from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import ResponseValidationError
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import text
+
+from backend.app.api.auth import Role, get_current_role
+from backend.app.config import API_KEY, CORS_ORIGINS, LOG_LEVEL
+from backend.app.db import engine
 
 _alembic_cfg = AlembicConfig(
     str(Path(__file__).resolve().parent.parent.parent / "alembic.ini")
@@ -54,7 +39,6 @@ if _has_tables and not _has_alembic:
 alembic_command.upgrade(_alembic_cfg, "head")
 
 from backend.app.api import import_routes
-
 
 # ---------------------------------------------------------------------------
 # Structured JSON logging
@@ -293,8 +277,8 @@ async def _log_requests(request: Request, call_next):
 # automatically attributed to the authenticated user.
 # ---------------------------------------------------------------------------
 
-from backend.app.api.user_context import current_user_email
 from backend.app.api.auth import get_current_user as _resolve_user
+from backend.app.api.user_context import current_user_email
 
 
 @app.middleware("http")
@@ -473,9 +457,9 @@ def auth_config():
     """
     from backend.app.api.auth import _USE_COGNITO
     from backend.app.config import (
-        COGNITO_USER_POOL_ID,
         COGNITO_CLIENT_ID,
         COGNITO_REGION,
+        COGNITO_USER_POOL_ID,
     )
 
     if _USE_COGNITO:

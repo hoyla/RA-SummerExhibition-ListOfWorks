@@ -10,23 +10,20 @@ Covers:
 import uuid
 from datetime import datetime, timezone
 
-import pytest
 from sqlalchemy.orm import Session
 
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
-from backend.app.models.export_snapshot_model import ExportSnapshot
 from backend.app.services.export_diff_service import (
-    save_index_export_snapshot,
-    get_last_snapshot,
-    compute_index_diff,
     _collect_index_export_data,
-    _flatten_index_entries,
-    _entry_key,
     _entry_display_name,
+    _entry_key,
+    _flatten_index_entries,
+    compute_index_diff,
+    get_last_snapshot,
+    save_index_export_snapshot,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

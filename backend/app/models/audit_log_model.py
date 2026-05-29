@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Text, TIMESTAMP, ForeignKey, Index, event
+import uuid
+
+from sqlalchemy import TIMESTAMP, Column, ForeignKey, Index, Text, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
-import uuid
 
 from backend.app.db import Base
 

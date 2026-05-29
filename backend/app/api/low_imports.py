@@ -2,41 +2,42 @@
 Import management routes: upload, list, sections, preview, warnings, delete.
 """
 
-from dataclasses import asdict
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Query
-from fastapi.responses import Response
-from sqlalchemy.orm import Session
-
-from backend.app.api.auth import require_role
-from sqlalchemy import func
 import os
 import uuid
+from dataclasses import asdict
 from typing import List
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
-from backend.app.services.storage import storage
+from backend.app.api.normalisation_config import load_normalisation_settings
 from backend.app.api.schemas import (
     ImportOut,
-    ReimportOut,
-    SectionOut,
-    WorkOut,
-    WorkOverrideOut,
     PreviewSectionOut,
     PreviewWorkOut,
+    ReimportOut,
+    SectionOut,
     ValidationWarningOut,
+    WorkOut,
+    WorkOverrideOut,
 )
 from backend.app.models.import_model import Import
-from backend.app.models.section_model import Section
-from backend.app.models.work_model import Work
 from backend.app.models.override_model import WorkOverride
+from backend.app.models.section_model import Section
 from backend.app.models.validation_warning_model import ValidationWarning
+from backend.app.models.work_model import Work
+from backend.app.services.excel_importer import (
+    ImportError as ExcelImportError,
+)
 from backend.app.services.excel_importer import (
     import_excel,
     reimport_excel,
-    ImportError as ExcelImportError,
 )
-from backend.app.api.normalisation_config import load_normalisation_settings
+from backend.app.services.storage import storage
 
 router = APIRouter(tags=["imports"])
 
@@ -374,7 +375,6 @@ def preview_import(import_id: UUID, db: Session = Depends(get_db)):
 
 @router.get("/imports/{import_id}/warnings", response_model=List[ValidationWarningOut])
 def list_warnings(import_id: UUID, db: Session = Depends(get_db)):
-    from sqlalchemy.orm import outerjoin
 
     rows = (
         db.query(ValidationWarning, Work)

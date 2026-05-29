@@ -2,7 +2,6 @@
 Shared FastAPI dependencies used by all route modules.
 """
 
-from sqlalchemy.orm import Session
 from backend.app.db import SessionLocal
 
 

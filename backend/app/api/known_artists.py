@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
-from backend.app.api.schemas import KnownArtistOut, KnownArtistCreate, KnownArtistUpdate
+from backend.app.api.schemas import KnownArtistCreate, KnownArtistOut, KnownArtistUpdate
 from backend.app.models.known_artist_model import KnownArtist
 
 logger = logging.getLogger(__name__)

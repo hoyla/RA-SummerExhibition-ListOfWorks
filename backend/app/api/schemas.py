@@ -2,9 +2,9 @@
 Pydantic request/response schemas shared across API route modules.
 """
 
-from pydantic import BaseModel, field_validator
 from typing import List
 
+from pydantic import BaseModel, field_validator
 
 # ---------------------------------------------------------------------------
 # Import

@@ -8,14 +8,14 @@ Covers both List of Works (LoW) and Artists' Index pipelines.
 """
 
 from dataclasses import asdict
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
+
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 from backend.app.models.export_snapshot_model import ExportSnapshot
 from backend.app.services.export_renderer import _collect_export_data
-
 
 # ---------------------------------------------------------------------------
 # Snapshot

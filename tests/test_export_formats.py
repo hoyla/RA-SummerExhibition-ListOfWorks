@@ -12,9 +12,7 @@ from backend.app.services.export_renderer import (
     render_import_as_csv,
     render_import_as_json,
     render_import_as_xml,
-    render_import_as_tagged_text,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared test fixtures helpers

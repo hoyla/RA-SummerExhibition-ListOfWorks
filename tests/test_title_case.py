@@ -7,8 +7,6 @@ Roman numerals); the result is corrected per work via the title-case override.
 
 from types import SimpleNamespace
 
-import pytest
-
 from backend.app.services.normalisation_service import (
     DEFAULT_TITLE_CASE_EXCEPTIONS,
     normalise_work,
@@ -16,7 +14,6 @@ from backend.app.services.normalisation_service import (
     to_title_case,
 )
 from backend.app.services.override_service import resolve_effective_work
-
 
 # ---------------------------------------------------------------------------
 # to_title_case

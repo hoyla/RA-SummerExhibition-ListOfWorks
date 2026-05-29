@@ -17,8 +17,8 @@ import pytest
 from backend.app.api.low_exports import _ruleset_to_export_config
 from backend.app.services.excel_importer import import_excel
 from backend.app.services.export_renderer import _collect_export_data
-from backend.app.services.low_tag_parser import parse_low_tags
 from backend.app.services.low_diff import diff_low
+from backend.app.services.low_tag_parser import parse_low_tags
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Git-tracked fixtures required by the test suite live here; the rest of

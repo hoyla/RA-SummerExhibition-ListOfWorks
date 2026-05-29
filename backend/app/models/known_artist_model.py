@@ -1,13 +1,14 @@
+import uuid
+
 from sqlalchemy import (
+    TIMESTAMP,
+    Boolean,
     Column,
     Text,
-    Boolean,
-    TIMESTAMP,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
-import uuid
 
 from backend.app.db import Base
 

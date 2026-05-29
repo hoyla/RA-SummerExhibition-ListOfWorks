@@ -3,54 +3,55 @@ Artists' Index routes: upload, list, artists, export, delete, exclude toggle.
 """
 
 import logging
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, status
-from fastapi.responses import Response
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 import os
 import uuid
 from typing import List
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
-from backend.app.services.storage import storage
-from backend.app.services.export_renderer import escape_for_mac_roman
 from backend.app.api.schemas import (
     AutoResolvedFields,
-    IndexImportOut,
     IndexArtistOut,
-    IndexCatNumberOut,
     IndexArtistOverrideIn,
     IndexArtistOverrideOut,
+    IndexCatNumberOut,
+    IndexImportOut,
     ReimportOut,
 )
+from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.import_model import Import
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
-from backend.app.models.audit_log_model import AuditLog
+from backend.app.services.export_diff_service import (
+    compute_index_diff,
+    save_index_export_snapshot,
+)
+from backend.app.services.export_renderer import escape_for_mac_roman
 from backend.app.services.index_importer import (
+    IndexImportError,
     import_index_excel,
     reimport_index_excel,
-    IndexImportError,
 )
 from backend.app.services.index_override_service import (
-    resolve_index_artist,
     build_known_artist_cache,
     lookup_known_artist,
+    resolve_index_artist,
 )
 from backend.app.services.index_renderer import (
+    DEFAULT_INDEX_CONFIG,
+    IndexExportConfig,
+    _letter_key,
     collect_index_entries,
     render_index_tagged_text,
-    IndexExportConfig,
-    DEFAULT_INDEX_CONFIG,
-    _letter_key,
 )
-from backend.app.services.export_diff_service import (
-    save_index_export_snapshot,
-    compute_index_diff,
-)
+from backend.app.services.storage import storage
 
 logger = logging.getLogger("catalogue")
 
@@ -776,12 +777,6 @@ def unmerge_artist(
     The original artist record keeps the cat numbers from its own row_number.
     New artist records are created for each additional source row.
     """
-    from backend.app.services.index_importer import (
-        is_ra_member,
-        detect_company,
-        build_sort_key,
-        parse_multi_artist,
-    )
 
     artist = _get_artist_or_404(import_id, artist_id, db)
 

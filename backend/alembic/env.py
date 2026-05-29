@@ -1,32 +1,30 @@
 import sys
-from pathlib import Path
 from logging.config import fileConfig
-
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from pathlib import Path
 
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Ensure the project root is on sys.path so "backend.app..." imports work
 # when running `alembic` from the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from backend.app.config import DATABASE_URL  # noqa: E402
-from backend.app.db import Base  # noqa: E402
+import backend.app.models.audit_log_model  # noqa: F401, E402
+import backend.app.models.export_snapshot_model  # noqa: F401, E402
 
 # Import every model so Base.metadata is fully populated
 import backend.app.models.import_model  # noqa: F401, E402
-import backend.app.models.section_model  # noqa: F401, E402
-import backend.app.models.work_model  # noqa: F401, E402
-import backend.app.models.override_model  # noqa: F401, E402
-import backend.app.models.ruleset_model  # noqa: F401, E402
-import backend.app.models.validation_warning_model  # noqa: F401, E402
-import backend.app.models.audit_log_model  # noqa: F401, E402
-import backend.app.models.export_snapshot_model  # noqa: F401, E402
 import backend.app.models.index_artist_model  # noqa: F401, E402
 import backend.app.models.index_cat_number_model  # noqa: F401, E402
 import backend.app.models.index_override_model  # noqa: F401, E402
 import backend.app.models.known_artist_model  # noqa: F401, E402
+import backend.app.models.override_model  # noqa: F401, E402
+import backend.app.models.ruleset_model  # noqa: F401, E402
+import backend.app.models.section_model  # noqa: F401, E402
+import backend.app.models.validation_warning_model  # noqa: F401, E402
+import backend.app.models.work_model  # noqa: F401, E402
+from backend.app.config import DATABASE_URL  # noqa: E402
+from backend.app.db import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

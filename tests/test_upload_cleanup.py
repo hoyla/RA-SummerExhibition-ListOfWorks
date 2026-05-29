@@ -3,15 +3,12 @@ Tests for upload file management: disk_filename tracking, file cleanup on
 delete, and the orphan cleanup endpoint.
 """
 
-import os
 import uuid as _uuid
 
-import pytest
 from sqlalchemy.orm import Session
 
-from backend.app.services.storage import storage
 from backend.app.models.import_model import Import
-
+from backend.app.services.storage import storage
 
 # ---------------------------------------------------------------------------
 # Helpers

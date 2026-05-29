@@ -2,10 +2,11 @@
 Global normalisation config routes (honorific tokens).
 """
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 import hashlib
 import json
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db

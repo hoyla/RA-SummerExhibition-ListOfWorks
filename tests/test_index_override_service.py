@@ -1,13 +1,10 @@
 """Tests for the index override resolution service."""
 
-import pytest
 
 from backend.app.services.index_override_service import (
-    resolve_index_artist,
     build_index_name,
-    EffectiveIndexArtist,
+    resolve_index_artist,
 )
-
 
 # ---------------------------------------------------------------------------
 # Minimal stub classes to avoid needing real ORM objects

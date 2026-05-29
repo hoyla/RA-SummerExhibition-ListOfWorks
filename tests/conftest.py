@@ -21,25 +21,25 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# Import Base *after* the patch so create_all uses the patched column types
-from backend.app.db import Base  # noqa: E402
-
-# Ensure every model table is registered on Base.metadata
-import backend.app.models.ruleset_model  # noqa: F401
-import backend.app.models.import_model  # noqa: F401
-import backend.app.models.section_model  # noqa: F401
-import backend.app.models.work_model  # noqa: F401
-import backend.app.models.override_model  # noqa: F401
-import backend.app.models.validation_warning_model  # noqa: F401
 import backend.app.models.audit_log_model  # noqa: F401
 import backend.app.models.export_snapshot_model  # noqa: F401
+import backend.app.models.import_model  # noqa: F401
 import backend.app.models.index_artist_model  # noqa: F401
 import backend.app.models.index_cat_number_model  # noqa: F401
 import backend.app.models.index_override_model  # noqa: F401
 import backend.app.models.known_artist_model  # noqa: F401
 import backend.app.models.low_tag_snapshot_model  # noqa: F401
+import backend.app.models.override_model  # noqa: F401
 
-from backend.app.api.import_routes import router, get_db
+# Ensure every model table is registered on Base.metadata
+import backend.app.models.ruleset_model  # noqa: F401
+import backend.app.models.section_model  # noqa: F401
+import backend.app.models.validation_warning_model  # noqa: F401
+import backend.app.models.work_model  # noqa: F401
+from backend.app.api.import_routes import get_db, router
+
+# Import Base *after* the patch so create_all uses the patched column types
+from backend.app.db import Base  # noqa: E402
 
 SQLITE_URL = "sqlite:///:memory:"
 

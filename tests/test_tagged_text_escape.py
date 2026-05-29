@@ -36,7 +36,6 @@ from backend.app.services.low_tag_parser import (
     parse_low_tags,
 )
 
-
 # ---------------------------------------------------------------------------
 # Minimal fakes (mirrors tests/test_renderer.py)
 # ---------------------------------------------------------------------------

@@ -4,25 +4,22 @@ Tests for the cross-dataset comparison service and API endpoint.
 
 import uuid
 
-import pytest
-
 from backend.app.models.import_model import Import
-from backend.app.models.work_model import Work
-from backend.app.models.override_model import WorkOverride
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.index_override_model import IndexArtistOverride
 from backend.app.models.known_artist_model import KnownArtist
+from backend.app.models.override_model import WorkOverride
 from backend.app.models.section_model import Section
+from backend.app.models.work_model import Work
 from backend.app.services.comparison_service import (
-    MatchLevel,
     PARTIAL_LEVELS,
+    MatchLevel,
     _compare_names,
     _extract_low_name_parts,
     _normalise_words,
     compare_datasets,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

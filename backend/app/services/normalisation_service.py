@@ -2,7 +2,6 @@ import re
 from decimal import Decimal
 from typing import List, Optional, Set, Tuple
 
-
 # -----------------------------
 # Configurable-rule defaults
 # -----------------------------

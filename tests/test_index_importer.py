@@ -1,23 +1,23 @@
 """Tests for the Artists' Index importer."""
 
-import pytest
-from openpyxl import Workbook
 from pathlib import Path
 
-from backend.app.services.index_importer import (
-    import_index_excel,
-    IndexImportError,
-    is_ra_member,
-    build_sort_key,
-    parse_cat_nos,
-    detect_company,
-    detect_multi_name,
-    detect_quals_in_name,
-)
+import pytest
+from openpyxl import Workbook
+
 from backend.app.models.index_artist_model import IndexArtist
 from backend.app.models.index_cat_number_model import IndexCatNumber
 from backend.app.models.validation_warning_model import ValidationWarning
-
+from backend.app.services.index_importer import (
+    IndexImportError,
+    build_sort_key,
+    detect_company,
+    detect_multi_name,
+    detect_quals_in_name,
+    import_index_excel,
+    is_ra_member,
+    parse_cat_nos,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

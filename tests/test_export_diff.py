@@ -8,22 +8,19 @@ Covers:
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-import pytest
 from sqlalchemy.orm import Session
 
 from backend.app.models.import_model import Import
 from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
-from backend.app.models.export_snapshot_model import ExportSnapshot
 from backend.app.services.export_diff_service import (
-    save_export_snapshot,
-    get_last_snapshot,
-    compute_diff,
     _flatten_works,
+    compute_diff,
+    get_last_snapshot,
+    save_export_snapshot,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,13 +1,14 @@
+import uuid
+
 from sqlalchemy import (
     Column,
-    Text,
-    Integer,
     ForeignKey,
     Index,
+    Integer,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-import uuid
 
 from backend.app.db import Base
 

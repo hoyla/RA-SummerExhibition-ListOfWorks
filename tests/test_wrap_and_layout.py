@@ -4,8 +4,6 @@ Tests for title wrapping, component enabled flag, and final_sep_from_last_compon
 
 from types import SimpleNamespace
 
-import pytest
-
 from backend.app.services.export_renderer import (
     ComponentConfig,
     ExportConfig,
@@ -13,7 +11,6 @@ from backend.app.services.export_renderer import (
     _wrap_lines,
     render_import_as_tagged_text,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers

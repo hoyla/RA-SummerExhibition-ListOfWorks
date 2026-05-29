@@ -1,16 +1,16 @@
-from dataclasses import dataclass, field
-from typing import List, Optional
 import csv
 import io
 import json
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
 
+from backend.app.models.override_model import WorkOverride
 from backend.app.models.section_model import Section
 from backend.app.models.work_model import Work
-from backend.app.models.override_model import WorkOverride
 from backend.app.services.override_service import resolve_effective_work
-
 
 # ---------------------------------------------------------------------------
 # Component / separator model
@@ -114,8 +114,9 @@ class ExportConfig:
 
 DEFAULT_CONFIG = ExportConfig()
 
-from backend.app.models.ruleset_model import Ruleset
 from uuid import UUID
+
+from backend.app.models.ruleset_model import Ruleset
 
 
 def resolve_export_config(
