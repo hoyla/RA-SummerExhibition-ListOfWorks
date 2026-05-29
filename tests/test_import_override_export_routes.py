@@ -514,21 +514,28 @@ class TestOverrideCRUD:
         )
 
         # Assertion 2: exactly one new audit row, capturing old → new.
-        new_logs = (
-            db_session.query(AuditLog)
-            .filter(AuditLog.work_id == w.id)
-            .order_by(AuditLog.id.desc())
-            .all()
+        # Audit rows can't be ordered by id (UUID, random) or reliably by
+        # created_at (SQLite has only second resolution and the two PUTs may
+        # land in the same second). Query specifically for the update row
+        # by its distinguishing values instead.
+        total_logs = (
+            db_session.query(AuditLog).filter(AuditLog.work_id == w.id).count()
         )
-        assert len(new_logs) == audit_count_before + 1, (
+        assert total_logs == audit_count_before + 1, (
             f"expected exactly one new audit row for the changed field; "
-            f"had {audit_count_before}, now {len(new_logs)}"
+            f"had {audit_count_before}, now {total_logs}"
         )
-        latest = new_logs[0]
-        assert latest.action == "override_set"
-        assert latest.field == "title_override"
-        assert latest.old_value == "First"
-        assert latest.new_value == "Second"
+        update_log = (
+            db_session.query(AuditLog)
+            .filter(
+                AuditLog.work_id == w.id,
+                AuditLog.action == "override_set",
+                AuditLog.field == "title_override",
+                AuditLog.new_value == "Second",
+            )
+            .one()
+        )
+        assert update_log.old_value == "First"
 
     def test_put_partial_fields(self, client, db_session):
         imp, w = self._make_work(db_session)
