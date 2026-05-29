@@ -30,9 +30,7 @@ def _make_index_ruleset(db, *, name, is_builtin=False):
     r = Ruleset(
         name=name,
         config=cfg,
-        config_hash=hashlib.sha256(
-            json.dumps(cfg, sort_keys=True).encode()
-        ).hexdigest(),
+        config_hash=hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest(),
         config_type="index_template",
         is_builtin=is_builtin,
     )
@@ -92,9 +90,7 @@ def test_list_index_templates_excludes_low_templates(client, db_session):
         Ruleset(
             name="LoW Template",
             config=low_cfg,
-            config_hash=hashlib.sha256(
-                json.dumps(low_cfg, sort_keys=True).encode()
-            ).hexdigest(),
+            config_hash=hashlib.sha256(json.dumps(low_cfg, sort_keys=True).encode()).hexdigest(),
             config_type="template",
             is_builtin=False,
         )

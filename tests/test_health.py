@@ -108,7 +108,6 @@ def health_client(db_session):
 
 
 class TestHealthEndpoint:
-
     def test_returns_200(self, health_client):
         assert health_client.get("/health").status_code == 200
 
@@ -152,7 +151,6 @@ class TestHealthEndpoint:
 
 
 class TestHealthDbDown:
-
     @pytest.fixture()
     def broken_client(self):
         """Client whose engine always raises on connect."""
@@ -184,7 +182,6 @@ class TestHealthDbDown:
 
 
 class TestVersionEndpoint:
-
     @pytest.fixture()
     def version_client(self):
         """Minimal app with /version, no DB needed."""

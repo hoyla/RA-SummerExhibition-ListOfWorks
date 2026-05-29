@@ -51,10 +51,20 @@ def _section(id, name, position):
 
 def _work(section_id, pos, cat_no, **kw):
     base = dict(
-        id=f"w{cat_no}", raw_cat_no=cat_no, artist_name="", artist_honorifics=None,
-        title="", price_numeric=None, price_text="", edition_total=None,
-        edition_price_numeric=None, artwork=None, medium=None,
-        section_id=section_id, position_in_section=pos, include_in_export=True,
+        id=f"w{cat_no}",
+        raw_cat_no=cat_no,
+        artist_name="",
+        artist_honorifics=None,
+        title="",
+        price_numeric=None,
+        price_text="",
+        edition_total=None,
+        edition_price_numeric=None,
+        artwork=None,
+        medium=None,
+        section_id=section_id,
+        position_in_section=pos,
+        include_in_export=True,
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -66,16 +76,52 @@ def _base_import():
     config = ExportConfig()
     sections = [_section("s1", "Gallery I", 1), _section("s2", "Gallery II", 2)]
     works = [
-        _work("s1", 1, 101, artist_name="Cornelia Parker", artist_honorifics="RA",
-              title="Cold Dark Matter", price_numeric=12000, medium="mixed media"),
-        _work("s1", 2, 102, artist_name="Anish Kapoor", title="Void",
-              price_text="NFS", medium="pigment"),
-        _work("s2", 1, 103, artist_name="David Hockney", title="Spring",
-              price_numeric=9000, medium="iPad drawing"),
-        _work("s2", 2, 104, artist_name="Rachel Whiteread",
-              title="Artist's Study", price_numeric=5000, medium="resin"),
-        _work("s2", 3, 105, artist_name="Frank Bowling", title="Map",
-              price_numeric=7000, medium="acrylic on canvas"),
+        _work(
+            "s1",
+            1,
+            101,
+            artist_name="Cornelia Parker",
+            artist_honorifics="RA",
+            title="Cold Dark Matter",
+            price_numeric=12000,
+            medium="mixed media",
+        ),
+        _work(
+            "s1",
+            2,
+            102,
+            artist_name="Anish Kapoor",
+            title="Void",
+            price_text="NFS",
+            medium="pigment",
+        ),
+        _work(
+            "s2",
+            1,
+            103,
+            artist_name="David Hockney",
+            title="Spring",
+            price_numeric=9000,
+            medium="iPad drawing",
+        ),
+        _work(
+            "s2",
+            2,
+            104,
+            artist_name="Rachel Whiteread",
+            title="Artist's Study",
+            price_numeric=5000,
+            medium="resin",
+        ),
+        _work(
+            "s2",
+            3,
+            105,
+            artist_name="Frank Bowling",
+            title="Map",
+            price_numeric=7000,
+            medium="acrylic on canvas",
+        ),
     ]
     db = FakeSession(sections, works)
     text = render_import_as_tagged_text("imp1", db, config)
@@ -93,12 +139,14 @@ def _move_entry(text, cat_no, target_section, config):
     paras = text.split("\r")
     span = _catspan(config, cat_no)
     ei = next(
-        i for i, p in enumerate(paras)
+        i
+        for i, p in enumerate(paras)
         if p.startswith(f"<ParaStyle:{config.entry_style}>") and span in p
     )
     entry = paras.pop(ei)
     ti = next(
-        i for i, p in enumerate(paras)
+        i
+        for i, p in enumerate(paras)
         if p.startswith(f"<ParaStyle:{config.section_style}>{target_section}")
     )
     paras.insert(ti + 1, entry)
@@ -214,20 +262,40 @@ def test_manual_newline_in_field_is_not_a_finding():
     in the DB but deleted by the parser when it round-trips through InDesign's
     soft returns. That must read as cosmetic, not a real change. (Found on the
     real 2025 catalogue.)"""
-    collected = [{
-        "section_name": "Gallery I", "position": 1,
-        "works": [{
-            "number": "1", "artist": "A", "honorifics": None, "title": "T",
-            "price_numeric": 100, "price_text": "", "edition_total": None,
-            "edition_price_numeric": None, "artwork": None,
-            "medium": "resin\nand steel",
-        }],
-    }]
-    parsed = [ParsedEntry(
-        cat_no="1", section_name="Gallery I", paragraph_index=0,
-        fields={"work_number": "1", "artist": "A", "title": "T",
-                "price": "£100", "medium": "resinand steel"},
-    )]
+    collected = [
+        {
+            "section_name": "Gallery I",
+            "position": 1,
+            "works": [
+                {
+                    "number": "1",
+                    "artist": "A",
+                    "honorifics": None,
+                    "title": "T",
+                    "price_numeric": 100,
+                    "price_text": "",
+                    "edition_total": None,
+                    "edition_price_numeric": None,
+                    "artwork": None,
+                    "medium": "resin\nand steel",
+                }
+            ],
+        }
+    ]
+    parsed = [
+        ParsedEntry(
+            cat_no="1",
+            section_name="Gallery I",
+            paragraph_index=0,
+            fields={
+                "work_number": "1",
+                "artist": "A",
+                "title": "T",
+                "price": "£100",
+                "medium": "resinand steel",
+            },
+        )
+    ]
     result = diff_low(parsed, collected, ExportConfig())
     assert [f for f in result.findings if f.field == "medium"] == []
     assert result.counts["suppressed_cosmetic"] >= 1
@@ -247,9 +315,9 @@ def test_combined_canonical_mutations():
     assert kinds.count("entry_removed") == 1
     assert kinds.count("room_move") == 1
 
-    assert result.counts["matched"] == 4   # 101, 103, 104, 105 (102 renumbered)
+    assert result.counts["matched"] == 4  # 101, 103, 104, 105 (102 renumbered)
     assert result.counts["low_only"] == 1  # 120
-    assert result.counts["db_only"] == 1   # 102
+    assert result.counts["db_only"] == 1  # 102
     # Every finding is routed and tiered.
     assert all(f.fix_channel in ("override", "spreadsheet") for f in result.findings)
     assert all(f.severity in ("high", "medium", "info") for f in result.findings)

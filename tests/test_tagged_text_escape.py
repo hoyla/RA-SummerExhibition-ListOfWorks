@@ -153,7 +153,9 @@ def test_inline_render_escapes_backslash_in_title():
 def test_inline_render_escapes_artist_and_medium():
     section = _section("s1", "Room", 1)
     work = _work(
-        "s1", 1, 1,
+        "s1",
+        1,
+        1,
         artist_name="A & <B>",
         title="t",
         medium="oil on <canvas>",
@@ -209,20 +211,23 @@ def test_wrapped_title_end_of_first_line_escapes_per_line():
         components=[
             ComponentConfig("work_number", "tab", omit_sep_when_empty=False),
             ComponentConfig(
-                "title", "tab", max_line_chars=22, balance_lines=True,
+                "title",
+                "tab",
+                max_line_chars=22,
+                balance_lines=True,
                 next_component_position="end_of_first_line",
             ),
             ComponentConfig("price", "none", omit_sep_when_empty=False),
         ],
     )
     out = _render_one_work_with_config(
-        "ENTANGLEMENT (200) INTERACTION > INTRA-ACTION", config, price_numeric=2400,
+        "ENTANGLEMENT (200) INTERACTION > INTRA-ACTION",
+        config,
+        price_numeric=2400,
     )
     # Literal ``>`` from the title must never make it to the file body.
     # Allow the ``>`` inside ``<ParaStyle:…>``, ``<CharStyle:…>``, ``<ASCII-MAC>``.
-    assert _has_no_unescaped_gt_in_content(out), (
-        f"unescaped > in body of:\n{out}"
-    )
+    assert _has_no_unescaped_gt_in_content(out), f"unescaped > in body of:\n{out}"
     # And the escape sequence is present.
     assert "\\>" in out
 
@@ -271,18 +276,13 @@ def test_decode_content_strips_inline_tags_but_preserves_escaped_brackets():
     greedily consume the ``<x\\>`` slice and lose the title body. The
     single-pass walker keeps escaped brackets as literals first, then drops
     the inline tag."""
-    assert (
-        _decode_content("Hello \\<world\\> <ccase:upper>X<ccase:>")
-        == "Hello <world> X"
-    )
+    assert _decode_content("Hello \\<world\\> <ccase:upper>X<ccase:>") == "Hello <world> X"
 
 
 def test_decode_content_hex_escape_still_works():
     assert _decode_content("M<0x2019>Coul") == "M’Coul"
     # Hex inside an otherwise-escaped run — the cases compose.
-    assert (
-        _decode_content("\\<a<0x2014>b\\>") == "<a—b>"
-    )
+    assert _decode_content("\\<a<0x2014>b\\>") == "<a—b>"
 
 
 def test_clean_strips_control_chars_after_decoding():
@@ -308,7 +308,10 @@ def test_roundtrip_title_with_metacharacters():
         components=[
             ComponentConfig("work_number", "tab", omit_sep_when_empty=False),
             ComponentConfig(
-                "title", "tab", max_line_chars=22, balance_lines=True,
+                "title",
+                "tab",
+                max_line_chars=22,
+                balance_lines=True,
                 next_component_position="end_of_first_line",
             ),
             ComponentConfig("price", "none", omit_sep_when_empty=False),

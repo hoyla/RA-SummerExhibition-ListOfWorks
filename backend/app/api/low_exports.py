@@ -94,28 +94,20 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
         ComponentConfig(
             field=c["field"] if isinstance(c, dict) else c.field,
             separator_after=(
-                c.get("separator_after", "tab")
-                if isinstance(c, dict)
-                else c.separator_after
+                c.get("separator_after", "tab") if isinstance(c, dict) else c.separator_after
             ),
             omit_sep_when_empty=(
-                c.get("omit_sep_when_empty", True)
-                if isinstance(c, dict)
-                else c.omit_sep_when_empty
+                c.get("omit_sep_when_empty", True) if isinstance(c, dict) else c.omit_sep_when_empty
             ),
             enabled=c.get("enabled", True) if isinstance(c, dict) else c.enabled,
-            max_line_chars=(
-                c.get("max_line_chars") if isinstance(c, dict) else c.max_line_chars
-            ),
+            max_line_chars=(c.get("max_line_chars") if isinstance(c, dict) else c.max_line_chars),
             next_component_position=(
                 c.get("next_component_position", "end_of_text")
                 if isinstance(c, dict)
                 else c.next_component_position
             ),
             balance_lines=(
-                c.get("balance_lines", False)
-                if isinstance(c, dict)
-                else c.balance_lines
+                c.get("balance_lines", False) if isinstance(c, dict) else c.balance_lines
             ),
             paragraph_style=(
                 c.get("paragraph_style") if isinstance(c, dict) else c.paragraph_style
@@ -133,32 +125,22 @@ def _ruleset_to_export_config(ruleset) -> ExportConfig:
         cat_no_style=cfg.get("cat_no_style", DEFAULT_CONFIG.cat_no_style),
         artist_style=cfg.get("artist_style", DEFAULT_CONFIG.artist_style),
         honorifics_style=cfg.get("honorifics_style", DEFAULT_CONFIG.honorifics_style),
-        honorifics_lowercase=cfg.get(
-            "honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase
-        ),
+        honorifics_lowercase=cfg.get("honorifics_lowercase", DEFAULT_CONFIG.honorifics_lowercase),
         title_style=cfg.get("title_style", DEFAULT_CONFIG.title_style),
         title_cased_style=cfg.get("title_cased_style", DEFAULT_CONFIG.title_cased_style),
         price_style=cfg.get("price_style", DEFAULT_CONFIG.price_style),
         medium_style=cfg.get("medium_style", DEFAULT_CONFIG.medium_style),
         artwork_style=cfg.get("artwork_style", DEFAULT_CONFIG.artwork_style),
         edition_style=cfg.get("edition_style", DEFAULT_CONFIG.edition_style),
-        thousands_separator=cfg.get(
-            "thousands_separator", DEFAULT_CONFIG.thousands_separator
-        ),
+        thousands_separator=cfg.get("thousands_separator", DEFAULT_CONFIG.thousands_separator),
         decimal_places=cfg.get("decimal_places", DEFAULT_CONFIG.decimal_places),
-        leading_separator=cfg.get(
-            "leading_separator", DEFAULT_CONFIG.leading_separator
-        ),
-        trailing_separator=cfg.get(
-            "trailing_separator", DEFAULT_CONFIG.trailing_separator
-        ),
+        leading_separator=cfg.get("leading_separator", DEFAULT_CONFIG.leading_separator),
+        trailing_separator=cfg.get("trailing_separator", DEFAULT_CONFIG.trailing_separator),
         final_sep_from_last_component=cfg.get(
             "final_sep_from_last_component",
             DEFAULT_CONFIG.final_sep_from_last_component,
         ),
-        section_separator=cfg.get(
-            "section_separator", DEFAULT_CONFIG.section_separator
-        ),
+        section_separator=cfg.get("section_separator", DEFAULT_CONFIG.section_separator),
         section_separator_style=cfg.get(
             "section_separator_style", DEFAULT_CONFIG.section_separator_style
         ),
@@ -201,9 +183,7 @@ def export_section_indesign_tags(
     config = _ruleset_to_export_config(ruleset)
     output = render_import_as_tagged_text(import_id, db, config, section_id=section_id)
     section = (
-        db.query(Section)
-        .filter(Section.id == section_id, Section.import_id == import_id)
-        .first()
+        db.query(Section).filter(Section.id == section_id, Section.import_id == import_id).first()
     )
     # Section-level exports don't snapshot (full-import only)
     return _attachment(

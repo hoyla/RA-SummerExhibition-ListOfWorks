@@ -51,9 +51,7 @@ class TestBodySizeLimit:
         # We don't need to hit *exactly* the limit; just confirm a sub-limit
         # request passes. (Exact equality is fiddly because TestClient may
         # add/strip whitespace.)
-        assert r.status_code == 200, (
-            f"a {len(body)}-byte body should pass when limit is 1000"
-        )
+        assert r.status_code == 200, f"a {len(body)}-byte body should pass when limit is 1000"
 
     def test_non_numeric_content_length_passes(self):
         """A garbage Content-Length shouldn't 413 — falls through to the

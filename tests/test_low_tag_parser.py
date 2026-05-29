@@ -182,19 +182,33 @@ def test_roundtrip_default_config():
     sections = [_section("s1", "Gallery I", 1), _section("s2", "Gallery II", 2)]
     works = [
         _work(
-            "s1", 1, 1,
-            artist_name="Cornelia Parker", artist_honorifics="RA",
-            title="Cold Dark Matter", price_numeric=12000,
-            edition_total=7, edition_price_numeric=920, medium="mixed media",
+            "s1",
+            1,
+            1,
+            artist_name="Cornelia Parker",
+            artist_honorifics="RA",
+            title="Cold Dark Matter",
+            price_numeric=12000,
+            edition_total=7,
+            edition_price_numeric=920,
+            medium="mixed media",
         ),
         _work(
-            "s1", 2, 2,
-            artist_name="Anish Kapoor", title="Void", price_text="NFS",
+            "s1",
+            2,
+            2,
+            artist_name="Anish Kapoor",
+            title="Void",
+            price_text="NFS",
             medium="pigment on fibreglass",
         ),
         _work(
-            "s2", 1, 3,
-            artist_name="David Hockney", title="Spring", edition_total=5,
+            "s2",
+            1,
+            3,
+            artist_name="David Hockney",
+            title="Spring",
+            edition_total=5,
             medium="iPad drawing",
         ),
     ]
@@ -208,17 +222,25 @@ def test_roundtrip_2026_config_with_wrap_collision_and_interleave():
         # Long title forces a wrap; price is interleaved into the first line;
         # cat-no and title share the "Work Number/Name" style.
         _work(
-            "s1", 1, 101,
-            artist_name="Grayson Perry", artist_honorifics="RA",
+            "s1",
+            1,
+            101,
+            artist_name="Grayson Perry",
+            artist_honorifics="RA",
             title="A Really Quite Long Painting Title That Must Wrap",
             price_numeric=1500,
             medium="Oil, acrylic and mixed media on reclaimed canvas board",
         ),
         _work(
-            "s1", 2, 102,
+            "s1",
+            2,
+            102,
             artist_name="Tracey Emin",
-            title="Short One", price_numeric=8000,
-            edition_total=3, edition_price_numeric=450, medium="neon",
+            title="Short One",
+            price_numeric=8000,
+            edition_total=3,
+            edition_price_numeric=450,
+            medium="neon",
         ),
     ]
     _roundtrip_check(sections, works, config)
@@ -241,7 +263,9 @@ def test_collision_and_interleave_assignment():
         components=[
             ComponentConfig("work_number", "tab"),
             ComponentConfig(
-                "title", "tab", max_line_chars=10,
+                "title",
+                "tab",
+                max_line_chars=10,
                 next_component_position="end_of_first_line",
             ),
             ComponentConfig("price", "none"),
@@ -318,13 +342,15 @@ def test_local_style_modifications_ignored_anywhere():
     control char, a leading leading-override <cl:>, mid-run kerning <ck:> — must
     not pollute the cat number or title (not just a leading change)."""
     config = ExportConfig(
-        section_style="Sec", entry_style="Entry",
-        cat_no_style="WNN", title_style="WNN",
-        components=[ComponentConfig("work_number", "tab"),
-                    ComponentConfig("title", "tab")],
+        section_style="Sec",
+        entry_style="Entry",
+        cat_no_style="WNN",
+        title_style="WNN",
+        components=[ComponentConfig("work_number", "tab"), ComponentConfig("title", "tab")],
     )
-    body = ("<CharStyle:WNN>\x03<cl:9.150000>\t405\t"
-            "CHILDREN<0x2019>S <ck:-10>GAMES\t<cl:><CharStyle:>")
+    body = (
+        "<CharStyle:WNN>\x03<cl:9.150000>\t405\tCHILDREN<0x2019>S <ck:-10>GAMES\t<cl:><CharStyle:>"
+    )
     doc = f"<ASCII-MAC>\r<ParaStyle:Sec>Room\r<ParaStyle:Entry>{body}\r"
     e = parse_low_tags(doc, config)[0]
     assert e.cat_no == "405"

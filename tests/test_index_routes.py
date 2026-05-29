@@ -21,9 +21,7 @@ def _make_index_xlsx(rows) -> io.BytesIO:
     """Create an in-memory .xlsx with standard Index headers."""
     wb = Workbook()
     ws = wb.active
-    ws.append(
-        ["Title", "First Name", "Last Name", "Quals", "Company", "Address 1", "Cat Nos"]
-    )
+    ws.append(["Title", "First Name", "Last Name", "Quals", "Company", "Address 1", "Cat Nos"])
     for row in rows:
         ws.append(list(row))
     buf = io.BytesIO()
@@ -326,9 +324,7 @@ class TestDeleteIndex:
         artist_ids = [a.id for a in artists]
         client.delete(f"/index/imports/{imp.id}")
 
-        remaining = (
-            db_session.query(IndexArtist).filter(IndexArtist.id.in_(artist_ids)).count()
-        )
+        remaining = db_session.query(IndexArtist).filter(IndexArtist.id.in_(artist_ids)).count()
         assert remaining == 0
 
     def test_delete_404(self, client):
@@ -620,9 +616,7 @@ class TestMergeUnmerge:
         import_id = r.json()["import_id"]
 
         warnings = client.get(f"/index/imports/{import_id}/warnings").json()
-        merge_warnings = [
-            w for w in warnings if w["warning_type"] == "duplicate_name_merged"
-        ]
+        merge_warnings = [w for w in warnings if w["warning_type"] == "duplicate_name_merged"]
         assert len(merge_warnings) == 1
         assert "Rows 2, 3" in merge_warnings[0]["message"]
         assert "John Smith" in merge_warnings[0]["message"]

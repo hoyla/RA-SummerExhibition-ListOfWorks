@@ -94,11 +94,11 @@ def test_blank_find_is_skipped():
 def test_whole_word_does_not_mangle_substrings():
     """Without whole_word, "pla" → "PLA" would corrupt "plaster" and
     "display". With whole_word set, only the standalone token matches."""
-    subs = [{"find": "pla", "replace": "PLA",
-             "fields": ["medium"], "whole_word": True}]
-    assert apply_text_substitutions(
-        "pla, plaster on display", subs, "medium"
-    ) == "PLA, plaster on display"
+    subs = [{"find": "pla", "replace": "PLA", "fields": ["medium"], "whole_word": True}]
+    assert (
+        apply_text_substitutions("pla, plaster on display", subs, "medium")
+        == "PLA, plaster on display"
+    )
 
 
 def test_whole_word_off_is_legacy_substring():
@@ -106,23 +106,21 @@ def test_whole_word_off_is_legacy_substring():
     behaviour — needed for the ``...`` → ``…`` rule whose find has no word
     chars and so couldn't match with word boundaries anyway."""
     subs = [{"find": "pla", "replace": "PLA", "fields": ["medium"]}]
-    assert apply_text_substitutions(
-        "pla, plaster", subs, "medium"
-    ) == "PLA, PLAster"
+    assert apply_text_substitutions("pla, plaster", subs, "medium") == "PLA, PLAster"
 
 
 def test_whole_word_matches_at_string_boundaries():
     """Word boundaries must fire at start-of-string, end-of-string, and
     next to punctuation — covers the real cases of medium fields like
     "mdf" alone, "and mdf", or "mdf, perspex"."""
-    subs = [{"find": "mdf", "replace": "MDF",
-             "fields": ["medium"], "whole_word": True}]
+    subs = [{"find": "mdf", "replace": "MDF", "fields": ["medium"], "whole_word": True}]
     assert apply_text_substitutions("mdf", subs, "medium") == "MDF"
     assert apply_text_substitutions("oil on mdf", subs, "medium") == "oil on MDF"
     assert apply_text_substitutions("mdf, paint", subs, "medium") == "MDF, paint"
-    assert apply_text_substitutions(
-        "perspex, petg, and mdf", subs, "medium"
-    ) == "perspex, petg, and MDF"
+    assert (
+        apply_text_substitutions("perspex, petg, and mdf", subs, "medium")
+        == "perspex, petg, and MDF"
+    )
 
 
 def test_whole_word_treats_hyphen_as_boundary():
@@ -130,19 +128,15 @@ def test_whole_word_treats_hyphen_as_boundary():
     has a word boundary between "mdf" and "-". Worth pinning so a future
     reader knows the behaviour (some users might expect hyphenated
     compounds to *not* match)."""
-    subs = [{"find": "mdf", "replace": "MDF",
-             "fields": ["medium"], "whole_word": True}]
-    assert apply_text_substitutions(
-        "mdf-board on oak", subs, "medium"
-    ) == "MDF-board on oak"
+    subs = [{"find": "mdf", "replace": "MDF", "fields": ["medium"], "whole_word": True}]
+    assert apply_text_substitutions("mdf-board on oak", subs, "medium") == "MDF-board on oak"
 
 
 def test_whole_word_with_regex_metachars_in_find_is_literal():
     """The find is regex-escaped before being wrapped in word boundaries,
     so a literal ``.`` doesn't act as "any char". (Combined with whole_word,
     this is a rare combination but the safety still has to hold.)"""
-    subs = [{"find": "a.b", "replace": "AXB",
-             "fields": ["title"], "whole_word": True}]
+    subs = [{"find": "a.b", "replace": "AXB", "fields": ["title"], "whole_word": True}]
     # Should NOT match "axb" — the . in the find is a literal, not wildcard
     assert apply_text_substitutions("a.b axb", subs, "title") == "AXB axb"
 
@@ -151,8 +145,7 @@ def test_whole_word_with_dollar_sign_in_replace_is_literal():
     """The replace string is passed through a lambda so regex backreference
     syntax (``\\1``, ``\\g<name>``) isn't interpreted — important because
     editors writing replacement text shouldn't have to escape backslashes."""
-    subs = [{"find": "mdf", "replace": r"M\1F",
-             "fields": ["medium"], "whole_word": True}]
+    subs = [{"find": "mdf", "replace": r"M\1F", "fields": ["medium"], "whole_word": True}]
     assert apply_text_substitutions("mdf", subs, "medium") == r"M\1F"
 
 
@@ -318,9 +311,7 @@ def test_priceless_suppressed_edition_of_1_is_benign():
 def test_get_config_returns_new_defaults(client):
     cfg = client.get("/config").json()
     assert cfg["edition_suppress_max"] == 0
-    assert any(
-        s["find"] == "..." and s["replace"] == "…" for s in cfg["text_substitutions"]
-    )
+    assert any(s["find"] == "..." and s["replace"] == "…" for s in cfg["text_substitutions"])
 
 
 def test_put_config_round_trips_all_fields(client):
@@ -344,9 +335,7 @@ def test_put_config_rejects_blank_find(client):
 
 
 def test_put_config_rejects_unknown_field(client):
-    body = {
-        "text_substitutions": [{"find": "x", "replace": "y", "fields": ["nonsense"]}]
-    }
+    body = {"text_substitutions": [{"find": "x", "replace": "y", "fields": ["nonsense"]}]}
     assert client.put("/config", json=body).status_code == 422
 
 
@@ -398,20 +387,14 @@ def test_saved_config_is_applied_on_import(client, db_session):
         json={
             "honorific_tokens": ["RA"],
             "edition_suppress_max": 1,
-            "text_substitutions": [
-                {"find": "ZZZ", "replace": "QQQ", "fields": ["title"]}
-            ],
+            "text_substitutions": [{"find": "ZZZ", "replace": "QQQ", "fields": ["title"]}],
         },
     )
     import_id = _import(
         client,
         [[1, "Gallery A", "Hello ZZZ", "Jane Doe", "100", "Edition of 1 at £50", None, "Oil"]],
     )
-    work = (
-        db_session.query(Work)
-        .filter(Work.import_id == uuid.UUID(import_id))
-        .first()
-    )
+    work = db_session.query(Work).filter(Work.import_id == uuid.UUID(import_id)).first()
     assert work.title == "Hello QQQ"  # substitution from saved config applied
     assert work.edition_total is None  # edition-of-1 suppressed per saved threshold
     assert work.price_numeric == 100  # work's own price stands
@@ -423,9 +406,5 @@ def test_default_substitution_applies_on_import_without_saved_config(client, db_
         client,
         [[1, "Gallery A", "Wait...", "Jane Doe", "100", None, None, "Oil"]],
     )
-    work = (
-        db_session.query(Work)
-        .filter(Work.import_id == uuid.UUID(import_id))
-        .first()
-    )
+    work = db_session.query(Work).filter(Work.import_id == uuid.UUID(import_id)).first()
     assert work.title == "Wait…"

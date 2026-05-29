@@ -61,9 +61,7 @@ def export_template(template_id: UUID, db: Session = Depends(get_db)):
         .first()
     )
     if not r:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
     seed = {"_name": r.name, **r.config}
     body = json.dumps(seed, indent=2, ensure_ascii=False) + "\n"
     slug = r.slug or re.sub(r"[^a-z0-9]+", "-", r.name.lower()).strip("-")
@@ -79,15 +77,9 @@ def export_template(template_id: UUID, db: Session = Depends(get_db)):
 @router.get("/templates/{template_id}")
 def get_template(template_id: UUID, db: Session = Depends(get_db)):
     """Return full config for one template."""
-    r = (
-        db.query(Ruleset)
-        .filter(Ruleset.id == template_id, Ruleset.archived == False)
-        .first()
-    )
+    r = db.query(Ruleset).filter(Ruleset.id == template_id, Ruleset.archived == False).first()
     if not r:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
     return {
         "id": str(r.id),
         "name": r.name,
@@ -105,9 +97,7 @@ def get_template(template_id: UUID, db: Session = Depends(get_db)):
 def create_template(body: TemplateBodyIn, db: Session = Depends(get_db)):
     """Create a new export template."""
     config_dict = body.model_dump(exclude={"name"})
-    config_hash = hashlib.sha256(
-        json.dumps(config_dict, sort_keys=True).encode()
-    ).hexdigest()
+    config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
     r = Ruleset(
         name=body.name,
         config=config_dict,
@@ -132,19 +122,11 @@ def create_template(body: TemplateBodyIn, db: Session = Depends(get_db)):
 
 
 @router.put("/templates/{template_id}", dependencies=[Depends(require_role("editor"))])
-def update_template(
-    template_id: UUID, body: TemplateBodyIn, db: Session = Depends(get_db)
-):
+def update_template(template_id: UUID, body: TemplateBodyIn, db: Session = Depends(get_db)):
     """Update an existing export template."""
-    r = (
-        db.query(Ruleset)
-        .filter(Ruleset.id == template_id, Ruleset.archived == False)
-        .first()
-    )
+    r = db.query(Ruleset).filter(Ruleset.id == template_id, Ruleset.archived == False).first()
     if not r:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
     if r.is_builtin:
         raise HTTPException(
             status_code=403,
@@ -154,9 +136,7 @@ def update_template(
     config_dict = body.model_dump(exclude={"name"})
     r.config = config_dict
     r.name = body.name
-    r.config_hash = hashlib.sha256(
-        json.dumps(config_dict, sort_keys=True).encode()
-    ).hexdigest()
+    r.config_hash = hashlib.sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()
     db.add(
         AuditLog(
             template_id=r.id,
@@ -182,15 +162,9 @@ def update_template(
 )
 def delete_template(template_id: UUID, db: Session = Depends(get_db)):
     """Soft-delete an export template."""
-    r = (
-        db.query(Ruleset)
-        .filter(Ruleset.id == template_id, Ruleset.archived == False)
-        .first()
-    )
+    r = db.query(Ruleset).filter(Ruleset.id == template_id, Ruleset.archived == False).first()
     if not r:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
     if r.is_builtin:
         raise HTTPException(status_code=403, detail="Cannot delete a built-in template")
     r.archived = True
@@ -214,9 +188,7 @@ def duplicate_template(template_id: UUID, db: Session = Depends(get_db)):
     """Clone a template under a new name."""
     r = db.query(Ruleset).filter(Ruleset.id == template_id).first()
     if not r:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
     new_r = Ruleset(
         name=f"Copy of {r.name}",
         config=dict(r.config),

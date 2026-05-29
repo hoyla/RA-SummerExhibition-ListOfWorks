@@ -188,9 +188,7 @@ def parse_multi_artist(
             break
         else:
             a2_extracted_quals.insert(0, m2.group(0))
-            a2_remaining = (
-                a2_remaining[: m2.start()] + a2_remaining[m2.end() :]
-            ).strip()
+            a2_remaining = (a2_remaining[: m2.start()] + a2_remaining[m2.end() :]).strip()
 
     a2_name_words = a2_remaining.split()
     a2_last = a2_name_words[-1] if a2_name_words else None
@@ -291,9 +289,7 @@ _QUAL_IN_NAME_PATTERN = re.compile(
 )
 
 
-def detect_quals_in_name(
-    first_name: Optional[str], last_name: Optional[str]
-) -> Optional[str]:
+def detect_quals_in_name(first_name: Optional[str], last_name: Optional[str]) -> Optional[str]:
     """If a known qualification token appears in a name field, return it.
 
     Returns the first matched token or None.
@@ -345,9 +341,7 @@ def _validate_headers(headers: List[str]) -> List[str]:
         for col in sorted(missing_required):
             matches = get_close_matches(col, list(found), n=1, cutoff=0.6)
             if matches:
-                suggestions.append(
-                    f'  - "{col}" not found (did you mean "{matches[0]}"?)'
-                )
+                suggestions.append(f'  - "{col}" not found (did you mean "{matches[0]}"?)')
             else:
                 suggestions.append(f'  - "{col}" not found')
         raise IndexImportError(
@@ -500,9 +494,7 @@ def _create_artists_from_parsed_rows(
     """
     artist_groups: Dict[str, List[dict]] = defaultdict(list)
     for row in raw_rows:
-        key = _artist_merge_key(
-            row["title"], row["first_name"], row["last_name"], row["quals"]
-        )
+        key = _artist_merge_key(row["title"], row["first_name"], row["last_name"], row["quals"])
         artist_groups[key].append(row)
 
     artist_count = 0
@@ -516,9 +508,7 @@ def _create_artists_from_parsed_rows(
             for r in no_courtesy_rows:
                 for cn in r["cat_nos"]:
                     merged_cat_entries.append((cn, r["row_number"]))
-            _create_artist_entry(
-                db, import_record, merged, merged_cat_entries, courtesy=None
-            )
+            _create_artist_entry(db, import_record, merged, merged_cat_entries, courtesy=None)
             artist_count += 1
 
             if len(no_courtesy_rows) > 1:
@@ -536,9 +526,7 @@ def _create_artists_from_parsed_rows(
 
         for r in courtesy_rows:
             cat_entries = [(cn, r["row_number"]) for cn in r["cat_nos"]]
-            _create_artist_entry(
-                db, import_record, r, cat_entries, courtesy=r["address"]
-            )
+            _create_artist_entry(db, import_record, r, cat_entries, courtesy=r["address"])
             artist_count += 1
 
     if artist_count == 0:
@@ -575,9 +563,7 @@ def import_index_excel(
     record_name = display_name or file_path
 
     # Duplicate filename detection
-    duplicate_detected = (
-        db.query(Import).filter(Import.filename == record_name).first() is not None
-    )
+    duplicate_detected = db.query(Import).filter(Import.filename == record_name).first() is not None
 
     import_record = Import(filename=record_name, product_type="artists_index")
     db.add(import_record)
@@ -788,7 +774,7 @@ def _create_artist_entry(
                 import_id=import_record.id,
                 work_id=None,
                 warning_type="possible_company",
-                message=f"Row {row['row_number']}: \"{last_name}\" has no first name — treated as company",
+                message=f'Row {row["row_number"]}: "{last_name}" has no first name — treated as company',
             )
         )
 
@@ -827,7 +813,7 @@ def _create_artist_entry(
                 import_id=import_record.id,
                 work_id=None,
                 warning_type="quals_in_name_field",
-                message=f"Row {row['row_number']}: Qualification \"{embedded_qual}\" found in name field: {first_name or ''} {last_name or ''}".strip(),
+                message=f'Row {row["row_number"]}: Qualification "{embedded_qual}" found in name field: {first_name or ""} {last_name or ""}'.strip(),
             )
         )
 
@@ -932,9 +918,7 @@ def reimport_index_excel(
     raw_rows, header_warnings = _open_and_parse_index_workbook(file_path)
 
     # 2. Snapshot existing overrides + include_in_export, keyed by identity
-    existing_artists = (
-        db.query(IndexArtist).filter(IndexArtist.import_id == import_id).all()
-    )
+    existing_artists = db.query(IndexArtist).filter(IndexArtist.import_id == import_id).all()
     artist_ids = [a.id for a in existing_artists]
 
     # Load overrides
@@ -951,9 +935,7 @@ def reimport_index_excel(
     courtesy_map: Dict[str, str] = {}
     if artist_ids:
         cat_numbers = (
-            db.query(IndexCatNumber)
-            .filter(IndexCatNumber.artist_id.in_(artist_ids))
-            .all()
+            db.query(IndexCatNumber).filter(IndexCatNumber.artist_id.in_(artist_ids)).all()
         )
         for cn in cat_numbers:
             aid = str(cn.artist_id)
@@ -974,12 +956,12 @@ def reimport_index_excel(
     # 3. Delete old data (CASCADE will handle cat_numbers, overrides,
     #    artist-level audit logs)
     if artist_ids:
-        db.query(IndexArtistOverride).filter(
-            IndexArtistOverride.artist_id.in_(artist_ids)
-        ).delete(synchronize_session=False)
-        db.query(IndexCatNumber).filter(
-            IndexCatNumber.artist_id.in_(artist_ids)
-        ).delete(synchronize_session=False)
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id.in_(artist_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(IndexCatNumber).filter(IndexCatNumber.artist_id.in_(artist_ids)).delete(
+            synchronize_session=False
+        )
     db.query(ValidationWarning).filter(ValidationWarning.import_id == import_id).delete(
         synchronize_session=False
     )

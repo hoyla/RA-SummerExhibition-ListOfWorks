@@ -36,9 +36,7 @@ AWS_REGION: str | None = os.getenv("AWS_REGION")
 
 # Comma-separated list of allowed CORS origins.
 # Leave empty to disallow cross-origin requests (same-origin only).
-CORS_ORIGINS: list[str] = [
-    o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
-]
+CORS_ORIGINS: list[str] = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
 # Maximum request body size in bytes; requests exceeding this are rejected
 # with 413 before parsing. Default 50 MB — comfortably above any realistic

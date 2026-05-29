@@ -61,9 +61,7 @@ def _price_display(w: dict, config: ExportConfig) -> str:
     return ""
 
 
-def work_display_fields(
-    w: dict, config: ExportConfig = DEFAULT_CONFIG
-) -> dict[str, str]:
+def work_display_fields(w: dict, config: ExportConfig = DEFAULT_CONFIG) -> dict[str, str]:
     """Per-field display strings the renderer would emit for a resolved work
     dict (as produced by ``export_renderer._collect_export_data``).
 
@@ -96,9 +94,15 @@ def work_display_fields(
 # Typographic folds applied during cosmetic-noise suppression (InDesign smart
 # quotes vs the straight quotes typically stored in the spreadsheet).
 _TYPO_FOLD = {
-    "‘": "'", "’": "'", "‚": "'", "‛": "'",
+    "‘": "'",
+    "’": "'",
+    "‚": "'",
+    "‛": "'",
     "′": "'",
-    "“": '"', "”": '"', "„": '"', "″": '"',
+    "“": '"',
+    "”": '"',
+    "„": '"',
+    "″": '"',
 }
 _WS_RE = re.compile(r"\s+")
 
@@ -205,9 +209,7 @@ def _catsort(c: str):
 def _severity(config: LowDiffConfig, kind: str, fld: str | None = None) -> str:
     sev = config.severity
     if kind == "field_change":
-        return sev.get("field_change", {}).get(
-            fld, sev.get("field_change_default", "medium")
-        )
+        return sev.get("field_change", {}).get(fld, sev.get("field_change_default", "medium"))
     return sev.get(kind, "medium")
 
 

@@ -97,11 +97,7 @@ def resolve_effective_work(work, override) -> EffectiveWork:
 
     return EffectiveWork(
         raw_cat_no=work.raw_cat_no,
-        title=(
-            override.title_override
-            if override.title_override is not None
-            else work.title
-        ),
+        title=(override.title_override if override.title_override is not None else work.title),
         title_cased=(
             override.title_cased_override
             if getattr(override, "title_cased_override", None) is not None
@@ -130,14 +126,8 @@ def resolve_effective_work(work, override) -> EffectiveWork:
             else work.edition_price_numeric
         ),
         artwork=(
-            override.artwork_override
-            if override.artwork_override is not None
-            else work.artwork
+            override.artwork_override if override.artwork_override is not None else work.artwork
         ),
-        medium=(
-            override.medium_override
-            if override.medium_override is not None
-            else work.medium
-        ),
+        medium=(override.medium_override if override.medium_override is not None else work.medium),
         include_in_export=bool(work.include_in_export),
     )

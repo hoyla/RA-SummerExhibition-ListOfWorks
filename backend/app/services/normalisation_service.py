@@ -36,8 +36,21 @@ DEFAULT_TEXT_SUBSTITUTIONS: List[dict] = [
 # stylised names). Matched case-insensitively; the value here is the form emitted.
 # Roman numerals are handled separately (by pattern), so they don't go here.
 DEFAULT_TITLE_CASE_EXCEPTIONS: List[str] = [
-    "RA", "PRA", "PPRA", "RWS", "RE", "NEAC", "OBE", "MBE", "CBE",
-    "USA", "UK", "NYC", "LA", "BBC", "MoMA",
+    "RA",
+    "PRA",
+    "PPRA",
+    "RWS",
+    "RE",
+    "NEAC",
+    "OBE",
+    "MBE",
+    "CBE",
+    "USA",
+    "UK",
+    "NYC",
+    "LA",
+    "BBC",
+    "MoMA",
 ]
 
 # Field keys an admin may target, mapped to the Work attribute they normalise.
@@ -61,11 +74,7 @@ def normalise_artist(raw_artist: str, honorific_tokens: Optional[List[str]] = No
 
     token_set: Set[str] = {
         t.upper()
-        for t in (
-            honorific_tokens
-            if honorific_tokens is not None
-            else DEFAULT_HONORIFIC_TOKENS
-        )
+        for t in (honorific_tokens if honorific_tokens is not None else DEFAULT_HONORIFIC_TOKENS)
     }
 
     parts = artist.split()
@@ -136,9 +145,7 @@ def _parse_edition_components(raw_edition):
 
     full_match = re.match(r"Edition of (\d+) at .*?([0-9,]+\.?[0-9]*)", value)
     if full_match:
-        return int(full_match.group(1)), int(
-            Decimal(full_match.group(2).replace(",", ""))
-        )
+        return int(full_match.group(1)), int(Decimal(full_match.group(2).replace(",", "")))
 
     partial_match = re.match(r"Edition of (\d+)", value)
     if partial_match:
@@ -209,20 +216,14 @@ def apply_text_substitutions(value, substitutions, field_key: str):
 
 # Strict Roman numeral (II, IV, VIII, XIV …). Single letters are excluded by the
 # length guard in the callback ("I" is handled by titlecase itself).
-_ROMAN_RE = re.compile(
-    r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$", re.IGNORECASE
-)
+_ROMAN_RE = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$", re.IGNORECASE)
 # Common words / short forms that match the Roman pattern but usually aren't
 # numerals — left as ordinary title-cased words (still override-correctable).
 _ROMAN_DENYLIST = {"mix", "di", "li", "mm", "cd", "mi", "dc"}
 
 
 def _looks_roman(core: str) -> bool:
-    return (
-        len(core) > 1
-        and core.lower() not in _ROMAN_DENYLIST
-        and bool(_ROMAN_RE.match(core))
-    )
+    return len(core) > 1 and core.lower() not in _ROMAN_DENYLIST and bool(_ROMAN_RE.match(core))
 
 
 def _title_token_reason(word: str, canon: dict) -> Tuple[str, Optional[str]]:
@@ -323,9 +324,7 @@ def normalise_work(
     here. Only derived fields are written; raw_* values are left canonical
     (principle 3).
     """
-    work.artist_name, work.artist_honorifics = normalise_artist(
-        work.raw_artist, honorific_tokens
-    )
+    work.artist_name, work.artist_honorifics = normalise_artist(work.raw_artist, honorific_tokens)
     work.price_numeric, work.price_text = parse_price(work.raw_price)
     work.edition_total, work.edition_price_numeric = parse_edition(
         work.raw_edition, suppress_max=edition_suppress_max
@@ -441,9 +440,7 @@ def collect_work_warnings(
             and work.price_numeric is None
             and work.price_text not in ("NFS", "*", None, "")
         ):
-            warnings.append(
-                ("unrecognised_price", f"Price could not be parsed: {raw_p!r}")
-            )
+            warnings.append(("unrecognised_price", f"Price could not be parsed: {raw_p!r}"))
 
     # Edition handling — re-derive the original components (ignoring suppression)
     # so we can explain what happened and flag the dangerous case.
@@ -488,8 +485,7 @@ def collect_work_warnings(
                     warnings.append(
                         (
                             "edition_suppressed",
-                            f"Edition suppressed (treated as the work itself): "
-                            f"{raw_ed!r}",
+                            f"Edition suppressed (treated as the work itself): {raw_ed!r}",
                         )
                     )
 

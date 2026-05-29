@@ -386,13 +386,8 @@ def match_overrides(
         # No fingerprint match. If the cat-no was occupied by a content
         # mismatch in pass 1, surface that specifically — it's a different
         # signal than "the work just isn't in the new file at all".
-        cat_collision_new_idx = (
-            new_by_cat.get(old_w.cat_no) if old_w.cat_no else None
-        )
-        if (
-            cat_collision_new_idx is not None
-            and cat_collision_new_idx not in matched_new_indices
-        ):
+        cat_collision_new_idx = new_by_cat.get(old_w.cat_no) if old_w.cat_no else None
+        if cat_collision_new_idx is not None and cat_collision_new_idx not in matched_new_indices:
             collision_row = in_scope_new[cat_collision_new_idx]
             plan.ambiguous.append(
                 AmbiguousItem(
@@ -449,9 +444,7 @@ def match_overrides(
     # Derived counts
     # ------------------------------------------------------------------
     plan.added = len(in_scope_new) - len(matched_new_indices)
-    plan.removed = (
-        len(in_scope_old) - plan.matched_by_cat_no - plan.matched_by_fingerprint
-    )
+    plan.removed = len(in_scope_old) - plan.matched_by_cat_no - plan.matched_by_fingerprint
 
     return plan
 

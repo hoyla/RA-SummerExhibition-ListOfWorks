@@ -255,9 +255,7 @@ def test_warns_title_case_exception_for_curated_token():
 def test_title_case_exception_honours_custom_exceptions():
     # With a custom list that lacks "USA", no exception warning fires.
     work = make_work(title="PORTRAIT OF THE USA")
-    types = [
-        t for t, _ in collect_work_warnings(work, title_case_exceptions=["RA"])
-    ]
+    types = [t for t, _ in collect_work_warnings(work, title_case_exceptions=["RA"])]
     assert "title_case_exception" not in types
 
 

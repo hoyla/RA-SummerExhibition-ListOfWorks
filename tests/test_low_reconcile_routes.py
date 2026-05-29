@@ -23,17 +23,41 @@ def _seed(db):
     db.refresh(s2)
     db.add_all(
         [
-            Work(import_id=imp.id, section_id=s1.id, position_in_section=1,
-                 raw_cat_no="1", title="Sunset", artist_name="Jane Doe",
-                 price_numeric=500, price_text="£500", medium="oil",
-                 include_in_export=True),
-            Work(import_id=imp.id, section_id=s1.id, position_in_section=2,
-                 raw_cat_no="2", title="Moonrise", artist_name="John Roe",
-                 price_numeric=750, price_text="", medium="acrylic",
-                 include_in_export=True),
-            Work(import_id=imp.id, section_id=s2.id, position_in_section=1,
-                 raw_cat_no="3", title="Dawn", artist_name="Sam Poe",
-                 price_text="NFS", medium="watercolour", include_in_export=True),
+            Work(
+                import_id=imp.id,
+                section_id=s1.id,
+                position_in_section=1,
+                raw_cat_no="1",
+                title="Sunset",
+                artist_name="Jane Doe",
+                price_numeric=500,
+                price_text="£500",
+                medium="oil",
+                include_in_export=True,
+            ),
+            Work(
+                import_id=imp.id,
+                section_id=s1.id,
+                position_in_section=2,
+                raw_cat_no="2",
+                title="Moonrise",
+                artist_name="John Roe",
+                price_numeric=750,
+                price_text="",
+                medium="acrylic",
+                include_in_export=True,
+            ),
+            Work(
+                import_id=imp.id,
+                section_id=s2.id,
+                position_in_section=1,
+                raw_cat_no="3",
+                title="Dawn",
+                artist_name="Sam Poe",
+                price_text="NFS",
+                medium="watercolour",
+                include_in_export=True,
+            ),
         ]
     )
     db.commit()
@@ -159,10 +183,7 @@ def test_workflow_a_override_resolves_finding(client, db_session):
 
     body = _post_snapshot(client, imp.id, modified).json()
     sid = body["snapshot"]["id"]
-    assert any(
-        f["cat_no"] == "1" and f["field"] == "title"
-        for f in body["diff"]["findings"]
-    )
+    assert any(f["cat_no"] == "1" and f["field"] == "title" for f in body["diff"]["findings"])
 
     # Apply the correction as an override on the matching work.
     work = db_session.query(Work).filter(Work.raw_cat_no == "1").first()
@@ -172,8 +193,7 @@ def test_workflow_a_override_resolves_finding(client, db_session):
     # Re-view the same stored snapshot — diff recomputes against current data.
     after = client.get(f"/imports/{imp.id}/low-tag-snapshots/{sid}").json()
     assert not [
-        f for f in after["diff"]["findings"]
-        if f["cat_no"] == "1" and f["field"] == "title"
+        f for f in after["diff"]["findings"] if f["cat_no"] == "1" and f["field"] == "title"
     ]
 
 

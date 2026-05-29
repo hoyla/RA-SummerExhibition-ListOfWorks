@@ -55,14 +55,11 @@ def _get_low_import(import_id: UUID, db: Session) -> Import:
     """Fetch a List of Works import or raise 404/400."""
     rec = db.query(Import).filter(Import.id == import_id).first()
     if not rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Import not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import not found")
     if rec.product_type != "list_of_works":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Import {import_id} is not a list_of_works "
-            f"(got {rec.product_type})",
+            detail=f"Import {import_id} is not a list_of_works (got {rec.product_type})",
         )
     return rec
 
@@ -217,9 +214,7 @@ def list_low_tag_snapshots(import_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/imports/{import_id}/low-tag-snapshots/{snapshot_id}")
-def get_low_tag_snapshot_diff(
-    import_id: UUID, snapshot_id: UUID, db: Session = Depends(get_db)
-):
+def get_low_tag_snapshot_diff(import_id: UUID, snapshot_id: UUID, db: Session = Depends(get_db)):
     """Recompute a stored snapshot's diff against the import's *current* data."""
     _get_low_import(import_id, db)
     snap = (
@@ -231,14 +226,10 @@ def get_low_tag_snapshot_diff(
         .first()
     )
     if not snap:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found")
     return {
         "snapshot": _snapshot_meta(snap),
-        "diff": _diff_payload(
-            import_id, snap.raw_text, snap.template_id, snap.filename, db
-        ),
+        "diff": _diff_payload(import_id, snap.raw_text, snap.template_id, snap.filename, db),
     }
 
 
@@ -246,9 +237,7 @@ def get_low_tag_snapshot_diff(
     "/imports/{import_id}/low-tag-snapshots/{snapshot_id}",
     dependencies=[Depends(require_role("editor"))],
 )
-def delete_low_tag_snapshot(
-    import_id: UUID, snapshot_id: UUID, db: Session = Depends(get_db)
-):
+def delete_low_tag_snapshot(import_id: UUID, snapshot_id: UUID, db: Session = Depends(get_db)):
     """Delete a stored snapshot."""
     _get_low_import(import_id, db)
     snap = (
@@ -260,9 +249,7 @@ def delete_low_tag_snapshot(
         .first()
     )
     if not snap:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found")
     db.delete(snap)
     db.commit()
     return {"deleted": str(snapshot_id)}

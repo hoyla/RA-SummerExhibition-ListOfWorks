@@ -125,9 +125,7 @@ def _decode_cognito_token(token: str) -> dict:
     # PyJWT requires a key object rather than a raw JWK dict
     key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk_dict)
 
-    issuer = (
-        f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/" f"{COGNITO_USER_POOL_ID}"
-    )
+    issuer = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
 
     try:
         claims = jwt.decode(

@@ -75,9 +75,7 @@ def _seed_section(db, imp, name="Section A", position=1):
     return sec
 
 
-def _seed_work(
-    db, imp, sec, position=1, raw_cat_no="1", title="Sunset", artist_name="Jane"
-):
+def _seed_work(db, imp, sec, position=1, raw_cat_no="1", title="Sunset", artist_name="Jane"):
     w = Work(
         import_id=imp.id,
         section_id=sec.id,
@@ -133,9 +131,7 @@ class TestImportAuditLog:
         sec = _seed_section(db_session, imp)
         work = _seed_work(db_session, imp, sec)
         _seed_audit(db_session, imp, work)
-        _seed_audit(
-            db_session, imp, work, field="price_numeric_override", new_value="1000"
-        )
+        _seed_audit(db_session, imp, work, field="price_numeric_override", new_value="1000")
 
         r = client.get(f"/imports/{imp.id}/audit-log")
         assert r.status_code == 200
@@ -145,9 +141,7 @@ class TestImportAuditLog:
     def test_includes_work_context(self, client, db_session):
         imp = _seed_import(db_session)
         sec = _seed_section(db_session, imp)
-        work = _seed_work(
-            db_session, imp, sec, raw_cat_no="42", title="Dawn", artist_name="Alice"
-        )
+        work = _seed_work(db_session, imp, sec, raw_cat_no="42", title="Dawn", artist_name="Alice")
         _seed_audit(db_session, imp, work)
 
         r = client.get(f"/imports/{imp.id}/audit-log")
@@ -358,11 +352,7 @@ class TestTemplateAuditLog:
         assert r.status_code == 201
         tid = r.json()["id"]
 
-        logs = (
-            db_session.query(AuditLog)
-            .filter(AuditLog.template_id == _uuid.UUID(tid))
-            .all()
-        )
+        logs = db_session.query(AuditLog).filter(AuditLog.template_id == _uuid.UUID(tid)).all()
         assert len(logs) == 1
         assert logs[0].action == "template_created"
         assert logs[0].new_value == "Test Template"

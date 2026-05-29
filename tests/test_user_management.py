@@ -110,9 +110,7 @@ class TestListUsers:
         client_mock, tc = mock_cognito
         user = _make_cognito_user("abc-123", "alice@example.com")
         client_mock.list_users.return_value = {"Users": [user]}
-        client_mock.admin_list_groups_for_user.return_value = {
-            "Groups": [{"GroupName": "editor"}]
-        }
+        client_mock.admin_list_groups_for_user.return_value = {"Groups": [{"GroupName": "editor"}]}
 
         r = tc.get("/users")
         assert r.status_code == 200
@@ -166,9 +164,7 @@ class TestCreateUser:
     def test_create_basic_user(self, mock_cognito):
         client_mock, tc = mock_cognito
         client_mock.admin_create_user.return_value = {
-            "User": _make_cognito_user(
-                "abc-123", "new@example.com", status="FORCE_CHANGE_PASSWORD"
-            )
+            "User": _make_cognito_user("abc-123", "new@example.com", status="FORCE_CHANGE_PASSWORD")
         }
         client_mock.admin_add_user_to_group.return_value = {}
 
@@ -210,9 +206,7 @@ class TestCreateUser:
 
     def test_duplicate_user_returns_409(self, mock_cognito):
         client_mock, tc = mock_cognito
-        client_mock.admin_create_user.side_effect = _client_error(
-            "UsernameExistsException"
-        )
+        client_mock.admin_create_user.side_effect = _client_error("UsernameExistsException")
 
         r = tc.post("/users", json={"email": "dup@example.com", "role": "viewer"})
         assert r.status_code == 409
@@ -236,9 +230,7 @@ class TestUpdateUserRole:
     def test_change_role(self, mock_cognito):
         client_mock, tc = mock_cognito
         client_mock.admin_get_user.return_value = _make_cognito_user("u1", "u@e.com")
-        client_mock.admin_list_groups_for_user.return_value = {
-            "Groups": [{"GroupName": "viewer"}]
-        }
+        client_mock.admin_list_groups_for_user.return_value = {"Groups": [{"GroupName": "viewer"}]}
         client_mock.admin_remove_user_from_group.return_value = {}
         client_mock.admin_add_user_to_group.return_value = {}
 
@@ -285,18 +277,14 @@ class TestEnableDisable:
 
     def test_disable_not_found(self, mock_cognito):
         client_mock, tc = mock_cognito
-        client_mock.admin_disable_user.side_effect = _client_error(
-            "UserNotFoundException"
-        )
+        client_mock.admin_disable_user.side_effect = _client_error("UserNotFoundException")
 
         r = tc.post("/users/ghost/disable")
         assert r.status_code == 404
 
     def test_enable_not_found(self, mock_cognito):
         client_mock, tc = mock_cognito
-        client_mock.admin_enable_user.side_effect = _client_error(
-            "UserNotFoundException"
-        )
+        client_mock.admin_enable_user.side_effect = _client_error("UserNotFoundException")
 
         r = tc.post("/users/ghost/enable")
         assert r.status_code == 404
@@ -312,9 +300,7 @@ class TestResetPassword:
         client_mock, tc = mock_cognito
         client_mock.admin_set_user_password.return_value = {}
 
-        r = tc.post(
-            "/users/u1/reset-password", json={"temporary_password": "NewPass12345"}
-        )
+        r = tc.post("/users/u1/reset-password", json={"temporary_password": "NewPass12345"})
         assert r.status_code == 200
         assert r.json()["ok"] is True
         call_kwargs = client_mock.admin_set_user_password.call_args.kwargs
@@ -322,9 +308,7 @@ class TestResetPassword:
 
     def test_reset_password_not_found(self, mock_cognito):
         client_mock, tc = mock_cognito
-        client_mock.admin_set_user_password.side_effect = _client_error(
-            "UserNotFoundException"
-        )
+        client_mock.admin_set_user_password.side_effect = _client_error("UserNotFoundException")
 
         r = tc.post("/users/ghost/reset-password", json={"temporary_password": "X"})
         assert r.status_code == 404

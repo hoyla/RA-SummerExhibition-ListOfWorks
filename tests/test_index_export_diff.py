@@ -260,9 +260,7 @@ class TestComputeIndexDiff:
         save_index_export_snapshot(imp.id, None, db_session)
 
         # Add a new artist
-        a2 = _seed_artist(
-            db_session, imp, first_name="Bob", last_name="Brown", row_number=3
-        )
+        a2 = _seed_artist(db_session, imp, first_name="Bob", last_name="Brown", row_number=3)
         _seed_cat_no(db_session, a2, 2)
 
         diff = compute_index_diff(imp.id, None, db_session)
@@ -275,9 +273,7 @@ class TestComputeIndexDiff:
         imp = _seed_index_import(db_session)
         a1 = _seed_artist(db_session, imp)
         _seed_cat_no(db_session, a1, 1)
-        a2 = _seed_artist(
-            db_session, imp, first_name="Bob", last_name="Brown", row_number=3
-        )
+        a2 = _seed_artist(db_session, imp, first_name="Bob", last_name="Brown", row_number=3)
         _seed_cat_no(db_session, a2, 2)
 
         save_index_export_snapshot(imp.id, None, db_session)
@@ -308,8 +304,7 @@ class TestComputeIndexDiff:
         assert len(diff["changed"]) == 1
         ch = diff["changed"][0]
         assert any(
-            f["field"] == "quals" and f["old"] is None and f["new"] == "RA"
-            for f in ch["fields"]
+            f["field"] == "quals" and f["old"] is None and f["new"] == "RA" for f in ch["fields"]
         )
 
     def test_cat_nos_change_detected(self, db_session):
@@ -326,9 +321,7 @@ class TestComputeIndexDiff:
         diff = compute_index_diff(imp.id, None, db_session)
         assert diff["has_changes"] is True
         assert len(diff["changed"]) == 1
-        cat_field = next(
-            f for f in diff["changed"][0]["fields"] if f["field"] == "cat_nos"
-        )
+        cat_field = next(f for f in diff["changed"][0]["fields"] if f["field"] == "cat_nos")
         assert cat_field["old"] == [1]
         assert sorted(cat_field["new"]) == [1, 5]
 
@@ -340,9 +333,7 @@ class TestComputeIndexDiff:
             db_session, imp, first_name="Will", last_name="Change", row_number=3
         )
         _seed_cat_no(db_session, a_change, 2)
-        a_remove = _seed_artist(
-            db_session, imp, first_name="Goes", last_name="Away", row_number=4
-        )
+        a_remove = _seed_artist(db_session, imp, first_name="Goes", last_name="Away", row_number=4)
         _seed_cat_no(db_session, a_remove, 3)
 
         save_index_export_snapshot(imp.id, None, db_session)
@@ -350,9 +341,7 @@ class TestComputeIndexDiff:
         # Modify, exclude, add
         a_change.quals = "OBE"
         a_remove.include_in_export = False
-        a_new = _seed_artist(
-            db_session, imp, first_name="Brand", last_name="New", row_number=5
-        )
+        a_new = _seed_artist(db_session, imp, first_name="Brand", last_name="New", row_number=5)
         _seed_cat_no(db_session, a_new, 4)
         db_session.commit()
 
@@ -415,8 +404,7 @@ class TestIndexExportDiffRoute:
         assert data["has_changes"] is True
         assert len(data["changed"]) == 1
         assert any(
-            f["field"] == "quals" and f["new"] == "CBE"
-            for f in data["changed"][0]["fields"]
+            f["field"] == "quals" and f["new"] == "CBE" for f in data["changed"][0]["fields"]
         )
 
     def test_snapshot_created_on_tags_export(self, client, db_session):

@@ -297,8 +297,7 @@ class TextSubstitutionIn(BaseModel):
         bad = [f for f in v if f not in _SUBSTITUTABLE_FIELDS]
         if bad:
             raise ValueError(
-                f"unknown substitution field(s): {bad}; "
-                f"allowed: {sorted(_SUBSTITUTABLE_FIELDS)}"
+                f"unknown substitution field(s): {bad}; allowed: {sorted(_SUBSTITUTABLE_FIELDS)}"
             )
         return v
 
@@ -321,8 +320,21 @@ class NormalisationIn(BaseModel):
     ]
     # Tokens whose casing is preserved when title-casing (acronyms, stylised names).
     title_case_exceptions: list[str] = [
-        "RA", "PRA", "PPRA", "RWS", "RE", "NEAC", "OBE", "MBE", "CBE",
-        "USA", "UK", "NYC", "LA", "BBC", "MoMA",
+        "RA",
+        "PRA",
+        "PPRA",
+        "RWS",
+        "RE",
+        "NEAC",
+        "OBE",
+        "MBE",
+        "CBE",
+        "USA",
+        "UK",
+        "NYC",
+        "LA",
+        "BBC",
+        "MoMA",
     ]
 
     @field_validator("edition_suppress_max")

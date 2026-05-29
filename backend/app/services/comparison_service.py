@@ -232,9 +232,7 @@ def _compare_names(
     """
     differences: List[str] = []
 
-    low_first, low_last, low_quals = _extract_low_name_parts(
-        low_artist_name, low_artist_honorifics
-    )
+    low_first, low_last, low_quals = _extract_low_name_parts(low_artist_name, low_artist_honorifics)
     idx_first_clean, idx_last_clean, idx_quals_set = _extract_index_name_parts(
         idx_first, idx_last, idx_title, idx_quals, idx_is_company
     )
@@ -253,9 +251,7 @@ def _compare_names(
 
     # Check last name match
     last_match = (
-        low_last.lower() == idx_last_clean.lower()
-        if (low_last and idx_last_clean)
-        else False
+        low_last.lower() == idx_last_clean.lower() if (low_last and idx_last_clean) else False
     )
 
     # Check first name match (ignoring title prefixes in Index)
@@ -317,19 +313,14 @@ def _compare_names(
         extra_other_idx = idx_other - low_other
         extra_other_low = low_other - idx_other
         if extra_other_idx:
-            differences.append(
-                f"extra_quals_in_index:{','.join(sorted(extra_other_idx))}"
-            )
+            differences.append(f"extra_quals_in_index:{','.join(sorted(extra_other_idx))}")
         if extra_other_low:
-            differences.append(
-                f"extra_quals_in_low:{','.join(sorted(extra_other_low))}"
-            )
+            differences.append(f"extra_quals_in_low:{','.join(sorted(extra_other_low))}")
 
     # Title mismatch (already captured in differences above if first_match
     # was resolved by absorbing the title).  Also flag explicit title presence.
     has_title_diff = any(
-        d in ("title_in_index_not_in_low", "title_in_low_not_in_index")
-        for d in differences
+        d in ("title_in_index_not_in_low", "title_in_low_not_in_index") for d in differences
     )
 
     # ----- Classify match level (most → least significant) -----
@@ -359,17 +350,12 @@ def _compare_names(
     else:
         # Check word-set overlap as a fallback (handles companies, unusual name orders)
         low_all_words = _normalise_words(low_artist_name) | low_quals
-        idx_all_words = (
-            _normalise_words(f"{idx_first_clean} {idx_last_clean}") | idx_quals_set
-        )
+        idx_all_words = _normalise_words(f"{idx_first_clean} {idx_last_clean}") | idx_quals_set
         if low_all_words and low_all_words == idx_all_words:
             return (MatchLevel.equivalent, differences)
         if low_all_words and idx_all_words and low_all_words & idx_all_words:
             # Some overlap — classify by most significant difference
-            if (
-                "last_name_different" in differences
-                or "first_name_different" in differences
-            ):
+            if "last_name_different" in differences or "first_name_different" in differences:
                 return (MatchLevel.partial_name, differences)
             if not ra_match:
                 return (MatchLevel.partial_ra, differences)
@@ -414,16 +400,14 @@ def compare_datasets(
     works = db.query(Work).filter(Work.import_id == low_import_id).all()
     work_ids = [w.id for w in works]
     overrides = (
-        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all()
-        if work_ids
-        else []
+        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).all() if work_ids else []
     )
     override_map: Dict[str, WorkOverride] = {str(o.work_id): o for o in overrides}
 
     # Build LoW map: cat_no (int) -> resolved values
-    low_map: Dict[int, Tuple[str, str, str, str]] = (
-        {}
-    )  # cat_no -> (artist_name, honorifics, work_id, raw_cat_no)
+    low_map: Dict[
+        int, Tuple[str, str, str, str]
+    ] = {}  # cat_no -> (artist_name, honorifics, work_id, raw_cat_no)
     for w in works:
         eff = resolve_effective_work(w, override_map.get(str(w.id)))
         raw = eff.raw_cat_no or ""
@@ -441,9 +425,7 @@ def compare_datasets(
     # ------------------------------------------------------------------
     # 2. Load Index artists with overrides and known artists
     # ------------------------------------------------------------------
-    artists = (
-        db.query(IndexArtist).filter(IndexArtist.import_id == index_import_id).all()
-    )
+    artists = db.query(IndexArtist).filter(IndexArtist.import_id == index_import_id).all()
     artist_ids = [a.id for a in artists]
 
     # Batch-fetch cat numbers
@@ -458,15 +440,11 @@ def compare_datasets(
 
     # Batch-fetch overrides
     idx_overrides = (
-        db.query(IndexArtistOverride)
-        .filter(IndexArtistOverride.artist_id.in_(artist_ids))
-        .all()
+        db.query(IndexArtistOverride).filter(IndexArtistOverride.artist_id.in_(artist_ids)).all()
         if artist_ids
         else []
     )
-    idx_override_map: Dict[str, IndexArtistOverride] = {
-        str(o.artist_id): o for o in idx_overrides
-    }
+    idx_override_map: Dict[str, IndexArtistOverride] = {str(o.artist_id): o for o in idx_overrides}
 
     # Build known artist cache
     known_cache = build_known_artist_cache(db)
@@ -489,9 +467,7 @@ def compare_datasets(
     # Pre-resolve each artist
     artist_resolved: Dict[str, object] = {}
     for a in artists:
-        known = lookup_known_artist(
-            known_cache, a.raw_first_name, a.raw_last_name, a.raw_quals
-        )
+        known = lookup_known_artist(known_cache, a.raw_first_name, a.raw_last_name, a.raw_quals)
         ovr = idx_override_map.get(str(a.id))
         eff = resolve_index_artist(a, ovr, known)
         artist_resolved[str(a.id)] = eff
