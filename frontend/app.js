@@ -4204,7 +4204,7 @@ function _renderImportNotesPanel(opts) {
     const muted = hidden.has(type);
     const cls = `badge ${badgeClassOf(type)} warning-filter-btn${muted ? ' badge-muted' : ''}`;
     const title = `${muted ? 'Click: show' : 'Click: hide'} · Alt+click: show this only`;
-    return `<button type="button" class="${cls}" data-type="${esc(type)}" title="${title}">${esc(labelOf(type))}: ${counts[type]}</button>`;
+    return `<button type="button" class="${cls}" data-type="${esc(type)}" title="${title}">${esc(labelOf(type))}<span class="chip-count">${counts[type].toLocaleString()}</span></button>`;
   }
 
   const autoChipsHTML = changedTypes.map(chipHTML).join('');
@@ -4223,11 +4223,12 @@ function _renderImportNotesPanel(opts) {
     ? `${total.toLocaleString()} items`
     : `${visible.length.toLocaleString()} of ${total.toLocaleString()} items`;
 
-  // Counts line — only mention sub-counts that are non-zero
+  // Counts line — only mention sub-counts that are non-zero. Separators are
+  // styled spans so the dot can sit in a calmer colour than the body text.
   const countsLineParts = [`<strong>${total.toLocaleString()}</strong> item${total !== 1 ? 's' : ''}`];
   if (autoTotal) countsLineParts.push(`<strong>${autoTotal.toLocaleString()}</strong> auto-normalised`);
   if (reviewTotal) countsLineParts.push(`<strong>${reviewTotal.toLocaleString()}</strong> need${reviewTotal === 1 ? 's' : ''} review`);
-  const countsLine = countsLineParts.join(' · ');
+  const countsLine = countsLineParts.join('<span class="sep">·</span>');
 
   const groupsHTML = [
     autoChipsHTML ? `
@@ -4244,12 +4245,14 @@ function _renderImportNotesPanel(opts) {
 
   container.innerHTML = `
     <div class="import-notes">
-      <h3 class="import-notes-title">⚠ Import notes</h3>
-      <div class="import-notes-counts">${countsLine}</div>
-      ${groupsHTML}
-      <div class="import-notes-hint">Click a chip to hide that type · <kbd>⌥</kbd> Alt-click to show only that type</div>
+      <div class="import-notes-head">
+        <h3 class="import-notes-title">⚠ Import notes</h3>
+        <div class="import-notes-counts">${countsLine}</div>
+      </div>
+      <div class="import-notes-groups">${groupsHTML}</div>
+      <div class="import-notes-hint"><kbd>Click</kbd> a chip to hide that type · <kbd>⌥ Alt-click</kbd> to show only that type</div>
       <details class="import-notes-detail">
-        <summary class="warnings-toggle">Show detail — ${detailSummary}</summary>
+        <summary>Show detail — ${detailSummary}</summary>
         <table class="data-table warnings-table" style="margin-top:10px">
           <thead><tr><th>Type</th><th>Message</th><th>${esc(detailColumnLabel)}</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -4410,7 +4413,7 @@ function renderSections(importId, sections, cfg) {
           <th class="col-no">No.</th>
           <th>Artist</th>
           <th>Title</th>
-          <th>Price</th>
+          <th class="col-price">Price</th>
           <th>Edition</th>
           ${cfg.show_artwork_column ? '<th>Artwork</th>' : ''}
           <th>Medium</th>
@@ -4751,11 +4754,11 @@ function workRowHTML(importId, w, cfg) {
       <td class="col-no">${esc(w.raw_cat_no ?? '')}</td>
       <td class="${hasOverride && o?.artist_name_override ? 'cell-overridden' : ''}">${esc(eff.artist_name ?? '')}${honorifics}</td>
       <td class="${hasOverride && o?.title_override ? 'cell-overridden' : ''}">${esc(eff.title ?? '')}${cfg.show_title_cased && eff.title_cased ? `<div class="title-cased-scan">${esc(eff.title_cased)}</div>` : ''}</td>
-      <td class="${hasOverride && (o?.price_numeric_override || o?.price_text_override) ? 'cell-overridden' : ''}">${esc(priceDisplay)}</td>
+      <td class="col-price ${hasOverride && (o?.price_numeric_override || o?.price_text_override) ? 'cell-overridden' : ''}">${esc(priceDisplay)}</td>
       <td class="${hasOverride && (o?.edition_total_override || o?.edition_price_numeric_override) ? 'cell-overridden' : ''}">${esc(editionDisplay)}</td>
       ${cfg.show_artwork_column ? `<td class="${hasOverride && o?.artwork_override ? 'cell-overridden' : ''}">${w.artwork != null ? esc(String(w.artwork)) : ''}</td>` : ''}
       <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
-      <td class="col-flags">${flags.join(' ')}</td>
+      <td class="col-flags"><div class="cell-flags">${flags.join('')}</div></td>
       <td class="col-chev" aria-hidden="true"><span class="works-row-chev">&rsaquo;</span></td>
     </tr>
     <tr id="ovr-${esc(w.id)}" class="override-form-row" style="display:none">
