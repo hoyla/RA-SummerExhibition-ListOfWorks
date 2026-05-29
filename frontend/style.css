@@ -1234,6 +1234,8 @@ details.section-block[open] > .section-summary::before {
 .pill--id { background:var(--pill-id-bg); border-color:var(--pill-id-bd); color:var(--pill-id-fg);
   font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; font-weight:700; }
 .pill--id.is-ra { color:var(--ra-red); border-color:#e0b8b2; }   /* quiet brand nod — NO dot */
+.pill--id--dashed { border-style:dashed; opacity:.85; }            /* "Not Company" — dashed border, slightly muted */
+.pill--id--overridden { box-shadow:0 0 0 2px var(--ra-red); }      /* Manually-overridden toggle state — red ring (was .badge-overridden) */
 
 /* Compare ordinal match ramp */
 .mp { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
