@@ -537,7 +537,31 @@ function esc(v) {
 // Compare — cross-dataset comparison
 // ---------------------------------------------------------------------------
 
-const _CMP_ALL_LEVELS = ['exact','equivalent','partial_title','partial_honorific','partial_ra','partial_name','none','missing'];
+// Pack 02c (2026-05-29) — collapsed match-quality buckets for the Compare
+// page. The backend still returns 7 distinct match_level values (preserved
+// for diagnostics / future reporting); the frontend collapses
+// partial_title + partial_honorific → "Partial" and partial_ra +
+// partial_name → "Weak" for display. _MATCH_RAMP maps each raw level to
+// its display info; _MATCH_BUCKETS is the display order of the 6 buckets.
+const _MATCH_RAMP = {
+  exact:             { id: 1,   label: 'Exact',      bucket: 'exact' },
+  equivalent:        { id: 2,   label: 'Equivalent', bucket: 'equivalent' },
+  partial_title:     { id: 3,   label: 'Partial',    bucket: 'partial' },
+  partial_honorific: { id: 3,   label: 'Partial',    bucket: 'partial' },
+  partial_ra:        { id: 4,   label: 'Weak',       bucket: 'weak' },
+  partial_name:      { id: 4,   label: 'Weak',       bucket: 'weak' },
+  none:              { id: 5,   label: 'None',       bucket: 'none' },
+  missing:           { id: 'x', label: 'Missing',    bucket: 'missing' },
+};
+const _MATCH_BUCKETS = [
+  { key: 'exact',      label: 'Exact',      cls: 'mp--1' },
+  { key: 'equivalent', label: 'Equivalent', cls: 'mp--2' },
+  { key: 'partial',    label: 'Partial',    cls: 'mp--3' },
+  { key: 'weak',       label: 'Weak',       cls: 'mp--4' },
+  { key: 'none',       label: 'None',       cls: 'mp--5' },
+  { key: 'missing',    label: 'Missing',    cls: 'mp--x' },
+];
+const _CMP_ALL_BUCKETS = _MATCH_BUCKETS.map(b => b.key);
 let _compareState = { entries: [], hiddenLevels: new Set(), lowImportId: null, idxImportId: null };
 
 async function renderCompare() {
@@ -657,21 +681,21 @@ function _renderCompareResult(result) {
   _renderCompareTable();
 }
 
-/* Build filter-chip HTML from summary counts */
+/* Build filter-chip HTML from summary counts — Pack 02c (2026-05-29):
+   six ordinal buckets keyed by .mp--{1..5,x}; partial_title+partial_honorific
+   collapse into "Partial", partial_ra+partial_name into "Weak". */
 function _cmpFilterChipsHtml(s) {
-  const chips = [
-    ['exact',             'Exact',     s.match_exact],
-    ['equivalent',        'Equivalent',s.match_equivalent],
-    ['partial_title',     'Title',     s.match_partial_title],
-    ['partial_honorific', 'Honorific', s.match_partial_honorific],
-    ['partial_ra',        'RA',        s.match_partial_ra],
-    ['partial_name',      'Name',      s.match_partial_name],
-    ['none',              'None',      s.match_none],
-    ['missing',           'Missing',   s.only_in_low + s.only_in_index],
-  ];
-  return chips.map(([level, label, n]) => {
-    const muted = _compareState.hiddenLevels.has(level);
-    return `<button type="button" class="btn btn-sm cmp-filter-btn cmp-badge-${level}${muted ? ' badge-muted' : ''}" data-level="${level}" title="${muted ? 'Click: show' : 'Click: hide'} \u00b7 Alt+click: show this only">${esc(label)} <span class="cmp-count">${n}</span></button>`;
+  const counts = {
+    exact:      s.match_exact ?? 0,
+    equivalent: s.match_equivalent ?? 0,
+    partial:   (s.match_partial_title ?? 0) + (s.match_partial_honorific ?? 0),
+    weak:      (s.match_partial_ra ?? 0) + (s.match_partial_name ?? 0),
+    none:       s.match_none ?? 0,
+    missing:   (s.only_in_low ?? 0) + (s.only_in_index ?? 0),
+  };
+  return _MATCH_BUCKETS.map(b => {
+    const muted = _compareState.hiddenLevels.has(b.key);
+    return `<button type="button" class="mp ${b.cls} cmp-filter-btn${muted ? ' badge-muted' : ''}" data-bucket="${b.key}" title="${muted ? 'Click: show' : 'Click: hide'} \u00b7 Alt+click: show this only">${esc(b.label)}<span class="ct">${(counts[b.key] ?? 0).toLocaleString()}</span></button>`;
   }).join('');
 }
 
@@ -679,20 +703,20 @@ function _cmpFilterChipsHtml(s) {
 function _wireCompareFilterChips(container) {
   container.querySelectorAll('.cmp-filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const level = btn.dataset.level;
+      const bucket = btn.dataset.bucket;
       if (e.altKey) {
         // Solo / unsolo
-        const visible = _CMP_ALL_LEVELS.filter(l => !_compareState.hiddenLevels.has(l));
-        if (visible.length === 1 && visible[0] === level) {
-          _compareState.hiddenLevels = new Set();          // unsolo — show all
+        const visible = _CMP_ALL_BUCKETS.filter(b => !_compareState.hiddenLevels.has(b));
+        if (visible.length === 1 && visible[0] === bucket) {
+          _compareState.hiddenLevels = new Set();          // unsolo \u2014 show all
         } else {
-          _compareState.hiddenLevels = new Set(_CMP_ALL_LEVELS.filter(l => l !== level));
+          _compareState.hiddenLevels = new Set(_CMP_ALL_BUCKETS.filter(b => b !== bucket));
         }
       } else {
-        if (_compareState.hiddenLevels.has(level)) {
-          _compareState.hiddenLevels.delete(level);
+        if (_compareState.hiddenLevels.has(bucket)) {
+          _compareState.hiddenLevels.delete(bucket);
         } else {
-          _compareState.hiddenLevels.add(level);
+          _compareState.hiddenLevels.add(bucket);
         }
       }
       _refreshCompareChips(container);
@@ -704,7 +728,7 @@ function _wireCompareFilterChips(container) {
 /* Refresh chip visual state without full re-render */
 function _refreshCompareChips(container) {
   container.querySelectorAll('.cmp-filter-btn').forEach(btn => {
-    const muted = _compareState.hiddenLevels.has(btn.dataset.level);
+    const muted = _compareState.hiddenLevels.has(btn.dataset.bucket);
     btn.classList.toggle('badge-muted', muted);
     btn.title = (muted ? 'Click: show' : 'Click: hide') + ' \u00b7 Alt+click: show this only';
   });
@@ -718,7 +742,8 @@ function _renderCompareTable() {
   entries = entries.filter(e => {
     const isMissing = e.low_artist_name == null || e.index_name == null;
     if (isMissing) return !hidden.has('missing');
-    return !hidden.has(e.match_level);
+    const bucket = _MATCH_RAMP[e.match_level]?.bucket ?? e.match_level;
+    return !hidden.has(bucket);
   });
 
   if (!entries.length) {
@@ -727,8 +752,9 @@ function _renderCompareTable() {
   }
 
   const rows = entries.map(e => {
-    const levelClass = `cmp-level-${e.match_level}`;
-    const levelLabel = _matchLevelLabel(e.match_level);
+    const levelClass = `cmp-level-${e.match_level}`;  // row tinting stays per-flavour
+    const ramp = _MATCH_RAMP[e.match_level] || { id: 'x', label: e.match_level };
+    const levelLabel = ramp.label;
     let lowName;
     if (e.low_artist_name != null) {
       const lowText = esc(e.low_artist_name) + (e.low_artist_honorifics ? ` <span class="muted">${esc(e.low_artist_honorifics)}</span>` : '');
@@ -779,7 +805,7 @@ function _renderCompareTable() {
       <td>${lowName}</td>
       <td>${idxName}</td>
       <td>${courtesy}</td>
-      <td><span class="badge cmp-badge-${e.match_level}">${esc(levelLabel)}</span></td>
+      <td><span class="mp mp--${ramp.id}">${esc(levelLabel)}</span></td>
       <td class="cmp-diffs-cell">${diffs}</td>
     </tr>`;
   }).join('');
@@ -825,16 +851,7 @@ function _hashParam(name) {
 }
 
 function _matchLevelLabel(level) {
-  const labels = {
-    'exact': 'exact',
-    'equivalent': 'equivalent',
-    'partial_title': 'title',
-    'partial_honorific': 'honorific',
-    'partial_ra': 'RA',
-    'partial_name': 'name',
-    'none': 'none',
-  };
-  return labels[level] || level;
+  return _MATCH_RAMP[level]?.label ?? level;
 }
 
 // ---------------------------------------------------------------------------
