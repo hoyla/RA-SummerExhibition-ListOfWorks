@@ -41,6 +41,9 @@ jobs:
       - name: Ruff check
         run: ruff check backend/ tests/
 
+      - name: Ruff format (check only)
+        run: ruff format --check backend/ tests/
+
   # ── 2. Unit tests (all branches + PRs) ─────────────────────────────
   test:
     runs-on: ubuntu-latest
