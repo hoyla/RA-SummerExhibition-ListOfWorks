@@ -4673,6 +4673,13 @@ function _wireStickySections() {
     const summary = block.querySelector('.section-summary');
     if (!summary || summary.dataset.stickyWired) return;
     summary.dataset.stickyWired = '1';
+    // Mark blocks that have a data-table thead beneath, so CSS can move
+    // the stuck-shadow from the summary down to the bottom of the column
+    // header. Avoids :has() in CSS (browser support history is uneven)
+    // and lets one JS pass set up everything.
+    if (block.querySelector('.data-table thead')) {
+      block.classList.add('has-sticky-thead');
+    }
     const sentinel = document.createElement('div');
     sentinel.style.cssText = 'position:absolute;top:-1px;height:1px;width:1px;';
     block.style.position = 'relative';
