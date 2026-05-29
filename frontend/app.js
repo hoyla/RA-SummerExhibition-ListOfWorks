@@ -6159,7 +6159,7 @@ function _idxWarningsBadges(artistId) {
   const warns = (_idxWarningsByArtistId[artistId] || []).filter(w => !_IDX_CHANGED_TYPES.has(w.warning_type));
   if (!warns.length) return '';
   const badges = warns.map(w => {
-    return `<span class="badge badge-warning" title="${esc(w.message)}">${esc(_idxWarnLabel(w.warning_type))}</span>`;
+    return `<span class="pill pill--review" title="${esc(w.message)}">${esc(_idxWarnLabel(w.warning_type))}</span>`;
   }).join(' ');
   // Collect detailed explanations for warning types that benefit from inline detail
   const details = warns
@@ -6176,7 +6176,7 @@ function _buildIndexWarningsPanel() {
     container: document.getElementById('index-warnings-panel'),
     warnings: _indexWarningsAll,
     labelOf: _idxWarnLabel,
-    badgeClassOf: (t) => _IDX_CHANGED_TYPES.has(t) ? 'badge-info' : 'badge-warning',
+    badgeClassOf: (t) => _IDX_CHANGED_TYPES.has(t) ? 'pill pill--info' : 'pill pill--review',
     isChanged: (t) => _IDX_CHANGED_TYPES.has(t),
     isHigh: () => false,  // Index has no high-severity warning tier
     getHidden: () => _hiddenIndexWarningTypes,
@@ -6765,22 +6765,22 @@ function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
   const groupTitle = groupColor && sortKeyNames
     ? `Linked entries (same sort position): ${(sortKeyNames[a.sort_key || ''] || []).join(', ')}` : '';
   const badges = [];
-  if (a.is_ra_member) badges.push('<span class="badge badge-ra">RA</span>');
+  if (a.is_ra_member) badges.push('<span class="pill pill--id is-ra">RA</span>');
   const isCompanyOverridden = a.is_company !== a.is_company_auto;
   if (a.is_company) {
-    badges.push(`<span class="badge badge-company${isCompanyOverridden ? ' badge-overridden' : ''}" title="${isCompanyOverridden ? 'Company (manual override)' : 'Company'}">Company</span>`);
+    badges.push(`<span class="pill pill--id${isCompanyOverridden ? ' pill--id--overridden' : ''}" title="${isCompanyOverridden ? 'Company (manual override)' : 'Company'}">Company</span>`);
   } else if (isCompanyOverridden) {
-    badges.push(`<span class="badge badge-company-off badge-overridden" title="Not company (manual override)">Not Company</span>`);
+    badges.push(`<span class="pill pill--id pill--id--dashed pill--id--overridden" title="Not company (manual override)">Not Company</span>`);
   }
 
   // Detect normalisation changes and build human-readable reasons
   const normReasons = _normReasons(a);
   const hasNorm = normReasons.length > 0;
-  if (hasNorm) badges.push(`<span class="badge badge-normalised" title="${esc(normReasons.join('; '))}">Norm</span>`);
-  if (a.has_known_artist) badges.push('<span class="badge badge-known" title="Matched a Known Artist rule">Known</span>');
-  if (a.has_override) badges.push('<span class="badge badge-override" title="Has a user override">Override</span>');
+  if (hasNorm) badges.push(`<span class="pill pill--info" title="${esc(normReasons.join('; '))}">Norm</span>`);
+  if (a.has_known_artist) badges.push('<span class="pill pill--id" title="Matched a Known Artist rule">Known</span>');
+  if (a.has_override) badges.push('<span class="pill pill--edit" title="Has a user override">Override</span>');
   if (a.merged_from_rows && a.merged_from_rows.length > 1) {
-    badges.push(`<span class="badge badge-merged" title="Merged from spreadsheet rows ${a.merged_from_rows.join(', ')}">Merged</span>`);
+    badges.push(`<span class="pill pill--edit" title="Merged from spreadsheet rows ${a.merged_from_rows.join(', ')}">Merged</span>`);
   }
 
   // Per-artist server-side validation warnings (exclude "changed" types — those are normalisations)
@@ -6788,7 +6788,7 @@ function indexArtistRowHTML(importId, a, groupColor, sortKeyNames) {
   if (aWarns && aWarns.length) {
     const warnTypes = [...new Set(aWarns.filter(ww => !_IDX_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
     for (const wt of warnTypes) {
-      badges.push(`<span class="badge badge-warning" title="${esc(aWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_idxWarnLabel(wt))}</span>`);
+      badges.push(`<span class="pill pill--review" title="${esc(aWarns.find(ww => ww.warning_type === wt)?.message ?? wt)}">${esc(_idxWarnLabel(wt))}</span>`);
     }
   }
 
