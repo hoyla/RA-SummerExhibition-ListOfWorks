@@ -250,7 +250,7 @@ class TestComputeDiff:
     def test_removed_work(self, db_session):
         imp = _seed_import(db_session)
         sec = _seed_section(db_session, imp)
-        w1 = _seed_work(db_session, imp, sec, raw_cat_no="1")
+        _seed_work(db_session, imp, sec, raw_cat_no="1")
         w2 = _seed_work(db_session, imp, sec, raw_cat_no="2", position=2)
 
         save_export_snapshot(imp.id, None, db_session)
@@ -293,7 +293,7 @@ class TestComputeDiff:
     def test_combined_added_removed_changed(self, db_session):
         imp = _seed_import(db_session)
         sec = _seed_section(db_session, imp)
-        w_stay = _seed_work(db_session, imp, sec, raw_cat_no="1", title="Stays Same")
+        _seed_work(db_session, imp, sec, raw_cat_no="1", title="Stays Same")
         w_change = _seed_work(
             db_session, imp, sec, raw_cat_no="2", position=2, title="Will Change"
         )

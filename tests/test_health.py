@@ -16,8 +16,10 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
+from fastapi.exceptions import ResponseValidationError
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from sqlalchemy import text
 
 # ---------------------------------------------------------------------------
@@ -229,9 +231,6 @@ class TestVersionEndpoint:
 # ---------------------------------------------------------------------------
 # ResponseValidationError handler
 # ---------------------------------------------------------------------------
-
-from fastapi.exceptions import ResponseValidationError
-from pydantic import BaseModel
 
 
 class TestResponseValidationErrorHandler:

@@ -202,7 +202,6 @@ def _extract_index_name_parts(
     fn = (first_name or "").strip()
     ln = (last_name or "").strip()
     q = (quals or "").strip()
-    t = (title or "").strip()
 
     # For companies, the "last_name" is the company name
     if is_company:

@@ -434,7 +434,7 @@ class TestOverrideCRUD:
         logs = db_session.query(AuditLog).filter(AuditLog.work_id == w.id).all()
         assert len(logs) >= 1
         assert any(
-            l.action == "override_set" and l.field == "title_override" for l in logs
+            log.action == "override_set" and log.field == "title_override" for log in logs
         )
 
     # --- PUT override (update) ---

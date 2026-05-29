@@ -166,7 +166,7 @@ class TestListIndexImports:
         assert data[0]["product_type"] == "artists_index"
 
     def test_includes_artist_count(self, client, db_session):
-        resp = _upload_index(client)
+        _upload_index(client)
         r = client.get("/index/imports")
         data = r.json()
         assert len(data) == 1

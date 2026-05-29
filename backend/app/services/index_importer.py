@@ -144,8 +144,6 @@ def parse_multi_artist(
         m = _QUAL_IN_NAME_PATTERN.search(remaining)
         if not m:
             break
-        # Only strip if it's at the end (after trimming)
-        suffix = remaining[m.start() :].strip()
         # Check the match is at the end of the remaining string
         after_match = remaining[m.end() :].strip()
         if _QUAL_IN_NAME_PATTERN.sub("", after_match).strip() == "":
@@ -177,7 +175,6 @@ def parse_multi_artist(
 
     # Parse the second artist: strip "and "/"& " prefix, then extract quals
     a2_raw = _SECOND_ARTIST_PREFIX.sub("", second_artist_raw).strip()
-    a2_words = a2_raw.split()
     a2_extracted_quals: list[str] = []
     a2_remaining = a2_raw
     while True:

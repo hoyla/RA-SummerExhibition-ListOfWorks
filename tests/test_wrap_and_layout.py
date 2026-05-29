@@ -120,7 +120,7 @@ def test_wrap_multiple_breaks():
     # 10 chars per line; text has natural spaces
     text = "one two three four five"
     lines = _wrap_lines(text, 10)
-    assert all(len(l) <= 11 for l in lines)  # <=11 because trailing space allowed
+    assert all(len(line) <= 11 for line in lines)  # <=11 because trailing space allowed
     reassembled = "".join(lines)
     assert reassembled == text
 
