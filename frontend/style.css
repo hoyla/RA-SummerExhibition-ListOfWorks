@@ -1250,14 +1250,15 @@ details.section-block[open] > .section-summary::before {
 
 /* Opt-in sticky section (applied per page in Pack 03 — never on bare .section-block).
    Audit log + Tools keep the base class and are provably unaffected. */
-.section-block--sticky > .section-summary { position:sticky; top:0; z-index:20; background:var(--bg); }
+.section-block--sticky > .section-summary { position:sticky; top:var(--site-header-h,0); z-index:20; background:var(--bg); }
 .section-block--sticky > .section-summary.is-stuck { box-shadow:0 8px 10px -9px rgba(0,0,0,.25); }
 /* Pin the works-table column header below the sticky summary so column meaning
-   survives the scroll. Pack 03 (2026-05-29). --low-summary-h is the rendered
-   summary height; defaults to 42px which fits the current section-summary. */
+   survives the scroll. Pack 03 (2026-05-29). --site-header-h is measured
+   at runtime by _wireStickySections; --low-summary-h defaults to 42px,
+   which fits the current section-summary rendered height. */
 .section-block--sticky .works-table thead th {
   position: sticky;
-  top: var(--low-summary-h, 42px);
+  top: calc(var(--site-header-h, 0px) + var(--low-summary-h, 42px));
   background: var(--card);
   z-index: 15;
 }

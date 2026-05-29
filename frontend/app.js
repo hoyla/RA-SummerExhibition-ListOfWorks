@@ -4654,6 +4654,14 @@ function _applyWorksFilter(query, countEl, totalWorks) {
    panel use the bare .section-block (no --sticky modifier), so they're
    provably unaffected by this whole mechanism. */
 function _wireStickySections() {
+  // Measure the rendered .site-header height and expose it as --site-header-h
+  // so the sticky summary + works-table thead can anchor BELOW the page
+  // header instead of sliding under it. Idempotent — safe to re-run.
+  const siteHeader = document.querySelector('.site-header');
+  if (siteHeader) {
+    const h = Math.ceil(siteHeader.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--site-header-h', h + 'px');
+  }
   document.querySelectorAll('.section-block--sticky').forEach(block => {
     const summary = block.querySelector('.section-summary');
     if (!summary || summary.dataset.stickyWired) return;
