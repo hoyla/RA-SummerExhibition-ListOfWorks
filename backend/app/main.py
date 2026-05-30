@@ -86,87 +86,14 @@ _start_time = time.monotonic()
 # Seed built-in templates from backend/seed_templates/*.json
 # ---------------------------------------------------------------------------
 
-from backend.app.services.seed_service import seed_builtin_templates as _seed_builtin_templates
+from backend.app.services.seed_service import (
+    seed_builtin_templates as _seed_builtin_templates,
+)
+from backend.app.services.seed_service import (
+    seed_known_artists as _seed_known_artists,
+)
 
 _seed_builtin_templates()
-
-
-# ---------------------------------------------------------------------------
-# Seed known artists from backend/seed_templates/known-artists.json
-# ---------------------------------------------------------------------------
-
-
-def _seed_known_artists() -> None:
-    from backend.app.db import SessionLocal as _SessionLocal
-    from backend.app.models.known_artist_model import KnownArtist as _KnownArtist
-
-    _seed_file = (
-        Path(__file__).resolve().parent.parent.parent
-        / "backend"
-        / "seed_templates"
-        / "known-artists.json"
-    )
-    if not _seed_file.exists():
-        return
-
-    db = _SessionLocal()
-    try:
-        with open(_seed_file, encoding="utf-8") as fp:
-            entries = json.load(fp)
-
-        added = 0
-        for entry in entries:
-            match_first = entry.get("match_first_name")
-            match_last = entry.get("match_last_name")
-            existing = (
-                db.query(_KnownArtist)
-                .filter(
-                    _KnownArtist.match_first_name == match_first,
-                    _KnownArtist.match_last_name == match_last,
-                    _KnownArtist.match_quals == entry.get("match_quals"),
-                )
-                .first()
-            )
-            if existing:
-                continue
-            db.add(
-                _KnownArtist(
-                    match_first_name=match_first,
-                    match_last_name=match_last,
-                    match_quals=entry.get("match_quals"),
-                    resolved_first_name=entry.get("resolved_first_name"),
-                    resolved_last_name=entry.get("resolved_last_name"),
-                    resolved_quals=entry.get("resolved_quals"),
-                    resolved_title=entry.get("resolved_title"),
-                    resolved_is_company=entry.get("resolved_is_company"),
-                    resolved_company=entry.get("resolved_company"),
-                    resolved_address=entry.get("resolved_address"),
-                    resolved_artist2_first_name=entry.get("resolved_artist2_first_name"),
-                    resolved_artist2_last_name=entry.get("resolved_artist2_last_name"),
-                    resolved_artist2_quals=entry.get("resolved_artist2_quals"),
-                    resolved_artist3_first_name=entry.get("resolved_artist3_first_name"),
-                    resolved_artist3_last_name=entry.get("resolved_artist3_last_name"),
-                    resolved_artist3_quals=entry.get("resolved_artist3_quals"),
-                    resolved_artist1_ra_styled=entry.get("resolved_artist1_ra_styled"),
-                    resolved_artist2_ra_styled=entry.get("resolved_artist2_ra_styled"),
-                    resolved_artist3_ra_styled=entry.get("resolved_artist3_ra_styled"),
-                    resolved_artist2_shared_surname=entry.get("resolved_artist2_shared_surname"),
-                    resolved_artist3_shared_surname=entry.get("resolved_artist3_shared_surname"),
-                    notes=entry.get("notes"),
-                    is_seeded=True,
-                )
-            )
-            added += 1
-        if added:
-            logger.info("Seeded %d known artist(s)", added)
-        db.commit()
-    except Exception as exc:  # pragma: no cover
-        logger.error("Known artists seed error: %s", exc)
-        db.rollback()
-    finally:
-        db.close()
-
-
 _seed_known_artists()
 
 
