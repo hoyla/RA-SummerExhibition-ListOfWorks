@@ -29,7 +29,7 @@ Supports two data products:
 - Validation warnings for unparseable values; whitespace-trim detection per work
 - Editorial overrides per work (title, title-cased, artist, price, edition, artwork, medium, notes)
 - Export templates: named, versioned configs stored in the database
-- **Export templates for different layoutss** — InDesign tags: character-styled inline (List of Works) or
+- **Export templates for different layouts** — InDesign tags: character-styled inline (List of Works) or
   paragraph-styled, one element per paragraph (Large Print Guide), edited in a
   unified per-element editor with a live sample-entry preview. JSON, XML and CSV export for digital use. 
 - Per-component include/exclude toggle, separators, balance-lines, character styles
