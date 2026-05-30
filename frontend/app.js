@@ -5525,7 +5525,7 @@ function _renderDrawer() {
             <div id="wk-ovc-${esc(w.id)}"></div>
           </div>
           <div class="full-prev">
-            <div class="preview-pane__head">Live preview · updates as you type</div>
+            <div class="preview-pane__head">Live preview</div>
             ${_drawerRenderOutputPreviewBarHTML()}
             <div id="drawer-full-preview">${previewBody}</div>
           </div>
