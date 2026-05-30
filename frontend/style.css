@@ -66,6 +66,47 @@
   --ramp-5-bg:#fbeae7; --ramp-5-bd:#e3a89e; --ramp-5-fg:#9e2c1c;  /* none       */
   --ramp-x-bg:#efece7; --ramp-x-bd:#d6d1c6; --ramp-x-fg:#6b665d;  /* missing    */
 
+  /* --- Type role tokens — Pack 05b-1 (2026-05-30) --------------------- */
+  /* Centralised type scale, defined here, applied by role in Pack 05b-2. */
+  /* Adding these is invisible until call sites switch.                   */
+  --t-h1:       22px;  /* page-level title                              */
+  --t-h2:       18px;  /* major section header                          */
+  --t-section:  16px;  /* subsection / panel title                      */
+  --t-body:     14px;  /* default body text (matches current <body>)    */
+  --t-label:    12px;  /* mini-labels, chip text                        */
+  --t-mini:     11px;  /* extra-fine labels                             */
+
+  /* --- 4px spacing scale — Pack 05b-1 (2026-05-30) ------------------- */
+  /* Applied in Pack 05b-2; additive here.                                */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* --- Focus ring token — Pack 05b-1 (2026-05-30) -------------------- */
+  /* High-contrast on light, dark and coloured backgrounds: a white inner */
+  /* halo creates breathing room between the element and the dark outer  */
+  /* ring, so the ring reads cleanly regardless of background colour.    */
+  /* Inputs/textareas/selects keep their existing border+box-shadow      */
+  /* focus pattern -- this token is for non-input interactives (buttons, */
+  /* chips, drawer controls, pills used as controls).                    */
+  --focus-ring: 0 0 0 2px #fff, 0 0 0 4px var(--ra-dark);
+
+  /* --- Pill hover-deepen variants — Pack 05b-1 (2026-05-30) ---------- */
+  /* Restores the hover feedback that Pack 02 lost when it migrated      */
+  /* filter chips from .badge.warning-filter-btn -> .pill.pill--*.       */
+  /* The old .badge-info.warning-filter-btn:hover selector no longer     */
+  /* matches the new class combination (badge pill pill--info ...).      */
+  /* Subtle deepening (~10% bg, ~20% border) -- enough to register hover,*/
+  /* not enough to imply a state change.                                 */
+  --pill-info-bg-hover:   #d0e6eb;  --pill-info-bd-hover:   #88c0cc;
+  --pill-review-bg-hover: #f8e6b5;  --pill-review-bd-hover: #d4ac5c;
+  --pill-error-bg-hover:  #f5d0c8;  --pill-error-bd-hover:  #d4877a;
+  --pill-edit-bg-hover:   #dadeed;  --pill-edit-bd-hover:   #a3aad1;
+  --pill-id-bg-hover:     #e9e4d8;  --pill-id-bd-hover:     #b8b0a0;
+
   --radius: 4px;
 }
 
@@ -1236,6 +1277,33 @@ details.section-block[open] > .section-summary::before {
 .pill--id.is-ra { color:var(--ra-red); border-color:#e0b8b2; }   /* quiet brand nod — NO dot */
 .pill--id--dashed { border-style:dashed; opacity:.85; }            /* "Not Company" — dashed border, slightly muted */
 .pill--id--overridden { box-shadow:0 0 0 2px var(--ra-red); }      /* Manually-overridden toggle state — red ring (was .badge-overridden) */
+
+/* Hover-deepen — Pack 05b-1 (2026-05-30).                              */
+/* Restores the feedback lost when Pack 02 migrated chips off the old   */
+/* .warning-filter-btn class. Applied to ALL .pill instances (not only  */
+/* interactive ones): static pills with title="" tooltips benefit from  */
+/* the same visual cue that hovering reveals additional info.           */
+.pill { transition: background-color 0.12s ease, border-color 0.12s ease; }
+.pill--info:hover  { background:var(--pill-info-bg-hover);  border-color:var(--pill-info-bd-hover); }
+.pill--review:hover{ background:var(--pill-review-bg-hover);border-color:var(--pill-review-bd-hover); }
+.pill--error:hover { background:var(--pill-error-bg-hover); border-color:var(--pill-error-bd-hover); }
+.pill--edit:hover  { background:var(--pill-edit-bg-hover);  border-color:var(--pill-edit-bd-hover); }
+.pill--id:hover    { background:var(--pill-id-bg-hover);    border-color:var(--pill-id-bd-hover); }
+
+/* Focus-visible sweep — Pack 05b-1 (2026-05-30).                       */
+/* One consistent keyboard-focus ring across non-input interactives.    */
+/* Inputs/textareas/selects keep their existing custom focus rules      */
+/* (outline:none + border-color + slight box-shadow) -- they don't       */
+/* inherit this. Uses :focus-visible (not :focus) so the ring only      */
+/* appears on keyboard navigation, not on mouse clicks -- matches what  */
+/* the rest of the modern web does.                                     */
+.btn:focus-visible,
+.btn-icon:focus-visible,
+.warning-filter-btn:focus-visible,
+.drawer__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 
 /* Compare ordinal match ramp */
 .mp { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
