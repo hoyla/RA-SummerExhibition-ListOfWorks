@@ -2607,6 +2607,53 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .lg--styled { background: var(--tok-bg); border: 1px solid var(--tok-bd); }
 .lg--tab, .lg--rtab, .lg--soft, .lg--para { color: var(--ra-red); border: 1px solid #eed5d1; background: #fdf3f2; }
 
+/* ------------------------------------------------------------------ */
+/* Works-mode preview overrides — Pack 04a (2026-05-30)                */
+/* Ported from artifacts/source/proto.css. Scoped via .preview--works  */
+/* so the Entry-Layout editor (mode:'editor') keeps its left-border +  */
+/* tag-above-paragraph treatment unchanged. The works skin renders     */
+/* each paragraph as a bordered box (border colour per paragraph_style)*/
+/* and each token with a coloured fill (per char_style), no labels.    */
+/* Nothing currently uses these rules — Pack 04b's drawer is the first */
+/* caller via renderEntryPreview(..., {mode:'works'}).                 */
+/* ------------------------------------------------------------------ */
+.preview--works .pv-para {
+  position: static;
+  padding: 11px 13px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border);
+  margin-bottom: 11px;
+  margin-left: 0;
+  padding-left: 11px;
+}
+.preview--works .pv-para.pa-0 { border-color: #cdbf9f; }
+.preview--works .pv-para.pa-1 { border-color: #aec1dc; }
+.preview--works .pv-para.pa-2 { border-color: #a9ccb6; }
+.preview--works .pv-para.pa-3 { border-color: #c3b4e0; }
+.preview--works .pv-para.pa-4 { border-color: #e0b1c0; }
+.preview--works .pv-para.pa-5 { border-color: #a8cdd1; }
+.preview--works .pv-para.pa-none { border-color: var(--border); }
+.preview--works .pv-para__line { line-height: 1.95; }
+
+/* Token fills (works mode). The .pv-tok--cs class is only emitted by
+   mode:'works', so these rules do not affect the editor's pv-tok--styled. */
+.pv-tok--cs { border-radius: 3px; padding: 1px 4px; border: 1px solid; }
+.cs-0 { background: #fbeede; border-color: #ecc9a0; }
+.cs-1 { background: #e7effb; border-color: #bcd0ee; }
+.cs-2 { background: #e7f1ea; border-color: #b6d6c1; }
+.cs-3 { background: #efeafa; border-color: #cdbfee; }
+.cs-4 { background: #fbe9ee; border-color: #eebccb; }
+.cs-5 { background: #e6f1f2; border-color: #b3d4d8; }
+
+/* Works-mode legend swatches — only emitted when mode:'works'.
+   The shared .preview__legend rule above gives the flex container; these
+   add the swatch + group structure the works legend needs. */
+.lg-grp { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.lg-grp b { color: var(--muted-2); font-weight: 600; }
+.lg-item { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-2); }
+.lg-sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid; display: inline-block; }
+.lg-sw.lg-pa { background: transparent !important; border-width: 1.5px; }
+
 .taggedtext-wrap { position: relative; }
 .taggedtext {
   background: #1a1a1a; color: #f0f0f0; font-family: var(--mono); font-size: 12px; line-height: 1.6;
