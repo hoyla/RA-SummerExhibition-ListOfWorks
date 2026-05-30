@@ -3680,7 +3680,7 @@ function _renderPreviewLegendHTML(mode, maps) {
     return `<div class="preview__legend">` +
       `<span class="lg-grp"><b>fill = character style</b>${cs}</span>` +
       `<span class="lg-grp"><b>border = paragraph</b>${pa}</span>` +
-      `<span class="lg-grp"><b>separators</b> ${sg('&middot;')} space ${sg('&rarr;')} tab ${sg('&#8677;')} right-tab ${sg('&#8629;')} return</span></div>`;
+      `<span class="lg-grp"><b>separators</b> ${sg('&middot;')} space ${sg('&rarr;')} tab ${sg('&#8677;')} right-tab ${sg('&#8629;')} soft return ${sg('&para;')} hard return</span></div>`;
   }
   return `<div class="preview__legend">
       <span><i class="lg lg--styled"></i> character-styled</span>
