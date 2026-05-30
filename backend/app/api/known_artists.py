@@ -5,7 +5,6 @@ API routes for managing the known artists lookup table.
 import json
 import logging
 import uuid
-from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -336,63 +335,23 @@ def duplicate_known_artist(
 def seed_known_artists(db: Session = Depends(get_db)):
     """Load known artists from the seed file (known-artists.json).
 
-    Skips entries whose match fields already exist.
+    Delegates to ``services.seed_service.seed_known_artists`` -- the same
+    function the app's startup hook calls. Sharing the loader between the
+    two entry points means new model columns only have to be wired into
+    the constructor in one place, and the admin endpoint inherits the
+    dedupe semantics + field propagation guaranteed by that loader's
+    structural test (tests/test_seed_templates.py).
+
     Returns a count of added/skipped entries.
     """
-    seed_path = (
-        Path(__file__).resolve().parent.parent.parent / "seed_templates" / "known-artists.json"
-    )
-    if not seed_path.exists():
-        raise HTTPException(status_code=404, detail="Seed file not found")
+    from backend.app.services.seed_service import seed_known_artists as _service_seed
 
-    with open(seed_path, encoding="utf-8") as fp:
-        entries = json.load(fp)
-
-    added = 0
-    skipped = 0
-    for entry in entries:
-        match_first = entry.get("match_first_name")
-        match_last = entry.get("match_last_name")
-
-        existing = (
-            db.query(KnownArtist)
-            .filter(
-                KnownArtist.match_first_name == match_first,
-                KnownArtist.match_last_name == match_last,
-                KnownArtist.match_quals == entry.get("match_quals"),
-                KnownArtist.is_seeded == True,  # noqa: E712
-            )
-            .first()
-        )
-        if existing:
-            skipped += 1
-            continue
-
-        ka = KnownArtist(
-            match_first_name=match_first,
-            match_last_name=match_last,
-            match_quals=entry.get("match_quals"),
-            resolved_first_name=entry.get("resolved_first_name"),
-            resolved_last_name=entry.get("resolved_last_name"),
-            resolved_title=entry.get("resolved_title"),
-            resolved_quals=entry.get("resolved_quals"),
-            resolved_is_company=entry.get("resolved_is_company"),
-            resolved_company=entry.get("resolved_company"),
-            resolved_address=entry.get("resolved_address"),
-            resolved_artist2_first_name=entry.get("resolved_artist2_first_name"),
-            resolved_artist2_last_name=entry.get("resolved_artist2_last_name"),
-            resolved_artist2_quals=entry.get("resolved_artist2_quals"),
-            resolved_artist3_first_name=entry.get("resolved_artist3_first_name"),
-            resolved_artist3_last_name=entry.get("resolved_artist3_last_name"),
-            resolved_artist3_quals=entry.get("resolved_artist3_quals"),
-            resolved_artist1_ra_styled=entry.get("resolved_artist1_ra_styled"),
-            resolved_artist2_ra_styled=entry.get("resolved_artist2_ra_styled"),
-            resolved_artist3_ra_styled=entry.get("resolved_artist3_ra_styled"),
-            notes=entry.get("notes"),
-            is_seeded=True,
-        )
-        db.add(ka)
-        added += 1
-
+    # File-existence check is delegated to the service: if the seed JSON
+    # is missing (only possible if a deploy has dropped it from the image
+    # -- it's checked into the repo), the service silently returns (0, 0)
+    # and the endpoint responds with a zero-count payload. That's the right
+    # answer for an admin "re-seed now" trigger: the loader did its job,
+    # there was just nothing to load.
+    added, skipped = _service_seed(db=db)
     db.commit()
     return {"added": added, "skipped": skipped, "total": added + skipped}

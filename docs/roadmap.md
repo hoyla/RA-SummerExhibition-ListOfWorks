@@ -624,6 +624,24 @@ controls and editor UX around it.
 - **Request tracing**: add `X-Request-Id` propagation to logs for easier
   troubleshooting.
 
+- **Seed loaders never UPSERT changed values on existing rows.** Both
+  `seed_known_artists` and `seed_builtin_templates` are insert-if-missing
+  only — neither updates the *resolved values* of an existing entry when
+  the seed JSON is edited. Edits to a known-artist's `resolved_*` fields
+  or to the inner config of a template are silently ignored on every
+  existing deployment; the only way to propagate them today is to delete
+  the row manually and let the loader re-insert it on restart. Discovered
+  during the 2026-05-30 seed-loader audit (the same audit that surfaced
+  the `is_seeded` / `resolved_title` / `resolved_company` /
+  `resolved_address` field-omission fixes in PR #94). For known-artists
+  any future UPSERT must respect the user-row-wins coexistence rule
+  already encoded in `build_known_artist_cache` — i.e. UPSERT the seed
+  row's own `is_seeded=True` copy only; never touch the
+  `is_seeded=False` user customisation. For templates the same applies
+  to the `is_builtin=True` row only. Worth a small, dedicated PR
+  (probably with another structural test that asserts the UPSERT
+  reaches every column the constructor sets).
+
 - **Entry-Layout preview: `final_sep_from_last_component` is invisible.**
   The "If the last element is omitted, use its separator after the final
   non-empty field instead" checkbox in the Entry Layout editor updates the
