@@ -5492,9 +5492,6 @@ function _renderDrawer() {
               <span>leave a field blank to keep current · click a chip to copy · Enter for line breaks</span>
             </div>
             <div id="wk-ovc-${esc(w.id)}"></div>
-            <div class="edit-actions">
-              <button type="button" class="btn btn-sm" data-drawer-mode="read">← Done</button>
-            </div>
           </div>
           <div class="full-prev">
             <div class="preview-pane__head">Live preview · updates as you type</div>
