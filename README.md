@@ -166,7 +166,7 @@ frontend/
   index.html
   app.js
   style.css
-tests/            # pytest suite (~960 tests across 38 test files)
+tests/            # pytest suite (~975 tests across 40 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/
