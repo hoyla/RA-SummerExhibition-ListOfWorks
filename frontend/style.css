@@ -2613,10 +2613,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
 }
 .drawer__sec-lab .star { color: var(--ra-red); }
-.drawer__ovr { padding: 18px 20px; display: flex; gap: 8px; flex-wrap: wrap; }
-.drawer__ovr .btn-primary { background: var(--ra-dark); color: #fff; border-color: var(--ra-dark); font-weight: 600; }
-.drawer__ovr .btn-primary:hover { background: #000; }
-.drawer__ovr-stub { padding: 18px 20px; color: var(--muted); font-style: italic; font-size: 13px; }
 
 /* ---- Full mode (Pack 04c 2026-05-31) ----
    Wide drawer (set on .drawer.full). Top: untruncated diff table.
@@ -2661,11 +2657,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .muted-note b { color: var(--muted-2); font-weight: 700; }
 
 /* Sticky save bar at the bottom of the form column */
-.edit-actions {
-  display: flex; gap: 8px; position: sticky; bottom: 0;
-  background: linear-gradient(to top, var(--card) 70%, transparent);
-  padding: 14px 0 16px; margin-top: 14px; z-index: 5;
-}
 
 /* Output preview controls inside the drawer */
 .opv__bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
