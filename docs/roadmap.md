@@ -646,3 +646,26 @@ controls and editor UX around it.
   No correctness issue in the export itself — the bug is purely editor
   ergonomics. Currently the user has no way to tell whether the toggle
   is doing what they expect without exporting and inspecting the file.
+
+- **Index template editor has no Tagged Text preview tab.** The LoW
+  template editor (`renderTemplateEdit` for `list_of_works` templates)
+  has two preview tabs: a structural preview and a Tagged Text preview
+  showing the actual `<ParaStyle:…>` / `<CharStyle:…>` codes that will
+  be written to the export. The Index template editor has only the
+  structural preview. Discovered during Pack 04a QA (2026-05-30). Two
+  viable directions:
+
+  1. *Build the tab on Index.* `_teTaggedTextHTML`-equivalent for index
+     templates exists in spirit (the backend index renderer emits the
+     same kind of tagged output), so it's mostly a matter of wiring the
+     existing logic into the editor. Symmetry with LoW; helps when
+     debugging unexpected styling in the published index.
+  2. *Document the asymmetry as deliberate.* The Index output is
+     simpler than LoW (no LPG counterpart, fewer character styles per
+     entry) and the structural preview already shows what the editor
+     needs. Add a short note in the Index template editor explaining
+     that the Tagged Text view isn't available because the output
+     shape is predictable from the structural preview alone.
+
+  No correctness impact in either case — pure editor ergonomics, and
+  Index editors are a small audience.
