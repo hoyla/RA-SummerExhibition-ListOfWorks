@@ -5331,12 +5331,28 @@ function _drawerRefreshView() {
     // Fetch the full config (with components) for the newly-selected
     // template before re-rendering -- /templates returned summaries only.
     await _drawerEnsureFullTemplate(_drawer.tplId);
-    _drawerRefreshView();
+    // Pack 04c QA (2026-05-31): in full mode, do NOT do a heavyweight
+    // _drawerRefreshView -- that would re-render the form via
+    // showOverrideForm and lose any typed-but-unsaved values. Just
+    // re-render the preview body against the pending form values.
+    // The dropdown's selected option is already updated by the user.
+    if (_drawer.mode === 'full') _drawerOnFormInput();
+    else _drawerRefreshView();
   });
   aside.querySelectorAll('[data-drawer-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       _drawer.tab = btn.dataset.drawerTab;
-      _drawerRefreshView();
+      if (_drawer.mode === 'full') {
+        // Same reason as the template change: don't re-render the form.
+        // Toggle the .on class on the tab buttons manually (the bar
+        // isn't being re-rendered) + refresh the preview body.
+        aside.querySelectorAll('[data-drawer-tab]').forEach(b => {
+          b.classList.toggle('on', b.dataset.drawerTab === _drawer.tab);
+        });
+        _drawerOnFormInput();
+      } else {
+        _drawerRefreshView();
+      }
     });
   });
   // Pack 04c -- full-mode: populate the override form into the
