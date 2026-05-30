@@ -150,6 +150,7 @@ def _seed_known_artists() -> None:
                     resolved_artist2_shared_surname=entry.get("resolved_artist2_shared_surname"),
                     resolved_artist3_shared_surname=entry.get("resolved_artist3_shared_surname"),
                     notes=entry.get("notes"),
+                    is_seeded=True,
                 )
             )
             added += 1
