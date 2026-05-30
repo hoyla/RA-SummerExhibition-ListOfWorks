@@ -2716,6 +2716,7 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .drawer__title { font-size: 20px; font-weight: 700; line-height: 1.2; margin: 4px 0 6px; }
 .drawer__artist { font-size: 14px; color: var(--muted-2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .drawer__flags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+.drawer__flags--info { margin-top: 6px; } /* slightly tighter spacing -- info row sits right below the primary flags */
 /* Inline warning detail messages under the flag pills (option a -- busier,
    readable; details is what this view is for). */
 .drawer__warning-details { margin-top: 10px; font-size: 12px; color: var(--muted-2); line-height: 1.55; }

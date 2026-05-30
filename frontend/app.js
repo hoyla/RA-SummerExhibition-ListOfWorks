@@ -5419,17 +5419,71 @@ function _drawerRenderHeroHTML(w, cfg) {
   }
   const eff = _workEffectiveFieldValues(w, cfg);
   const hon = (w.artist_honorifics ?? '').trim();
+
+  // ---- Primary flag pills -- mirror workRowHTML so the drawer hero shows
+  // the same row-level flags the user already sees in the table (Override,
+  // RA, honorific, Trimmed, Norm) plus server-side review/error warnings.
   const pills = [];
   if (w.override) pills.push('<span class="pill pill--edit" title="Has a user override">Override</span>');
-  if (hon && _isRaMember(hon)) pills.push('<span class="pill pill--id is-ra" title="RA honorific extracted from artist name">RA</span>');
+  if (hon) {
+    if (_isRaMember(hon)) {
+      pills.push('<span class="pill pill--id is-ra" title="RA honorific extracted from artist name">RA</span>');
+    } else {
+      pills.push(`<span class="pill pill--info" title="Honorific extracted: ${esc(hon)}">${esc(hon)}</span>`);
+    }
+  }
+  // Client-side normalisation detection -- same logic as workRowHTML.
+  const _normDiffs = [];
+  const _wsTrimmed = [];
+  const _normFields = [
+    ['Title',  w.raw_title,  w.title],
+    ['Price',  w.raw_price,  w.price_text ?? (w.price_numeric != null ? String(w.price_numeric) : null)],
+    ['Medium', w.raw_medium, w.medium],
+  ];
+  for (const [label, raw, norm] of _normFields) {
+    const rawStr = raw ?? '';
+    const normStr = norm ?? '';
+    if (!rawStr && !normStr) continue;
+    if (rawStr === normStr) continue;
+    if (rawStr.trim() === normStr.trim()) _wsTrimmed.push(label);
+    else _normDiffs.push(label);
+  }
+  const _rawA = (w.raw_artist ?? '').trim();
+  const _normA = (w.artist_name ?? '').trim();
+  const _rawAFull = w.raw_artist ?? '';
+  if (_rawAFull && _normA && _rawAFull !== _normA) {
+    const nameMatchesAfterHon = hon && _rawA === (_normA + ' ' + hon).trim();
+    const nameCloseAfterHon = hon && _rawA.includes(hon) &&
+      _rawA.replace(hon, '').replace(/\s+/g, ' ').trim().replace(/,\s*$/, '').trim() === _normA;
+    if (!nameMatchesAfterHon && !nameCloseAfterHon) {
+      if (_rawAFull.trim() === _normA) _wsTrimmed.push('Artist');
+      else _normDiffs.push('Artist');
+    }
+  }
+  if (_wsTrimmed.length) pills.push(`<span class="pill pill--info" title="Whitespace trimmed: ${esc(_wsTrimmed.join(', '))}">Trimmed</span>`);
+  if (_normDiffs.length) pills.push(`<span class="pill pill--info" title="Normalised: ${esc(_normDiffs.join(', '))}">Norm</span>`);
+  // Server-side review/error warnings (excluding auto-normalisation
+  // info types -- those go in the info row below).
   const warns = _warningsByWorkId[w.id] || [];
-  const warnTypes = [...new Set(warns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
-  for (const wt of warnTypes) {
+  const reviewTypes = [...new Set(warns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
+  for (const wt of reviewTypes) {
     const matching = warns.find(ww => ww.warning_type === wt);
     pills.push(`<span class="${_lowWarnBadgeClass(wt)}" title="${esc(matching?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
   }
-  // Pack 04b decision (Luke 2026-05-30): inline warning detail messages
-  // under the pills -- busier, readable. Details is what this view is for.
+  // ---- Info / auto-normalisation pills (server-side warnings in
+  // _LOW_CHANGED_TYPES) -- shown as a separate row directly below the
+  // primary flags. Per Luke (2026-05-30): info-only normalisations like
+  // "zero edition dropped" / "whitespace trimmed" deserve visibility,
+  // even though they don't require human review.
+  const infoTypes = [...new Set(warns.filter(ww => _LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
+  const infoPills = infoTypes.map(wt => {
+    const matching = warns.find(ww => ww.warning_type === wt);
+    return `<span class="${_lowWarnBadgeClass(wt)}" title="${esc(matching?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`;
+  });
+
+  // Inline warning detail messages under the pills (Pack 04b decision
+  // 2026-05-30: option a, busier-but-readable). Details for detail-eligible
+  // types regardless of review-vs-info bucket.
   const detailMessages = warns
     .filter(ww => _LOW_DETAIL_TYPES.has(ww.warning_type) && ww.message)
     .map(ww => `<small>${esc(ww.message)}</small>`)
@@ -5445,6 +5499,7 @@ function _drawerRenderHeroHTML(w, cfg) {
       <div class="drawer__title">${esc(eff.title || '(untitled)')}</div>
       <div class="drawer__artist">${esc(eff.artist || '(no artist)')}${isRaInline}</div>
       ${pills.length ? `<div class="drawer__flags">${pills.join('')}</div>` : ''}
+      ${infoPills.length ? `<div class="drawer__flags drawer__flags--info">${infoPills.join('')}</div>` : ''}
       ${detailsBlock}
     </div>`;
 }
