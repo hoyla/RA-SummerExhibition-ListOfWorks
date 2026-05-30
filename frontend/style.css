@@ -2483,9 +2483,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .pv-sep--hard .pv-sep__glyph { background: #fdf3f2; border: 1px solid #eed5d1; border-radius: 3px; padding: 1px 5px; font-size: 11px; }
 .preview__legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--border); font-size: 11px; color: var(--muted); }
 .preview__legend span { display: inline-flex; align-items: center; gap: 5px; }
-.lg { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; font-family: var(--mono); font-style: normal; font-size: 12px; font-weight: 600; border-radius: 3px; }
-.lg--styled { background: var(--tok-bg); border: 1px solid var(--tok-bd); }
-.lg--tab, .lg--rtab, .lg--soft, .lg--para { color: var(--ra-red); border: 1px solid #eed5d1; background: #fdf3f2; }
 
 /* ------------------------------------------------------------------ */
 /* Works-mode preview overrides — Pack 04a (2026-05-30)                */
