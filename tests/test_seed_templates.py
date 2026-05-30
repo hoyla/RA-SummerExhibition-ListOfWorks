@@ -228,3 +228,99 @@ def test_seed_templates_deletes_orphaned_builtins(db_session):
     # 4. Assert the orphaned built-in was deleted, but the user one was not
     assert not db_session.query(Ruleset).filter_by(slug="orphaned-template").one_or_none()
     assert db_session.query(Ruleset).filter_by(slug="user-template").one_or_none()
+
+
+# ---------------------------------------------------------------------------
+# Known-artists seed *loader* round-trip
+# ---------------------------------------------------------------------------
+#
+# Complements the JSON-shape tests above: those verify the seed file is
+# well-formed; the tests below verify the loader function (which reads the
+# file and INSERTs rows) actually propagates every JSON field to the
+# corresponding DB column.
+#
+# Motivation: we have shipped TWO bugs in this loader -- both the same
+# root cause (column added to the model + API write paths, seed loader's
+# KnownArtist(...) constructor forgotten):
+#
+#   1. is_seeded missing from the constructor -- every freshly seeded row
+#      was wrongly labelled "user-defined" in the UI (Phase 19 regression).
+#   2. resolved_title / resolved_company / resolved_address missing from
+#      the constructor -- those values were silently dropped on every
+#      fresh seed (Phase 20 regression).
+#
+# A NARROW test (just "is_seeded == True") would only catch #1. The
+# structural round-trip test below catches both, AND any future variant
+# of "human added a column to the model but forgot the seed loader".
+
+
+def test_seed_known_artists_round_trip_propagates_all_fields(db_session):
+    """Round-trip: every JSON entry => one DB row with all top-level fields preserved."""
+    from backend.app.models.known_artist_model import KnownArtist
+    from backend.app.services.seed_service import seed_known_artists as _seed_known_artists
+
+    # Run the loader against the test's isolated in-memory DB
+    _seed_known_artists(db=db_session)
+
+    # Load the same JSON the loader read
+    with open(SEED_DIR / "known-artists.json", encoding="utf-8") as fp:
+        entries = json.load(fp)
+
+    rows = db_session.query(KnownArtist).all()
+    assert len(rows) == len(entries), (
+        f"loader created {len(rows)} rows but JSON has {len(entries)} entries -- "
+        "some entries are being dropped (or duplicated)"
+    )
+
+    # Match each JSON entry to its DB row by the (match_first, match_last, match_quals)
+    # natural key.  Use this rather than insertion order to be robust against any
+    # future reordering inside the loader.
+    rows_by_key = {(r.match_first_name, r.match_last_name, r.match_quals): r for r in rows}
+
+    # Every top-level JSON key that has a corresponding KnownArtist column
+    # must be propagated faithfully.  This is the structural assertion that
+    # would have failed under either of the two regressions above.
+    for entry in entries:
+        key = (
+            entry.get("match_first_name"),
+            entry.get("match_last_name"),
+            entry.get("match_quals"),
+        )
+        assert key in rows_by_key, f"JSON entry {key!r} did not produce a DB row"
+        row = rows_by_key[key]
+
+        for field, expected in entry.items():
+            assert hasattr(row, field), (
+                f"JSON has unknown field {field!r} on entry {key!r} -- "
+                f"either the schema validator above is stale, or the "
+                f"model has lost a column"
+            )
+            actual = getattr(row, field)
+            assert actual == expected, (
+                f"entry {key!r}: field {field!r} not propagated to DB row "
+                f"(json={expected!r}, db={actual!r})"
+            )
+
+        # is_seeded gets its own explicit assertion because it's not in the
+        # JSON file -- it's a constant set by the loader to distinguish
+        # "shipped with the app" from "added via the admin UI".
+        assert row.is_seeded is True, (
+            f"entry {key!r}: is_seeded must be True for loader-inserted rows, got {row.is_seeded!r}"
+        )
+
+
+def test_seed_known_artists_is_idempotent(db_session):
+    """Running the loader twice does not duplicate rows."""
+    from backend.app.models.known_artist_model import KnownArtist
+    from backend.app.services.seed_service import seed_known_artists as _seed_known_artists
+
+    _seed_known_artists(db=db_session)
+    first_count = db_session.query(KnownArtist).count()
+
+    _seed_known_artists(db=db_session)
+    second_count = db_session.query(KnownArtist).count()
+
+    assert first_count == second_count, (
+        f"loader is not idempotent: first run {first_count} rows, "
+        f"second run {second_count} rows (duplicate inserts)"
+    )

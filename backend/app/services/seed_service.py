@@ -80,3 +80,87 @@ def seed_builtin_templates(db=None) -> None:
     finally:
         if not _external_db:
             db.close()
+
+
+def seed_known_artists(db=None) -> None:
+    """Idempotently insert KnownArtist rows from known-artists.json.
+
+    Unique key: (match_first_name, match_last_name, match_quals).  Entries
+    that already exist are skipped (no upsert of other fields -- once seeded,
+    editors own the row).  Every loader-inserted row carries ``is_seeded=True``.
+
+    If *db* is provided (e.g. in tests) the caller owns the session: this
+    function will flush but not commit/rollback/close.  When *db* is None a
+    new SessionLocal session is created, committed, and closed here.
+    """
+    from backend.app.models.known_artist_model import KnownArtist as _KnownArtist
+
+    seed_file = _SEED_DIR / "known-artists.json"
+    if not seed_file.exists():
+        return
+
+    from backend.app.db import SessionLocal as _SessionLocal
+
+    _external_db = db is not None
+    if not _external_db:
+        db = _SessionLocal()
+    try:
+        with open(seed_file, encoding="utf-8") as fp:
+            entries = json.load(fp)
+
+        added = 0
+        for entry in entries:
+            match_first = entry.get("match_first_name")
+            match_last = entry.get("match_last_name")
+            existing = (
+                db.query(_KnownArtist)
+                .filter(
+                    _KnownArtist.match_first_name == match_first,
+                    _KnownArtist.match_last_name == match_last,
+                    _KnownArtist.match_quals == entry.get("match_quals"),
+                )
+                .first()
+            )
+            if existing:
+                continue
+            db.add(
+                _KnownArtist(
+                    match_first_name=match_first,
+                    match_last_name=match_last,
+                    match_quals=entry.get("match_quals"),
+                    resolved_first_name=entry.get("resolved_first_name"),
+                    resolved_last_name=entry.get("resolved_last_name"),
+                    resolved_quals=entry.get("resolved_quals"),
+                    resolved_title=entry.get("resolved_title"),
+                    resolved_is_company=entry.get("resolved_is_company"),
+                    resolved_company=entry.get("resolved_company"),
+                    resolved_address=entry.get("resolved_address"),
+                    resolved_artist2_first_name=entry.get("resolved_artist2_first_name"),
+                    resolved_artist2_last_name=entry.get("resolved_artist2_last_name"),
+                    resolved_artist2_quals=entry.get("resolved_artist2_quals"),
+                    resolved_artist3_first_name=entry.get("resolved_artist3_first_name"),
+                    resolved_artist3_last_name=entry.get("resolved_artist3_last_name"),
+                    resolved_artist3_quals=entry.get("resolved_artist3_quals"),
+                    resolved_artist1_ra_styled=entry.get("resolved_artist1_ra_styled"),
+                    resolved_artist2_ra_styled=entry.get("resolved_artist2_ra_styled"),
+                    resolved_artist3_ra_styled=entry.get("resolved_artist3_ra_styled"),
+                    resolved_artist2_shared_surname=entry.get("resolved_artist2_shared_surname"),
+                    resolved_artist3_shared_surname=entry.get("resolved_artist3_shared_surname"),
+                    notes=entry.get("notes"),
+                    is_seeded=True,
+                )
+            )
+            added += 1
+        if added:
+            logger.info("Seeded %d known artist(s)", added)
+        if not _external_db:
+            db.commit()
+        else:
+            db.flush()
+    except Exception as exc:  # pragma: no cover
+        logger.error("Known artists seed error: %s", exc)
+        if not _external_db:
+            db.rollback()
+    finally:
+        if not _external_db:
+            db.close()
