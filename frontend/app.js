@@ -5238,6 +5238,8 @@ async function _openDrawer(importId, workId) {
 
 function _closeDrawer() {
   if (!_drawer.workId) return;
+  // Pack 04c: prompt before discarding unsaved form values.
+  if (!_drawerConfirmDiscard()) return;
   _drawer.workId = null;
   _drawer.mode = 'read';
   const aside = document.getElementById('works-drawer');
@@ -5263,6 +5265,9 @@ async function _drawerPage(delta) {
   if (idx < 0) return;
   const next = idx + delta;
   if (next < 0 || next >= _drawer.workIds.length) return; // clamp
+  // Pack 04c: prompt before discarding unsaved form values from the
+  // current work. The user can stay (Cancel) or page anyway (OK).
+  if (!_drawerConfirmDiscard()) return;
   _drawer.workId = _drawer.workIds[next];
   // Pack 04c: paging to a new work invalidates the cached override. If
   // we're in full mode, fetch the new work's override before re-rendering
@@ -5279,6 +5284,10 @@ async function _drawerPage(delta) {
 }
 
 async function _drawerSetMode(mode) {
+  // Pack 04c QA (2026-05-31): leaving full mode (Done / Cancel / Esc /
+  // Close) with unsaved form values prompts to confirm. The user can
+  // cancel and keep editing, or proceed and lose the pending values.
+  if (mode === 'read' && _drawer.mode === 'full' && !_drawerConfirmDiscard()) return;
   // Pack 04c: entering full mode requires the existing override to be
   // fetched (so the form starts populated). Fire-and-forget from event
   // handlers -- the refresh re-renders once the fetch resolves.
@@ -5690,6 +5699,29 @@ function _drawerReadFormAsOverride(workId) {
     medium_override: read('medium_override') || null,
     notes: read('notes') || '',
   };
+}
+
+// Pack 04c QA (2026-05-31) -- has the user typed into the override form
+// without saving? Compares the form's current values to the saved
+// baseline (_drawer.existingOverride). Used to prompt before discarding
+// changes via close / page / return-to-read.
+function _drawerIsFormDirty() {
+  if (_drawer.mode !== 'full') return false;
+  const formEl = document.getElementById(`ovf-${_drawer.workId}`);
+  if (!formEl) return false;
+  const pending = _drawerReadFormAsOverride(_drawer.workId);
+  const saved = _drawer.existingOverride || {};
+  for (const k of Object.keys(pending)) {
+    const p = (pending[k] === '' || pending[k] == null) ? null : pending[k];
+    const s = (saved[k] === '' || saved[k] == null) ? null : saved[k];
+    if (p !== s) return true;
+  }
+  return false;
+}
+
+function _drawerConfirmDiscard() {
+  if (!_drawerIsFormDirty()) return true;
+  return confirm('You have unsaved changes. Discard them?');
 }
 
 // Pack 04c -- form input -> re-render the live preview body only
