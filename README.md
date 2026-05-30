@@ -24,14 +24,14 @@ Supports two data products:
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
 - **Admin-configurable normalisation rules**: honorific tokens, edition-suppression
   threshold, literal text substitutions, and title-case exceptions
-- **Title Case Title** — a derived title-cased field (for the LPG) with its own
+- **Title Case Title** — a derived title-cased field (for the Large Print Guide) with its own
   per-work override; the List of Works keeps house caps
 - Validation warnings for unparseable values; whitespace-trim detection per work
 - Editorial overrides per work (title, title-cased, artist, price, edition, artwork, medium, notes)
 - Export templates: named, versioned configs stored in the database
-- **One template model, two layouts** — character-styled inline (List of Works) or
+- **Export templates for different layoutss** — InDesign tags: character-styled inline (List of Works) or
   paragraph-styled, one element per paragraph (Large Print Guide), edited in a
-  unified per-element editor with a live sample-entry preview
+  unified per-element editor with a live sample-entry preview. JSON, XML and CSV export for digital use. 
 - Per-component include/exclude toggle, separators, balance-lines, character styles
 - Per-room (per-section) export with template + gallery-name filenames
 - Re-import with override preservation
