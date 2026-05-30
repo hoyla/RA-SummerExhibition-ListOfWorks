@@ -3673,10 +3673,14 @@ function _renderPreviewLegendHTML(mode, maps) {
     const pa = maps.pa.length
       ? maps.pa.map((n, i) => `<span class="lg-item"><span class="lg-sw lg-pa pa-${i % 6}"></span>${esc(n)}</span>`).join('')
       : '<span class="lg-item"><em>none</em></span>';
+    // Separator glyphs reuse .pv-sep__glyph so the legend renders them
+    // with the exact same mono-font / colour / opacity / weight that
+    // the preview itself uses -- visual parity is the whole point.
+    const sg = (entity) => `<span class="pv-sep__glyph">${entity}</span>`;
     return `<div class="preview__legend">` +
       `<span class="lg-grp"><b>fill = character style</b>${cs}</span>` +
       `<span class="lg-grp"><b>border = paragraph</b>${pa}</span>` +
-      `<span class="lg-grp"><b>separators</b> <i>&middot;</i> space <i>&rarr;</i> tab <i>&#8677;</i> right-tab <i>&#8629;</i> return</span></div>`;
+      `<span class="lg-grp"><b>separators</b> ${sg('&middot;')} space ${sg('&rarr;')} tab ${sg('&#8677;')} right-tab ${sg('&#8629;')} return</span></div>`;
   }
   return `<div class="preview__legend">
       <span><i class="lg lg--styled"></i> character-styled</span>
