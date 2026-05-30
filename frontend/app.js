@@ -895,6 +895,12 @@ function router() {
 
 window.addEventListener('hashchange', router);
 window.addEventListener('DOMContentLoaded', async () => {
+  // Pack 04b -- works drawer: mount the <aside> + <scrim> in <body> and wire
+  // the global keydown handler (Esc / ArrowLeft / ArrowRight, gated on
+  // INPUT/TEXTAREA focus). Safe to run before auth -- drawer is dormant
+  // until _openDrawer is called.
+  _drawerMount();
+  _drawerSetupKeyboard();
   // Discover auth mode before anything else
   await _initAuth();
   _syncHeader();
@@ -3777,43 +3783,62 @@ function _teTaggedSepChars(k) {
   }
 }
 
-function _teTaggedTextHTML() {
-  const groups = _teComputeParagraphs(_te.components);
-  const sample = _TE_SAMPLES[_te.sampleVariant];
+// Pack 04b (2026-05-30) -- Pure tagged-text renderer. Same shape as Pack
+// 04a's renderEntryPreview: take components + field values + opts, no
+// reads from _te state. The editor calls via the _teTaggedTextHTML
+// wrapper (preserved bit-for-bit); the drawer's Tagged Text tab will
+// call directly.
+function renderEntryTaggedText(components, fieldValues, opts) {
+  opts = opts || {};
+  const entry_style = opts.entry_style || '';
+  const leading_separator = opts.leading_separator || 'none';
+  const trailing_separator = opts.trailing_separator || 'none';
+
+  const groups = _teComputeParagraphs(components);
   const styled = (comp, t) => comp.char_style ? `<CharStyle:${comp.char_style}>${t}<CharStyle:>` : t;
   const lines = [];
   groups.forEach((g, gi) => {
-    const items = _teVisibleItems(g, sample);
+    const items = _teVisibleItems(g, fieldValues);
     if (!items.length) return;
-    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
+    const styleName = g.paragraph_style || (gi === 0 ? entry_style : '');
     let line = `<ParaStyle:${styleName}>`;
     const skip = new Set();
     items.forEach(({ comp }, ci) => {
       if (skip.has(ci)) return;
-      const v = sample[comp.field] ?? '';
+      const v = fieldValues[comp.field] ?? '';
       const wrapped = _teWrapValue(comp, v);
       if (wrapped.length > 1 && comp.next_component_position === 'end_of_first_line' && ci + 1 < items.length) {
         const nc = items[ci + 1].comp;
-        const ncVal = sample[nc.field] ?? '';
+        const ncVal = fieldValues[nc.field] ?? '';
         line += styled(comp, wrapped[0]) + _teTaggedSepChars(comp.separator_after) + styled(nc, ncVal)
-              + styled(comp, '\\n' + wrapped.slice(1).join('\\n'));
+              + styled(comp, '\n' + wrapped.slice(1).join('\n'));
         skip.add(ci + 1);
         if (ci + 1 !== items.length - 1) line += _teTaggedSepChars(nc.separator_after);
       } else {
-        line += styled(comp, wrapped.length > 1 ? wrapped.join('\\n') : v);
+        line += styled(comp, wrapped.length > 1 ? wrapped.join('\n') : v);
         if (ci !== items.length - 1) line += _teTaggedSepChars(comp.separator_after);
       }
     });
     lines.push(line);
   });
-  if (_te.leading_separator && _te.leading_separator !== 'none' && lines.length) {
-    lines[0] = lines[0].replace(/^(<ParaStyle:[^>]*>)/, `$1${_teTaggedSepChars(_te.leading_separator)}`);
+  if (leading_separator && leading_separator !== 'none' && lines.length) {
+    lines[0] = lines[0].replace(/^(<ParaStyle:[^>]*>)/, `$1${_teTaggedSepChars(leading_separator)}`);
   }
-  if (_te.trailing_separator && _te.trailing_separator !== 'none' && lines.length) {
-    lines[lines.length - 1] += _teTaggedSepChars(_te.trailing_separator);
+  if (trailing_separator && trailing_separator !== 'none' && lines.length) {
+    lines[lines.length - 1] += _teTaggedSepChars(trailing_separator);
   }
   const text = lines.join('\n');
   return `<div class="taggedtext-wrap"><button type="button" class="copybtn" onclick="_teCopyTagged(this)">Copy</button><pre class="taggedtext"><code>${esc(text)}</code></pre></div>`;
+}
+
+// Thin wrapper used by the Entry-Layout editor's Tagged Text tab --
+// translates the editor's _te state into renderEntryTaggedText parameters.
+function _teTaggedTextHTML() {
+  return renderEntryTaggedText(_te.components, _TE_SAMPLES[_te.sampleVariant], {
+    entry_style: _te.entry_style,
+    leading_separator: _te.leading_separator,
+    trailing_separator: _te.trailing_separator,
+  });
 }
 
 // --- State mutations ------------------------------------------------------
@@ -4314,9 +4339,10 @@ function _saveDisplayCfg(currency_symbol, thousands_separator, decimal_places, e
 // Import detail
 // ---------------------------------------------------------------------------
 
-let _expandedWorkId = null;
+let _expandedWorkId = null;  // Pack 04b: dead, kept to avoid touching unrelated references
 let _workCache = {}; // workId -> work object, populated when sections render
 let _currentLowImportId = null; // set when a LoW detail page is rendered
+let _currentLowSections = null; // Pack 04b -- the loaded sections, used by drawer pager + venue lookup
 
 /** Restore override button text when closing the form. */
 function _restoreOverrideBtn(btn) {
@@ -4705,9 +4731,10 @@ function scrollToWork(workId) {
   void row.offsetWidth;
   row.classList.add('row-highlight');
   setTimeout(() => row.classList.remove('row-highlight'), 2500);
-  // Auto-open the detail panel if not already expanded for this work
-  if (_currentLowImportId && _expandedWorkId !== workId) {
-    toggleOverrideForm(_currentLowImportId, workId);
+  // Pack 04b -- auto-open the drawer for this work (replaces the old
+  // toggleOverrideForm inline-expansion path).
+  if (_currentLowImportId && _drawer.workId !== workId) {
+    _openDrawer(_currentLowImportId, workId);
   }
 }
 
@@ -4798,6 +4825,7 @@ function _wireStickySections() {
 
 function renderSections(importId, sections, cfg) {
   _currentLowImportId = importId;
+  _currentLowSections = sections;   // Pack 04b -- drawer pager needs the flat work list
   const container = document.getElementById('sections-container');
   if (!sections.length) {
     container.innerHTML = '<p class="muted">No sections found.</p>';
@@ -4862,6 +4890,16 @@ function renderSections(importId, sections, cfg) {
     </details>`;
   }).join('');
   _wireStickySections();
+  // Pack 04b -- deep-link: if URL has ?work={cat_no}, open the drawer for it.
+  // The auto-open runs after the sections render so _workCache is populated.
+  const wantCatNo = _hashParam('work');
+  if (wantCatNo) {
+    const match = Object.values(_workCache).find(w => String(w.raw_cat_no ?? '') === String(wantCatNo));
+    if (match && _drawer.workId !== match.id) _openDrawer(importId, match.id);
+  } else if (_drawer.workId) {
+    // URL has no ?work= but drawer is open from a previous page -- close it.
+    _closeDrawer();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -5034,60 +5072,375 @@ function _workWarningsBadges(workId) {
   return `<div class="norm-reasons"><strong>Warnings:</strong> ${badges}${detailHtml}</div>`;
 }
 
-function _showWorkDetailPanel(importId, workId) {
-  const w = _workCache[workId];
+// =========================================================================
+// Works drawer -- Pack 04b (2026-05-30)
+// =========================================================================
+// Right-docked drawer replacing the inline expand-and-edit row. Read mode
+// is implemented here (hero + output preview + What changed); full mode is
+// stubbed -- Pack 04c will reuse showOverrideForm + _buildWorkDetailTable
+// inside the drawer's wide variant.
+//
+// State + URL contract:
+//   _drawer.workId !== null  <=>  drawer is open  <=>  URL has ?work={cat_no}
+// _openDrawer / _closeDrawer mutate state, re-render the drawer, and
+// replaceState the URL (no hashchange fire -- the existing router would
+// otherwise re-fetch the import).
+//
+// Body-glide: when the drawer opens, JS sets --drawer-shift on #app and
+// adds .drawer-shifted; CSS transitions the transform. Per Luke's decision
+// (2026-05-30), sticky positioning breaking while the drawer is open is
+// acceptable -- scrolling priority drops once the user is in drawer mode.
+
+let _drawer = {
+  importId: null,
+  workId: null,
+  mode: 'read',        // 'read' | 'full'
+  workIds: [],         // flat ordered list across all sections, for the pager
+  templates: null,     // cached LoW templates (lazy-fetched on first open)
+  tplId: null,         // selected template id for the output preview
+  tab: 'struct',       // 'struct' | 'tagged'
+};
+
+function _drawerMount() {
+  if (document.getElementById('works-drawer')) return; // idempotent
+  const scrim = document.createElement('div');
+  scrim.id = 'works-scrim';
+  scrim.className = 'scrim';
+  scrim.addEventListener('click', _closeDrawer);
+  const drawer = document.createElement('aside');
+  drawer.id = 'works-drawer';
+  drawer.className = 'drawer';
+  drawer.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(scrim);
+  document.body.appendChild(drawer);
+}
+
+function _drawerSetupKeyboard() {
+  if (window.__drawerKbWired) return;
+  window.__drawerKbWired = true;
+  window.addEventListener('keydown', (e) => {
+    if (!_drawer.workId) return; // drawer closed
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (_drawer.mode === 'full') _drawerSetMode('read');
+      else _closeDrawer();
+      return;
+    }
+    const tag = (e.target?.tagName || '').toUpperCase();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); _drawerPage(-1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); _drawerPage(+1); }
+  });
+}
+
+function _drawerFlatWorkIds() {
+  if (!_currentLowSections) return [];
+  return _currentLowSections.flatMap(s => s.works.map(w => w.id));
+}
+
+async function _openDrawer(importId, workId) {
+  _drawer.importId = importId;
+  _drawer.workId = workId;
+  _drawer.workIds = _drawerFlatWorkIds();
+  if (_drawer.workIds.indexOf(workId) < 0) { _closeDrawer(); return; }
+  if (!_drawer.templates) {
+    try { _drawer.templates = await api('GET', '/templates'); }
+    catch { _drawer.templates = []; }
+  }
+  if (!_drawer.tplId && _drawer.templates.length) {
+    _drawer.tplId = (_drawer.templates.find(t => t.is_default) || _drawer.templates[0]).id;
+  }
+  _drawerRefreshView();
+  const drawerWidth = Math.min(640, window.innerWidth * 0.94);
+  const leftMargin = Math.max(0, (window.innerWidth - 1240) / 2);
+  const shift = -Math.min(drawerWidth / 2, leftMargin);
+  document.documentElement.style.setProperty('--drawer-shift', shift + 'px');
+  document.getElementById('app')?.classList.add('drawer-shifted');
+  _drawerUpdateActiveRow();
+  _drawerUpdateURL();
+}
+
+function _closeDrawer() {
+  if (!_drawer.workId) return;
+  _drawer.workId = null;
+  _drawer.mode = 'read';
+  const aside = document.getElementById('works-drawer');
+  const scrim = document.getElementById('works-scrim');
+  if (aside) { aside.classList.remove('show', 'full'); aside.setAttribute('aria-hidden', 'true'); }
+  if (scrim) scrim.classList.remove('show');
+  document.getElementById('app')?.classList.remove('drawer-shifted');
+  document.querySelectorAll('.works-table tbody tr.is-active').forEach(tr => tr.classList.remove('is-active'));
+  const url = new URL(window.location.href);
+  if (url.hash.includes('?')) {
+    const [path, query] = url.hash.split('?');
+    const params = new URLSearchParams(query);
+    params.delete('work');
+    const q = params.toString();
+    url.hash = q ? `${path}?${q}` : path;
+    history.replaceState(null, '', url.toString());
+  }
+}
+
+function _drawerPage(delta) {
+  if (!_drawer.workId || !_drawer.workIds.length) return;
+  const idx = _drawer.workIds.indexOf(_drawer.workId);
+  if (idx < 0) return;
+  const next = idx + delta;
+  if (next < 0 || next >= _drawer.workIds.length) return; // clamp
+  _drawer.workId = _drawer.workIds[next];
+  _drawerRefreshView();
+  _drawerUpdateActiveRow();
+  _drawerUpdateURL();
+  const row = document.getElementById(`wr-${_drawer.workIds[next]}`);
+  if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function _drawerSetMode(mode) {
+  _drawer.mode = mode;
+  _drawerRefreshView();
+}
+
+function _drawerUpdateActiveRow() {
+  document.querySelectorAll('.works-table tbody tr.is-active').forEach(tr => tr.classList.remove('is-active'));
+  if (_drawer.workId) {
+    const row = document.getElementById(`wr-${_drawer.workId}`);
+    if (row) row.classList.add('is-active');
+  }
+}
+
+function _drawerUpdateURL() {
+  if (!_drawer.workId) return;
+  const w = _workCache[_drawer.workId];
   if (!w) return;
-  const cell = document.getElementById(`ovc-${workId}`);
-  if (!cell) return;
-  const hasOvr = !!w.override;
-  const included = w.include_in_export !== false;
-  const inclLabel = included ? 'Exclude from export' : 'Include in export';
-  const inclBtnClass = included ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-danger';
-  cell.innerHTML = `
-    <div class="work-detail">
-      ${_workNormBadges(w)}
-      ${_workWarningsBadges(workId)}
-      ${_buildWorkDetailTable(w)}
-      <div class="work-detail-actions">
-        ${ifEditor(`<button class="btn btn-sm ${hasOvr ? 'btn-warning' : ''}" id="wk-ov-btn-${esc(workId)}"
-          onclick="event.stopPropagation(); toggleWorkOverrideForm('${esc(importId)}','${esc(workId)}')">
-          ${hasOvr ? 'Edit Override \u270e' : 'Override\u2026'}</button>`)}
-        ${ifEditor(`<button class="${inclBtnClass}" id="wk-incl-btn-${esc(workId)}"
-          onclick="event.stopPropagation(); toggleIncludeFromDetail('${esc(importId)}','${esc(workId)}')">
-          ${esc(inclLabel)}</button>`)}
-        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); toggleOverrideForm('${esc(importId)}','${esc(workId)}')">Close &#x2715;</button>
+  const url = new URL(window.location.href);
+  const [path, query] = url.hash.split('?');
+  const params = new URLSearchParams(query || '');
+  params.set('work', String(w.raw_cat_no ?? ''));
+  url.hash = `${path}?${params.toString()}`;
+  history.replaceState(null, '', url.toString());
+}
+
+function _drawerRefreshView() {
+  if (!_drawer.workId) return;
+  const aside = document.getElementById('works-drawer');
+  const scrim = document.getElementById('works-scrim');
+  if (!aside || !scrim) return;
+  aside.innerHTML = _renderDrawer();
+  aside.classList.toggle('full', _drawer.mode === 'full');
+  aside.classList.add('show');
+  aside.setAttribute('aria-hidden', 'false');
+  scrim.classList.add('show');
+  aside.querySelector('.drawer__close')?.addEventListener('click', _closeDrawer);
+  aside.querySelector('[data-drawer-prev]')?.addEventListener('click', () => _drawerPage(-1));
+  aside.querySelector('[data-drawer-next]')?.addEventListener('click', () => _drawerPage(+1));
+  aside.querySelectorAll('[data-drawer-mode]').forEach(btn => {
+    btn.addEventListener('click', () => _drawerSetMode(btn.dataset.drawerMode));
+  });
+  aside.querySelector('[data-drawer-exclude]')?.addEventListener('click', _drawerToggleExclude);
+  aside.querySelector('[data-drawer-tpl]')?.addEventListener('change', (e) => {
+    _drawer.tplId = e.target.value;
+    _drawerRefreshView();
+  });
+  aside.querySelectorAll('[data-drawer-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _drawer.tab = btn.dataset.drawerTab;
+      _drawerRefreshView();
+    });
+  });
+}
+
+async function _drawerToggleExclude() {
+  const w = _workCache[_drawer.workId];
+  if (!w) return;
+  const wasIncluded = w.include_in_export !== false;
+  try {
+    await api('PATCH', `/imports/${_drawer.importId}/works/${_drawer.workId}/exclude?exclude=${wasIncluded}`);
+    w.include_in_export = !wasIncluded;
+    _refreshWorkRow(_drawer.importId, _drawer.workId);
+    _drawerUpdateActiveRow();
+    _drawerRefreshView();
+    showToast(wasIncluded ? 'Excluded from export' : 'Re-included in export', 'success');
+  } catch (err) {
+    showToast(`Toggle failed: ${err.message}`, 'error');
+  }
+}
+
+// Effective field values for renderEntryPreview / renderEntryTaggedText.
+// Applies override on top of normalised values, with the same display
+// formatting as workRowHTML uses for the row.
+function _workEffectiveFieldValues(w, cfg) {
+  const o = w.override || {};
+  cfg = cfg || _getDisplayCfg();
+  const title       = o.title_override        ?? w.title        ?? '';
+  const title_cased = o.title_cased_override  ?? w.title_cased  ?? '';
+  const artist      = o.artist_name_override  ?? w.artist_name  ?? '';
+  const hon         = o.artist_honorifics_override ?? w.artist_honorifics ?? '';
+  const artistFull  = hon ? `${artist} ${hon}`.trim() : artist;
+  const priceText   = o.price_text_override   ?? w.price_text   ?? '';
+  const priceNum    = o.price_numeric_override ?? w.price_numeric;
+  const priceDisplay = priceText || (priceNum != null ? formatPrice(priceNum, null, cfg) : '');
+  const eTotal = o.edition_total_override ?? w.edition_total;
+  const ePrice = o.edition_price_numeric_override ?? w.edition_price_numeric;
+  const prefix = (cfg.edition_prefix ?? 'edition of').trim();
+  const brackets = cfg.edition_brackets !== false;
+  let edition = '';
+  if (eTotal && ePrice != null) {
+    const inner = `${prefix} ${eTotal} at ${formatPrice(ePrice, null, cfg)}`;
+    edition = brackets ? `(${inner})` : inner;
+  } else if (eTotal) {
+    const inner = `${prefix} ${eTotal}`;
+    edition = brackets ? `(${inner})` : inner;
+  }
+  const medium = o.medium_override ?? w.medium ?? '';
+  const artwork = o.artwork_override ?? w.artwork;
+  return {
+    work_number: String(w.raw_cat_no ?? ''),
+    artist:      artistFull,
+    title,
+    title_cased,
+    edition,
+    price:       priceDisplay,
+    medium,
+    artwork:     artwork != null ? String(artwork) : '',
+  };
+}
+
+function _renderDrawer() {
+  const w = _workCache[_drawer.workId];
+  if (!w) return '';
+  const cfg = _getDisplayCfg();
+  const idx = _drawer.workIds.indexOf(_drawer.workId);
+  const pos = idx >= 0 ? `${idx + 1} of ${_drawer.workIds.length}` : '';
+  const positionLabel = _drawer.mode === 'full'
+    ? `All changes &amp; override · No. ${esc(String(w.raw_cat_no ?? ''))}`
+    : esc(pos);
+  const prevDisabled = idx <= 0 ? ' disabled' : '';
+  const nextDisabled = idx < 0 || idx >= _drawer.workIds.length - 1 ? ' disabled' : '';
+  const top = `
+    <div class="drawer__top">
+      <div class="drawer__pager">
+        <button type="button" data-drawer-prev title="Previous (←)"${prevDisabled}>‹</button>
+        <button type="button" data-drawer-next title="Next (→)"${nextDisabled}>›</button>
       </div>
-      <div id="wk-ovc-${esc(workId)}"></div>
+      <span class="drawer__pos">${positionLabel}</span>
+      <button type="button" class="drawer__close" title="Close (Esc)">×</button>
+    </div>`;
+  if (_drawer.mode === 'full') {
+    return top + `
+      <div class="drawer__ovr-stub">
+        Full mode (untruncated diff + override form + pinned live preview)
+        lands in Pack 04c. For now, back to read mode and use the existing
+        controls there.
+        <div style="margin-top:14px"><button type="button" class="btn btn-sm" data-drawer-mode="read">← Back to read mode</button></div>
+      </div>`;
+  }
+  return top + `
+    <div class="drawer__scroll">
+      ${_drawerRenderHeroHTML(w, cfg)}
+      <div class="drawer__sec">
+        <div class="drawer__sec-lab"><span class="star">★</span> Output preview</div>
+        ${_drawerRenderOutputPreviewHTML(w, cfg)}
+      </div>
+      <div class="drawer__sec">
+        <div class="drawer__sec-lab">What changed</div>
+        ${_drawerRenderWhatChangedHTML(w, cfg)}
+      </div>
+      <div class="drawer__ovr">
+        ${ifEditor('<button type="button" class="btn btn-sm btn-primary" data-drawer-mode="full">View all changes &amp; edit override →</button>')}
+        ${ifEditor(`<button type="button" class="btn btn-sm" data-drawer-exclude>${w.include_in_export !== false ? 'Exclude from export' : 'Re-include'}</button>`)}
+      </div>
     </div>`;
 }
 
-async function toggleWorkOverrideForm(importId, workId) {
-  const cell = document.getElementById(`wk-ovc-${workId}`);
-  if (!cell) return;
-
-  // Toggle off if already showing
-  if (cell.innerHTML.trim()) {
-    cell.innerHTML = '';
-    const btn = document.getElementById(`wk-ov-btn-${workId}`);
-    if (btn) {
-      const w = _workCache[workId];
-      const hasOvr = !!w?.override;
-      btn.textContent = hasOvr ? 'Edit Override \u270e' : 'Override\u2026';
-      btn.className = `btn btn-sm ${hasOvr ? 'btn-warning' : ''}`;
-    }
-    return;
+function _drawerRenderHeroHTML(w, cfg) {
+  let venue = '';
+  if (_currentLowSections) {
+    const sec = _currentLowSections.find(s => s.works.some(x => x.id === w.id));
+    if (sec) venue = sec.name || '';
   }
-
-  let existing = null;
-  try {
-    existing = await api('GET', `/imports/${importId}/works/${workId}/override`);
-  } catch (err) {
-    if (err.httpStatus !== 404) {
-      cell.innerHTML = `<p class="error" style="padding:12px">${esc(err.message)}</p>`;
-      return;
-    }
+  const eff = _workEffectiveFieldValues(w, cfg);
+  const hon = (w.artist_honorifics ?? '').trim();
+  const pills = [];
+  if (w.override) pills.push('<span class="pill pill--edit" title="Has a user override">Override</span>');
+  if (hon && _isRaMember(hon)) pills.push('<span class="pill pill--id is-ra" title="RA honorific extracted from artist name">RA</span>');
+  const warns = _warningsByWorkId[w.id] || [];
+  const warnTypes = [...new Set(warns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
+  for (const wt of warnTypes) {
+    const matching = warns.find(ww => ww.warning_type === wt);
+    pills.push(`<span class="${_lowWarnBadgeClass(wt)}" title="${esc(matching?.message ?? wt)}">${esc(_lowWarnLabel(wt))}</span>`);
   }
-  showOverrideForm(importId, workId, existing);
+  // Pack 04b decision (Luke 2026-05-30): inline warning detail messages
+  // under the pills -- busier, readable. Details is what this view is for.
+  const detailMessages = warns
+    .filter(ww => _LOW_DETAIL_TYPES.has(ww.warning_type) && ww.message)
+    .map(ww => `<small>${esc(ww.message)}</small>`)
+    .join('');
+  const detailsBlock = detailMessages
+    ? `<div class="drawer__warning-details">${detailMessages}</div>`
+    : '';
+  const isRaInline = hon && _isRaMember(hon) ? ' <span class="pill pill--id is-ra">RA</span>' : '';
+  return `
+    <div class="drawer__hero">
+      ${venue ? `<div class="drawer__venue">${esc(venue)}</div>` : ''}
+      <div class="drawer__cat">No. ${esc(eff.work_number)}</div>
+      <div class="drawer__title">${esc(eff.title || '(untitled)')}</div>
+      <div class="drawer__artist">${esc(eff.artist || '(no artist)')}${isRaInline}</div>
+      ${pills.length ? `<div class="drawer__flags">${pills.join('')}</div>` : ''}
+      ${detailsBlock}
+    </div>`;
+}
+
+function _drawerRenderOutputPreviewHTML(w, cfg) {
+  const templates = _drawer.templates || [];
+  const tpl = templates.find(t => t.id === _drawer.tplId) || templates[0];
+  const optionsHTML = templates.length
+    ? templates.map(t => `<option value="${esc(t.id)}"${tpl && t.id === tpl.id ? ' selected' : ''}>${esc(t.name || 'Untitled')}</option>`).join('')
+    : '<option value="">(no templates)</option>';
+  const tplBar = `
+    <div class="opv__bar">
+      <label class="opv__tmpl">Template
+        <select data-drawer-tpl>${optionsHTML}</select>
+      </label>
+      <div class="opv__tabs">
+        <button type="button" data-drawer-tab="struct" class="${_drawer.tab === 'struct' ? 'on' : ''}">Structure</button>
+        <button type="button" data-drawer-tab="tagged" class="${_drawer.tab === 'tagged' ? 'on' : ''}">Tagged Text</button>
+      </div>
+    </div>`;
+  if (!tpl || !Array.isArray(tpl.components)) {
+    return tplBar + '<p class="cmpl-none">No template available for preview.</p>';
+  }
+  const fieldValues = _workEffectiveFieldValues(w, cfg);
+  const opts = {
+    entry_style: tpl.entry_style || '',
+    leading_separator: tpl.leading_separator || 'none',
+    trailing_separator: tpl.trailing_separator || 'none',
+  };
+  const body = _drawer.tab === 'tagged'
+    ? renderEntryTaggedText(tpl.components, fieldValues, opts)
+    : renderEntryPreview(tpl.components, fieldValues, { ...opts, mode: 'works' });
+  return tplBar + body;
+}
+
+function _drawerRenderWhatChangedHTML(w, cfg) {
+  const eff = _workEffectiveFieldValues(w, cfg);
+  const rows = [
+    ['Title',  w.raw_title ?? '',  eff.title],
+    ['Artist', w.raw_artist ?? '', eff.artist],
+    ['Price',  w.raw_price ?? '',  eff.price],
+    ['Medium', w.raw_medium ?? '', eff.medium],
+  ];
+  const changed = rows.filter(([, from, to]) => (from || '').trim() !== (to || '').trim());
+  if (!changed.length) return '<p class="cmpl-none">No changes — exports exactly as imported.</p>';
+  return `
+    <table class="cmpl"><tbody>
+      ${changed.map(([label, from, to]) => `
+        <tr class="is-chg">
+          <td class="cmpl-f">${esc(label)}</td>
+          <td class="cmpl-from">${esc(from || '—')}</td>
+          <td class="cmpl-ar">→</td>
+          <td class="cmpl-to">${esc(to || '—')}</td>
+        </tr>`).join('')}
+    </tbody></table>`;
 }
 
 function workRowHTML(importId, w, cfg) {
@@ -5130,7 +5483,6 @@ function workRowHTML(importId, w, cfg) {
   }
   const _rawAFull = w.raw_artist ?? '';
   if (_rawAFull && _normA && _rawAFull !== (w.artist_name ?? '')) {
-    // Check if the difference is fully explained by honorific extraction
     const nameMatchesAfterHon = _hon && _rawA === (_normA + ' ' + _hon).trim();
     const nameCloseAfterHon = _hon && _rawA.includes(_hon) &&
       _rawA.replace(_hon, '').replace(/\s+/g, ' ').trim().replace(/,\s*$/, '').trim() === _normA;
@@ -5144,7 +5496,7 @@ function workRowHTML(importId, w, cfg) {
   }
   if (_wsTrimmed.length) flags.push(`<span class="pill pill--info" title="Whitespace trimmed: ${esc(_wsTrimmed.join(', '))}">${esc('Trimmed')}</span>`);
   if (_normDiffs.length) flags.push(`<span class="pill pill--info" title="Normalised: ${esc(_normDiffs.join(', '))}">${esc('Norm')}</span>`);
-  // Warnings from the per-work lookup (exclude "changed" types — those are normalisations)
+  // Warnings from the per-work lookup (exclude "changed" types -- those are normalisations)
   const wWarns = _warningsByWorkId[w.id];
   if (wWarns && wWarns.length) {
     const warnTypes = [...new Set(wWarns.filter(ww => !_LOW_CHANGED_TYPES.has(ww.warning_type)).map(ww => ww.warning_type))];
@@ -5184,9 +5536,10 @@ function workRowHTML(importId, w, cfg) {
     editionDisplay = brackets ? `(${inner})` : inner;
   }
 
+  // Pack 04b -- row click opens the drawer; no longer an inline-expansion row.
   return `
     <tr id="wr-${esc(w.id)}" class="work-row ${included ? '' : 'row-excluded'}"
-      onclick="toggleOverrideForm('${esc(importId)}','${esc(w.id)}')">
+      onclick="_openDrawer('${esc(importId)}','${esc(w.id)}')">
       <td class="col-no">${esc(w.raw_cat_no ?? '')}</td>
       <td class="${hasOverride && o?.artist_name_override ? 'cell-overridden' : ''}">${esc(eff.artist_name ?? '')}${honorifics}</td>
       <td class="${hasOverride && o?.title_override ? 'cell-overridden' : ''}">${esc(eff.title ?? '')}${cfg.show_title_cased && eff.title_cased ? `<div class="title-cased-scan">${esc(eff.title_cased)}</div>` : ''}</td>
@@ -5196,9 +5549,6 @@ function workRowHTML(importId, w, cfg) {
       <td class="col-medium ${hasOverride && o?.medium_override ? 'cell-overridden' : ''}">${esc(eff.medium ?? '')}</td>
       <td class="col-flags"><div class="cell-flags">${flags.join('')}</div></td>
       <td class="col-chev" aria-hidden="true"><span class="works-row-chev">&rsaquo;</span></td>
-    </tr>
-    <tr id="ovr-${esc(w.id)}" class="override-form-row" style="display:none">
-      <td colspan="${cfg.show_artwork_column ? 9 : 8}" id="ovc-${esc(w.id)}"></td>
     </tr>`;
 }
 
@@ -5221,57 +5571,6 @@ async function toggleInclude(importId, workId, checkbox) {
   } finally {
     checkbox.disabled = false;
   }
-}
-
-async function toggleIncludeFromDetail(importId, workId) {
-  const w = _workCache[workId];
-  if (!w) return;
-  const wasIncluded = w.include_in_export !== false;
-  const btn = document.getElementById(`wk-incl-btn-${workId}`);
-  if (btn) btn.disabled = true;
-  try {
-    await api('PATCH', `/imports/${importId}/works/${workId}/exclude?exclude=${wasIncluded}`);
-    const nowIncluded = !wasIncluded;
-    w.include_in_export = nowIncluded;
-    const row = document.getElementById(`wr-${workId}`);
-    if (row) row.className = `work-row ${nowIncluded ? '' : 'row-excluded'}`;
-    if (btn) {
-      btn.textContent = nowIncluded ? 'Exclude from export' : 'Include in export';
-      btn.className = nowIncluded ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-danger';
-    }
-  } catch (err) {
-    showToast(`Toggle failed: ${err.message}`, 'error');
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Override form
-// ---------------------------------------------------------------------------
-
-function toggleOverrideForm(importId, workId) {
-  const formRow = document.getElementById(`ovr-${workId}`);
-
-  // If this row is already open, close it
-  if (_expandedWorkId === workId) {
-    formRow.style.display = 'none';
-    document.getElementById(`ovc-${workId}`).innerHTML = '';
-    _expandedWorkId = null;
-    return;
-  }
-
-  // Close any other open panel
-  if (_expandedWorkId) {
-    const prev = document.getElementById(`ovr-${_expandedWorkId}`);
-    if (prev) prev.style.display = 'none';
-    const prevCell = document.getElementById(`ovc-${_expandedWorkId}`);
-    if (prevCell) prevCell.innerHTML = '';
-  }
-
-  _expandedWorkId = workId;
-  formRow.style.display = '';
-  _showWorkDetailPanel(importId, workId);
 }
 
 function showOverrideForm(importId, workId, existing) {
@@ -5438,7 +5737,9 @@ async function saveOverride(importId, workId) {
     // Update cache so the form re-renders with normalised hints intact
     if (_workCache[workId]) _workCache[workId].override = result;
     _refreshWorkRow(importId, workId);
-    _showWorkDetailPanel(importId, workId);
+    // Pack 04b -- drawer refresh hook lands in Pack 04c (when the override
+    // form lives inside the drawer's full mode). For now the row refresh
+    // above is enough; the user can re-open the drawer to see updated state.
     showOverrideForm(importId, workId, result);
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Saved'; s.className = 'status-msg success'; }
@@ -5456,7 +5757,9 @@ async function deleteOverride(importId, workId) {
     // Remove from cache
     if (_workCache[workId]) _workCache[workId].override = null;
     _refreshWorkRow(importId, workId);
-    _showWorkDetailPanel(importId, workId);
+    // Pack 04b -- drawer refresh hook lands in Pack 04c (when the override
+    // form lives inside the drawer's full mode). For now the row refresh
+    // above is enough; the user can re-open the drawer to see updated state.
     showToast('Override deleted', 'success');
   } catch (err) {
     if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.className = 'status-msg error'; }

@@ -2654,6 +2654,109 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .lg-sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid; display: inline-block; }
 .lg-sw.lg-pa { background: transparent !important; border-width: 1.5px; }
 
+/* ------------------------------------------------------------------ */
+/* Works drawer — Pack 04b (2026-05-30)                                */
+/* Ported from artifacts/source/proto.css. The drawer replaces the     */
+/* inline expand-and-edit row that used to appear under each work.     */
+/* Open/close translate is cascade-only (no CSS transition on the      */
+/* drawer itself — a stranded timeline can leave it off-screen). The   */
+/* page-container body-glide IS transitioned because worst-case it     */
+/* just jumps but stays visible.                                       */
+/* ------------------------------------------------------------------ */
+
+/* Body-glide on the SPA mount point. JS sets --drawer-shift and toggles
+   .drawer-shifted when the drawer opens. */
+#app { transition: transform .26s cubic-bezier(.4,0,.2,1); will-change: transform; }
+#app.drawer-shifted { transform: translateX(var(--drawer-shift, 0)); }
+
+/* Scrim behind the drawer. Click-to-close handler is wired in JS. */
+.scrim {
+  position: fixed; inset: 0; background: rgba(20,18,16,.34);
+  opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 200;
+}
+.scrim.show { opacity: 1; pointer-events: auto; }
+
+/* The drawer itself. NB: no transition on translate -- cascade-only. */
+.drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: min(640px, 94vw);
+  background: var(--card); box-shadow: -16px 0 40px -20px rgba(0,0,0,.4);
+  translate: 102% 0; z-index: 210; display: flex; flex-direction: column;
+}
+.drawer.show { translate: 0 0; }
+.drawer.full { width: min(1180px, 98vw); }
+@media (max-width: 780px) { .drawer.full { width: 98vw; } }
+
+.drawer__top {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg-alt);
+}
+.drawer__pager { display: flex; gap: 4px; }
+.drawer__pager button {
+  width: 30px; height: 30px; border: 1px solid var(--border-strong); background: #fff;
+  border-radius: 6px; cursor: pointer; font-size: 15px; color: var(--muted-2); line-height: 1;
+}
+.drawer__pager button:hover { background: var(--bg); color: var(--ra-dark); }
+.drawer__pager button:disabled { opacity: .35; cursor: not-allowed; }
+.drawer__pos { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.drawer__close {
+  margin-left: auto; width: 32px; height: 32px; border: none; background: transparent;
+  font-size: 22px; color: var(--muted); cursor: pointer; line-height: 1; border-radius: 6px;
+}
+.drawer__close:hover { background: #eee; color: var(--ra-dark); }
+.drawer__scroll { overflow-y: auto; flex: 1; }
+.drawer__hero { padding: 18px 20px 16px; border-bottom: 1px solid var(--border); }
+.drawer__venue { font-size: 12px; font-weight: 600; color: var(--ra-red); margin-bottom: 3px; }
+.drawer__cat { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.drawer__title { font-size: 20px; font-weight: 700; line-height: 1.2; margin: 4px 0 6px; }
+.drawer__artist { font-size: 14px; color: var(--muted-2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drawer__flags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+/* Inline warning detail messages under the flag pills (option a -- busier,
+   readable; details is what this view is for). */
+.drawer__warning-details { margin-top: 10px; font-size: 12px; color: var(--muted-2); line-height: 1.55; }
+.drawer__warning-details small { display: block; }
+.drawer__warning-details small + small { margin-top: 4px; }
+.drawer__sec { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.drawer__sec-lab {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.drawer__sec-lab .star { color: var(--ra-red); }
+.drawer__ovr { padding: 18px 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+.drawer__ovr .btn-primary { background: var(--ra-dark); color: #fff; border-color: var(--ra-dark); font-weight: 600; }
+.drawer__ovr .btn-primary:hover { background: #000; }
+.drawer__ovr-stub { padding: 18px 20px; color: var(--muted); font-style: italic; font-size: 13px; }
+
+/* Output preview controls inside the drawer */
+.opv__bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.opv__tmpl { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted-2); }
+.opv__tmpl select {
+  font: inherit; font-size: 12.5px; padding: 4px 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: #fff;
+}
+.opv__tabs { display: flex; gap: 4px; margin-left: auto; }
+.opv__tabs button {
+  font: inherit; font-size: 12px; font-weight: 600; padding: 5px 11px;
+  border: 1px solid var(--border); background: var(--bg-alt); color: var(--muted-2);
+  border-radius: 6px; cursor: pointer;
+}
+.opv__tabs button.on { background: #fff; color: var(--ra-dark); border-color: var(--border-strong); }
+
+/* "What changed" compact comparison list */
+.cmpl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cmpl td { padding: 5px 6px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
+.cmpl tr:last-child td { border-bottom: none; }
+.cmpl-f { color: var(--muted-2); width: 80px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding-top: 7px; }
+.cmpl-from { color: var(--muted); }
+.cmpl-ar { color: var(--muted); width: 18px; text-align: center; }
+.cmpl-to { color: var(--ra-dark); }
+.cmpl tr.is-chg .cmpl-to { font-weight: 600; }
+.cmpl tr:not(.is-chg) .cmpl-to { color: var(--muted); }
+.cmpl-none { font-size: 13px; color: var(--muted); padding: 4px 0; font-style: italic; }
+
+/* Row accent when its work is the drawer's active work */
+.works-table tbody tr.is-active { background: #fdf4f2; box-shadow: inset 3px 0 0 var(--ra-red); }
+.works-table tbody tr.is-active:hover { background: #fdf4f2; }
+
 .taggedtext-wrap { position: relative; }
 .taggedtext {
   background: #1a1a1a; color: #f0f0f0; font-family: var(--mono); font-size: 12px; line-height: 1.6;
