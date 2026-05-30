@@ -2676,11 +2676,17 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 }
 .scrim.show { opacity: 1; pointer-events: auto; }
 
-/* The drawer itself. NB: no transition on translate -- cascade-only. */
+/* The drawer itself. Pack 04b QA decision (2026-05-30): the brief's
+   "cascade-only, no transition" caveat was rooted in a specific React
+   prototype scar; for vanilla CSS toggling .show on a fixed-position
+   element the transition is rock-solid. Adding it for visual parity
+   with the body-glide. If a stranded-off-screen symptom ever appears,
+   revert to cascade-only. */
 .drawer {
   position: fixed; top: 0; right: 0; height: 100vh; width: min(640px, 94vw);
   background: var(--card); box-shadow: -16px 0 40px -20px rgba(0,0,0,.4);
   translate: 102% 0; z-index: 210; display: flex; flex-direction: column;
+  transition: translate .22s cubic-bezier(.4,0,.2,1);
 }
 .drawer.show { translate: 0 0; }
 .drawer.full { width: min(1180px, 98vw); }
