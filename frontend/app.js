@@ -3662,10 +3662,23 @@ function _renderPreviewParagraphHTML(linesHTML, styleName, mode, maps) {
   return `<div class="pv-para"><div class="pv-para__tag"><span class="pv-tag--para">&para; ${styleName ? esc(styleName) : '<em>default</em>'}</span></div>${linesHTML}</div>`;
 }
 
-// Pack 04a — Render the preview legend. mode:'editor' is the existing
-// 5-icon static key; mode:'works' is the colour-swatch map from
-// _buildStyleMaps plus the canonical separator key.
+// Pack 04a / Pack 04b QA refactor (2026-05-30) -- Unified legend for
+// both modes. Shared structure + shared separator key (same .pv-sep__glyph
+// element the preview uses) so the two legends read as variants of the
+// same design system rather than two parallel inventions. The only
+// mode-specific difference is the swatch mapping: works has per-style
+// colours from _buildStyleMaps; editor has one generic orange swatch
+// because every styled token in editor mode wears the same highlight
+// (the inline style-name labels carry the per-style information).
+//
+// The old .lg / .lg--styled / .lg--tab / .lg--rtab / .lg--soft / .lg--para
+// CSS rules are now unreferenced -- Pack 05a will sweep them.
 function _renderPreviewLegendHTML(mode, maps) {
+  const sg = (entity) => `<span class="pv-sep__glyph">${entity}</span>`;
+  const separators =
+    `<span class="lg-grp"><b>separators</b> ` +
+    `${sg('&middot;')} space ${sg('&rarr;')} tab ${sg('&#8677;')} right-tab ` +
+    `${sg('&#8629;')} soft return ${sg('&para;')} hard return</span>`;
   if (mode === 'works' && maps) {
     const cs = maps.cs.length
       ? maps.cs.map((n, i) => `<span class="lg-item"><span class="lg-sw cs-${i % 6}"></span>${esc(n)}</span>`).join('')
@@ -3673,22 +3686,22 @@ function _renderPreviewLegendHTML(mode, maps) {
     const pa = maps.pa.length
       ? maps.pa.map((n, i) => `<span class="lg-item"><span class="lg-sw lg-pa pa-${i % 6}"></span>${esc(n)}</span>`).join('')
       : '<span class="lg-item"><em>none</em></span>';
-    // Separator glyphs reuse .pv-sep__glyph so the legend renders them
-    // with the exact same mono-font / colour / opacity / weight that
-    // the preview itself uses -- visual parity is the whole point.
-    const sg = (entity) => `<span class="pv-sep__glyph">${entity}</span>`;
     return `<div class="preview__legend">` +
       `<span class="lg-grp"><b>fill = character style</b>${cs}</span>` +
       `<span class="lg-grp"><b>border = paragraph</b>${pa}</span>` +
-      `<span class="lg-grp"><b>separators</b> ${sg('&middot;')} space ${sg('&rarr;')} tab ${sg('&#8677;')} right-tab ${sg('&#8629;')} soft return ${sg('&para;')} hard return</span></div>`;
+      `${separators}</div>`;
   }
-  return `<div class="preview__legend">
-      <span><i class="lg lg--styled"></i> character-styled</span>
-      <span><i class="lg lg--tab">&rarr;</i> tab</span>
-      <span><i class="lg lg--rtab">&#8677;</i> right-indent tab</span>
-      <span><i class="lg lg--soft">&#8629;</i> soft return / wrap</span>
-      <span><i class="lg lg--para">&para;</i> new paragraph</span>
-    </div>`;
+  // Editor mode: one generic orange swatch (the colour every styled token
+  // already wears via .pv-tok--styled); paragraph styles are shown inline
+  // as ¶ NAME above each paragraph, so no border-= group is needed.
+  const editorSwatch =
+    `<span class="lg-item">` +
+      `<span class="lg-sw" style="background:var(--tok-bg);border-color:var(--tok-bd)"></span>` +
+      `<em>any styled value</em>` +
+    `</span>`;
+  return `<div class="preview__legend">` +
+    `<span class="lg-grp"><b>fill = character-styled</b>${editorSwatch}</span>` +
+    `${separators}</div>`;
 }
 
 // Pack 04a (2026-05-30) — Pure preview-renderer. Takes a template's
