@@ -1319,11 +1319,6 @@ details.section-block[open] > .section-summary::before {
 /* Opt-in sticky section (applied per page in Pack 03 — never on bare .section-block).
    Audit log + Tools keep the base class and are provably unaffected. */
 .section-block--sticky > .section-summary { position:sticky; top:var(--site-header-h,0); z-index:20; background:var(--bg); }
-/* Default stuck-shadow: on the summary itself. Applies whenever the block
-   has no sticky data-table thead beneath (e.g., a hypothetical sticky
-   section with no table). The .has-sticky-thead marker (set in JS at
-   wiring time) overrides this to move the shadow to the thead. */
-.section-block--sticky > .section-summary.is-stuck { box-shadow:0 8px 10px -9px rgba(0,0,0,.25); }
 /* Pin the table column header below the sticky summary so column meaning
    survives the scroll. Pack 03 (2026-05-29). Applies to any .data-table
    inside a sticky block — covers LoW .works-table AND Index .index-table.
@@ -1337,14 +1332,17 @@ details.section-block[open] > .section-summary::before {
   background: var(--card);
   z-index: 15;
 }
-/* Pack 03 (2026-05-29) — when the section has a sticky data-table thead
-   beneath the summary, the shadow moves DOWN to the bottom of the column
-   header. The summary + thead are functionally one pinned header block
-   while stuck; the shadow should sit below the whole block, not between
-   the two halves. JS adds .has-sticky-thead to qualifying blocks at
-   wiring time. */
-.section-block--sticky.has-sticky-thead > .section-summary.is-stuck { box-shadow:none; }
-.section-block--sticky.has-sticky-thead .section-summary.is-stuck ~ .data-table thead th { box-shadow:0 8px 10px -9px rgba(0,0,0,.25); }
+/* Stuck-shadow feature dropped 2026-05-30 (see docs/roadmap.md maintenance
+   backlog). The shadow rules and the .is-stuck class toggling that fed
+   them were investigated for ~1h after Luke reported the shadow was
+   invisible in two browsers; with a 60% red diagnostic value, the shadow
+   STILL didn't read visibly in real-time browser inspection, suggesting
+   a stacking-context or compositing subtlety we couldn't pin down in
+   the time available. The sticky pinning itself (summary + thead) works
+   correctly and stays. The .is-stuck class is still toggled by the JS
+   IntersectionObserver in _wireStickySections, harmlessly -- no CSS
+   currently references it; the hook stays available for a future fix
+   or alternative use. */
 
 /* Audit log */
 .audit-table .col-ts { width: 140px; font-size: var(--t-label); }
