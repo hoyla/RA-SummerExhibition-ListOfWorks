@@ -385,7 +385,7 @@ a:hover { text-decoration: underline; }
   flex-shrink: 0;
 }
 .ka-card-body {
-  padding: 16px;
+  padding: var(--sp-4);
 }
 .ka-check-label {
   font-size: 13px;
@@ -1382,7 +1382,7 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .tool-block {
   border: 1px solid #e5e5e5;
   border-radius: 6px;
-  padding: 14px;
+  padding: var(--sp-4);
   background: #fcfcfc;
 }
 .tool-block h4 { margin: 0 0 10px; font-size: var(--t-body); }
@@ -2518,7 +2518,7 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .te-rightcol__sub { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-top: none; padding: 8px 14px; font-size: var(--t-label); color: var(--muted); }
 .te-rightcol__sub select { padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; background: #fff; font-size: var(--t-label); }
 
-.preview { background: #fff; border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; padding: 22px; }
+.preview { background: #fff; border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; padding: var(--sp-5); }
 .preview__paper {
   background: #fff; padding: 22px 20px; border: 1px solid #efefef; border-radius: 4px;
   background-image: linear-gradient(to right, rgba(0,0,0,0) 0, rgba(0,0,0,0) 32px, rgba(192,57,43,.05) 32px, rgba(192,57,43,.05) 33px, rgba(0,0,0,0) 33px);
@@ -2691,7 +2691,7 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 @media (max-width: 780px) { .full-cols { grid-template-columns: 1fr; } }
 .full-form { padding: 18px 22px; }
 .full-prev {
-  padding: 18px; background: #faf8f4; border-left: 1px solid var(--border);
+  padding: var(--sp-4); background: #faf8f4; border-left: 1px solid var(--border);
   position: sticky; top: 0; align-self: start;
   max-height: calc(100vh - 60px); overflow-y: auto;
 }
