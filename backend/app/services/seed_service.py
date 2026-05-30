@@ -82,33 +82,59 @@ def seed_builtin_templates(db=None) -> None:
             db.close()
 
 
-def seed_known_artists(db=None) -> None:
+def seed_known_artists(db=None) -> tuple[int, int]:
     """Idempotently insert KnownArtist rows from known-artists.json.
 
-    Unique key: (match_first_name, match_last_name, match_quals).  Entries
-    that already exist are skipped (no upsert of other fields -- once seeded,
-    editors own the row).  Every loader-inserted row carries ``is_seeded=True``.
+    Dedupe key matches the schema's uniqueness constraint exactly:
+    ``(match_first_name, match_last_name, match_quals, is_seeded=True)``.
+    A seed row is skipped only if a prior **seed** row with the same match
+    key already exists; a user-created row (is_seeded=False) with the same
+    match key does NOT block re-insertion. This is intentional and aligns
+    with two existing pieces of design:
 
-    If *db* is provided (e.g. in tests) the caller owns the session: this
-    function will flush but not commit/rollback/close.  When *db* is None a
-    new SessionLocal session is created, committed, and closed here.
+      * The unique constraint is declared as
+        ``(match_first_name, match_last_name, match_quals, is_seeded)`` --
+        i.e. the schema explicitly allows one seed row and one user row
+        per match key to coexist.
+      * The match-cache builder in ``index_override_service.build_known_artist_cache``
+        explicitly handles coexistence at lookup time, with the comment
+        "User entries (is_seeded=False) take priority over seeded ones."
+
+    Net behaviour: if an editor has customised an artist by creating a
+    user override, the seed row may also exist (recreated on every startup
+    if the editor or a manual SQL action ever deleted it). At lookup time
+    the user override always wins. If the editor later removes their
+    override via the DELETE endpoint, the seed row is still present and
+    lookups fall back to the seed value rather than to no-match -- the
+    cleanest possible revert path.
+
+    Returns:
+        ``(added, skipped)`` -- counts of rows inserted and rows skipped
+        because a matching seed row already existed.
+
+    If *db* is provided (e.g. in tests, or by the admin re-seed endpoint
+    that wants to share its request-scoped session) the caller owns the
+    session: this function will flush but not commit/rollback/close.
+    When *db* is None a new SessionLocal session is created, committed,
+    and closed here.
     """
     from backend.app.models.known_artist_model import KnownArtist as _KnownArtist
 
     seed_file = _SEED_DIR / "known-artists.json"
     if not seed_file.exists():
-        return
+        return (0, 0)
 
     from backend.app.db import SessionLocal as _SessionLocal
 
     _external_db = db is not None
     if not _external_db:
         db = _SessionLocal()
+    added = 0
+    skipped = 0
     try:
         with open(seed_file, encoding="utf-8") as fp:
             entries = json.load(fp)
 
-        added = 0
         for entry in entries:
             match_first = entry.get("match_first_name")
             match_last = entry.get("match_last_name")
@@ -118,10 +144,12 @@ def seed_known_artists(db=None) -> None:
                     _KnownArtist.match_first_name == match_first,
                     _KnownArtist.match_last_name == match_last,
                     _KnownArtist.match_quals == entry.get("match_quals"),
+                    _KnownArtist.is_seeded == True,  # noqa: E712 -- SQLAlchemy filter, see ruff_lint_baseline.md
                 )
                 .first()
             )
             if existing:
+                skipped += 1
                 continue
             db.add(
                 _KnownArtist(
@@ -157,10 +185,12 @@ def seed_known_artists(db=None) -> None:
             db.commit()
         else:
             db.flush()
+        return (added, skipped)
     except Exception as exc:  # pragma: no cover
         logger.error("Known artists seed error: %s", exc)
         if not _external_db:
             db.rollback()
+        return (added, skipped)
     finally:
         if not _external_db:
             db.close()
