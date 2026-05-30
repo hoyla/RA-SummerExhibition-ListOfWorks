@@ -622,7 +622,7 @@ async function _runComparison() {
   const btn = document.getElementById('cmp-run-btn');
   const restore = btnLoading(btn, 'Comparing');
   const container = document.getElementById('cmp-result');
-  container.innerHTML = '<p class="loading" style="padding:20px 0">Comparing datasets\u2026</p>';
+  container.innerHTML = '<p class="empty-state">Comparing datasets\u2026</p>';
 
   try {
     const result = await api('POST', `/compare?low_import_id=${lowId}&index_import_id=${idxId}`);
@@ -747,7 +747,7 @@ function _renderCompareTable() {
   });
 
   if (!entries.length) {
-    wrap.innerHTML = '<p class="muted" style="padding:8px 0">No entries match this filter.</p>';
+    wrap.innerHTML = '<p class="empty-state empty-state--compact">No entries match this filter.</p>';
     return;
   }
 
@@ -1008,7 +1008,7 @@ function renderAuditPanel(logs) {
   const panel = document.getElementById('audit-panel');
   if (!panel) return;
   if (!logs.length) {
-    panel.innerHTML = '<p class="muted" style="padding:4px 0">No audit log entries yet.</p>';
+    panel.innerHTML = '<p class="empty-state empty-state--compact">No audit log entries yet.</p>';
     return;
   }
   panel.innerHTML = `
@@ -1126,7 +1126,7 @@ function _reconcileRulesPanel(rc) {
 
 async function renderSettings(initialTab) {
   const app = document.getElementById('app');
-  app.innerHTML = '<p class="loading" style="padding:40px 0">Loading settings&hellip;</p>';
+  app.innerHTML = '<p class="empty-state">Loading settings&hellip;</p>';
   let cfg, knownArtists, reconcileCfg;
   try {
     [cfg, knownArtists, reconcileCfg] = await Promise.all([
@@ -2535,7 +2535,7 @@ function moveComponent(btn, dir) {
 
 async function renderTemplates() {
   const app = document.getElementById('app');
-  app.innerHTML = '<p class="loading" style="padding:40px 0">Loading templates&hellip;</p>';
+  app.innerHTML = '<p class="empty-state">Loading templates&hellip;</p>';
 
   let lowTemplates, idxTemplates;
   try {
@@ -2708,7 +2708,7 @@ async function exportTemplate(id, kind, btnEl) {
 
 async function renderIndexTemplateEdit(id) {
   const app = document.getElementById('app');
-  app.innerHTML = '<p class="loading" style="padding:40px 0">Loading&hellip;</p>';
+  app.innerHTML = '<p class="empty-state">Loading&hellip;</p>';
 
   const isNew = id === 'new';
   let cfg = {};
@@ -3210,7 +3210,7 @@ function _teNormalize() {
 
 async function renderTemplateEdit(id) {
   const app = document.getElementById('app');
-  app.innerHTML = '<p class="loading" style="padding:40px 0">Loading&hellip;</p>';
+  app.innerHTML = '<p class="empty-state">Loading&hellip;</p>';
   const isNew = id === 'new';
   let cfg = {};
   let isBuiltin = false;
@@ -4397,7 +4397,7 @@ async function renderDetail(importId) {
       <div class="tools-body">
         <section class="tool-block">
           <h4>Export</h4>
-          <div id="export-panel-${esc(importId)}"><p class="loading" style="padding:4px 0">Loading templates\u2026</p></div>
+          <div id="export-panel-${esc(importId)}"><p class="empty-state empty-state--compact">Loading templates\u2026</p></div>
         </section>
         ${ifEditor(`<section class="tool-block reimport-panel">
           <h4>Update Import</h4>
@@ -6515,7 +6515,7 @@ function _paintReconGroups() {
     return true;
   });
   if (!filtered.length) {
-    host.innerHTML = '<p class="muted" style="margin:8px 0">No differences match the current filter.</p>';
+    host.innerHTML = '<p class="empty-state empty-state--compact">No differences match the current filter.</p>';
     return;
   }
   const structural = filtered.filter(f => f.fix_channel === 'spreadsheet');
@@ -6894,7 +6894,7 @@ async function renderIndexDetail(importId) {
     </section>`)}
     <section class="panel">
       <h3>Export</h3>
-      <div id="index-export-panel"><p class="loading" style="padding:4px 0">Loading templates…</p></div>
+      <div id="index-export-panel"><p class="empty-state empty-state--compact">Loading templates…</p></div>
     </section>
     <section class="panel" id="index-warnings-panel"><p class="loading">Loading flagged issues\u2026</p></section>
     <section class="panel">
@@ -6994,7 +6994,7 @@ function renderIndexAuditPanel(logs) {
   const panel = document.getElementById('index-audit-panel');
   if (!panel) return;
   if (!logs.length) {
-    panel.innerHTML = '<p class="muted" style="padding:4px 0">No audit log entries yet.</p>';
+    panel.innerHTML = '<p class="empty-state empty-state--compact">No audit log entries yet.</p>';
     return;
   }
   panel.innerHTML = `
