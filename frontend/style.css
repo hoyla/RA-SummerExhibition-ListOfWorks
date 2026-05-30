@@ -613,9 +613,6 @@ a:hover { text-decoration: underline; }
 .btn-warning   { background: #fff; color: var(--warning); border-color: var(--warning); }
 .btn-warning:hover { background: #fdf8f0; }
 
-.btn-success   { background: #fff; color: var(--success); border-color: var(--success); }
-.btn-success:hover { background: #f0fdf4; }
-
 .btn-sm  { padding: 4px 10px; font-size: var(--t-label); }
 .btn-xs  { padding: 2px 8px;  font-size: var(--t-mini); }
 

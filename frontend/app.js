@@ -1750,9 +1750,9 @@ async function _loadUsersTable() {
         <td>${statusBadge}</td>
         <td>
           ${u.enabled
-            ? `<button class="btn btn-sm" onclick="_toggleUser('${esc(u.username)}', false)" style="font-size:0.75rem">Disable</button>`
-            : `<button class="btn btn-sm" onclick="_toggleUser('${esc(u.username)}', true)" style="font-size:0.75rem">Enable</button>`}
-          <button class="btn btn-sm" onclick="_showResetPassword('${esc(u.username)}')" style="font-size:0.75rem;margin-left:4px">Reset PW</button>
+            ? `<button class="btn btn-sm" onclick="_toggleUser('${esc(u.username)}', false)">Disable</button>`
+            : `<button class="btn btn-sm" onclick="_toggleUser('${esc(u.username)}', true)">Enable</button>`}
+          <button class="btn btn-sm" onclick="_showResetPassword('${esc(u.username)}')" style="margin-left:4px">Reset PW</button>
         </td>
       </tr>`;
     }).join('');
