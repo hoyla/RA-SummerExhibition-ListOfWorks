@@ -5335,6 +5335,12 @@ function _drawerRefreshView() {
     btn.addEventListener('click', () => _drawerSetMode(btn.dataset.drawerMode));
   });
   aside.querySelector('[data-drawer-exclude]')?.addEventListener('click', _drawerToggleExclude);
+  // Pack 04c -- Save / Delete in the sticky top bar (form's internal
+  // Save/Delete buttons were removed). saveOverride / deleteOverride
+  // still read the form by its #ovf-${workId} id and write the status
+  // span by #ovs-${workId} (now in the top bar) -- no signature change.
+  aside.querySelector('[data-drawer-save]')?.addEventListener('click', () => saveOverride(_drawer.importId, _drawer.workId));
+  aside.querySelector('[data-drawer-delete]')?.addEventListener('click', () => deleteOverride(_drawer.importId, _drawer.workId));
   aside.querySelector('[data-drawer-tpl]')?.addEventListener('change', async (e) => {
     _drawer.tplId = e.target.value;
     // Fetch the full config (with components) for the newly-selected
@@ -5457,6 +5463,29 @@ function _renderDrawer() {
     : esc(pos);
   const prevDisabled = idx <= 0 ? ' disabled' : '';
   const nextDisabled = idx < 0 || idx >= _drawer.workIds.length - 1 ? ' disabled' : '';
+  // Pack 04c (2026-05-31): action buttons live in the sticky top bar
+  // so they're always reachable regardless of form scroll position.
+  // Read mode: Exclude + "All changes & edit →". Full mode: Save +
+  // Delete (only if an override exists) + Done. Status span (#ovs-)
+  // lives in the full-mode top bar so saveOverride/deleteOverride
+  // find it where the user is looking.
+  const hasOvr = !!_drawer.existingOverride;
+  let actions = '';
+  if (_drawer.mode === 'full') {
+    actions = `
+      <div class="drawer__actions">
+        <button type="button" class="btn btn-sm btn-primary" data-drawer-save>Save</button>
+        ${hasOvr ? '<button type="button" class="btn btn-sm btn-danger" data-drawer-delete>Delete override</button>' : ''}
+        <button type="button" class="btn btn-sm" data-drawer-mode="read">&larr; Done</button>
+        <span id="ovs-${esc(w.id)}" class="status-msg drawer__status"></span>
+      </div>`;
+  } else {
+    actions = `
+      <div class="drawer__actions">
+        ${ifEditor(`<button type="button" class="btn btn-sm" data-drawer-exclude>${w.include_in_export !== false ? 'Exclude from export' : 'Re-include'}</button>`)}
+        ${ifEditor('<button type="button" class="btn btn-sm btn-primary" data-drawer-mode="full">All changes &amp; edit &rarr;</button>')}
+      </div>`;
+  }
   const top = `
     <div class="drawer__top">
       <div class="drawer__pager">
@@ -5464,6 +5493,7 @@ function _renderDrawer() {
         <button type="button" data-drawer-next title="Next (→)"${nextDisabled}>›</button>
       </div>
       <span class="drawer__pos">${positionLabel}</span>
+      ${actions}
       <button type="button" class="drawer__close" title="Close (Esc)">×</button>
     </div>`;
   if (_drawer.mode === 'full') {
@@ -5511,10 +5541,6 @@ function _renderDrawer() {
       <div class="drawer__sec">
         <div class="drawer__sec-lab">What changed</div>
         ${_drawerRenderWhatChangedHTML(w, cfg)}
-      </div>
-      <div class="drawer__ovr">
-        ${ifEditor('<button type="button" class="btn btn-sm btn-primary" data-drawer-mode="full">View all changes &amp; edit override →</button>')}
-        ${ifEditor(`<button type="button" class="btn btn-sm" data-drawer-exclude>${w.include_in_export !== false ? 'Exclude from export' : 'Re-include'}</button>`)}
       </div>
     </div>`;
 }
@@ -6038,12 +6064,14 @@ function showOverrideForm(importId, workId, existing) {
 
   const cell = document.getElementById(`wk-ovc-${workId}`);
   if (!cell) return;
+  // Pack 04c (2026-05-31): the form's internal header (with Close ✕)
+  // and Save / Delete footer were removed -- those actions live in the
+  // drawer's sticky top bar now (always reachable regardless of form
+  // scroll position). The status span (#ovs-${workId}) moves to the
+  // top bar too, where saveOverride/deleteOverride continue to target
+  // it by the same ID.
   cell.innerHTML = `
-    <div class="override-form" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
-        <h5 style="margin:0">Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click a current or InDesign chip to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
-        <button type="button" class="btn btn-xs btn-secondary" style="flex-shrink:0;margin-left:16px" onclick="event.stopPropagation(); _drawerSetMode('read')">Close &#x2715;</button>
-      </div>
+    <div class="override-form">
       <div class="override-field-form" id="ovf-${esc(workId)}">
         <div class="low-ovr-grid ovr-grid">
           <div class="ka-section">
@@ -6096,11 +6124,6 @@ function showOverrideForm(importId, workId, existing) {
           <div class="ka-footer-notes">
             <label>Notes</label>
             <input type="text" name="notes" value="${val('notes')}" placeholder="Why this override exists">
-          </div>
-          <div class="ovr-actions">
-            <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
-            ${existing ? `<button class="btn btn-danger" onclick="deleteOverride('${esc(importId)}','${esc(workId)}')">Delete Override</button>` : ''}
-            <span id="ovs-${esc(workId)}" class="status-msg"></span>
           </div>
         </div>
       </div>
