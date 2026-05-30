@@ -5460,6 +5460,15 @@ function _drawerRenderOutputPreviewHTML(w, cfg) {
   if (!Array.isArray(full.components) || full.components.length === 0) {
     return tplBar + '<p class="cmpl-none">Template has no components configured.</p>';
   }
+  // Inject per-field char_style onto each component -- the API stores
+  // char styles as top-level template fields (title_style, artist_style,
+  // ...), not on the components themselves. The editor does the same
+  // injection in renderTemplateEdit so renderEntryPreview /
+  // renderEntryTaggedText receive components that carry their style.
+  const componentsWithStyles = full.components.map(c => ({
+    ...c,
+    char_style: c.char_style || full[_TE_CHAR_KEY[c.field]] || '',
+  }));
   const fieldValues = _workEffectiveFieldValues(w, cfg);
   const opts = {
     entry_style: full.entry_style || '',
@@ -5467,8 +5476,8 @@ function _drawerRenderOutputPreviewHTML(w, cfg) {
     trailing_separator: full.trailing_separator || 'none',
   };
   const body = _drawer.tab === 'tagged'
-    ? renderEntryTaggedText(full.components, fieldValues, opts)
-    : renderEntryPreview(full.components, fieldValues, { ...opts, mode: 'works' });
+    ? renderEntryTaggedText(componentsWithStyles, fieldValues, opts)
+    : renderEntryPreview(componentsWithStyles, fieldValues, { ...opts, mode: 'works' });
   return tplBar + body;
 }
 
