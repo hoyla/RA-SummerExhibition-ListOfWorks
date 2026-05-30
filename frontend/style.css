@@ -2705,9 +2705,17 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .drawer__pager button:disabled { opacity: .35; cursor: not-allowed; }
 .drawer__pos { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .drawer__close {
-  margin-left: auto; width: 32px; height: 32px; border: none; background: transparent;
+  width: 32px; height: 32px; border: none; background: transparent;
   font-size: 22px; color: var(--muted); cursor: pointer; line-height: 1; border-radius: 6px;
 }
+/* Pack 04c -- mode-aware action group in the sticky top bar. margin-left:
+   auto pushes everything from .drawer__actions rightward (close stays at
+   the far right). flex-wrap lets the actions break to a second row on
+   very narrow drawer widths rather than overflowing the close button. */
+.drawer__actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.drawer__status { font-size: 12px; color: var(--muted); margin-left: 4px; min-width: 60px; white-space: nowrap; }
+.drawer__status.success { color: var(--success); }
+.drawer__status.error { color: var(--ra-red); }
 .drawer__close:hover { background: #eee; color: var(--ra-dark); }
 .drawer__scroll { overflow-y: auto; flex: 1; }
 .drawer__hero { padding: 18px 20px 16px; border-bottom: 1px solid var(--border); }
@@ -2732,6 +2740,55 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .drawer__ovr .btn-primary { background: var(--ra-dark); color: #fff; border-color: var(--ra-dark); font-weight: 600; }
 .drawer__ovr .btn-primary:hover { background: #000; }
 .drawer__ovr-stub { padding: 18px 20px; color: var(--muted); font-style: italic; font-size: 13px; }
+
+/* ---- Full mode (Pack 04c 2026-05-31) ----
+   Wide drawer (set on .drawer.full). Top: untruncated diff table.
+   Bottom: two columns -- form on left, pinned live preview on right. */
+.drawer__full { overflow-y: auto; flex: 1; }
+.full-diff { padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.full-cols { display: grid; grid-template-columns: minmax(0, 1fr) 400px; align-items: start; }
+@media (max-width: 780px) { .full-cols { grid-template-columns: 1fr; } }
+.full-form { padding: 18px 22px; }
+.full-prev {
+  padding: 18px; background: #faf8f4; border-left: 1px solid var(--border);
+  position: sticky; top: 0; align-self: start;
+  max-height: calc(100vh - 60px); overflow-y: auto;
+}
+@media (max-width: 780px) {
+  .full-prev { border-left: none; border-top: 1px solid var(--border); position: static; }
+}
+.edit-pane__head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+.edit-pane__head span { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.preview-pane__head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+
+/* Full-mode untruncated diff table -- table-layout:fixed + word-break so
+   every value shows in full. .ph = "changed in this step" (bold);
+   .mut = muted em-dash placeholder; .cmp-col + .cmp-dif = the tinted
+   Selected-export comparison lane (not bold; cells that differ from
+   what would export now get a deeper tint). */
+.fulltbl-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.fulltbl { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.fulltbl col.c-field { width: 90px; }
+.fulltbl th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--info); font-weight: 600; padding: 7px 9px; border-bottom: 1px solid var(--border); background: var(--bg-alt); }
+.fulltbl td { padding: 7px 9px; border-bottom: 1px solid #f0f0f0; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; white-space: normal; color: var(--muted-2); }
+.fulltbl tr:last-child td { border-bottom: none; }
+.fulltbl .lbl { font-weight: 600; color: var(--ra-dark); }
+.fulltbl td.ph { font-weight: 700; color: var(--ra-dark); }
+.fulltbl td.mut { color: #bbb; }
+.fulltbl th.cmp-col, .fulltbl td.cmp-col { background: #eef3f8; }
+.fulltbl td.cmp-dif { background: #d8e6f6; color: var(--ra-dark); font-weight: 600; }
+.diff-note { font-size: 11.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+.diff-note b { color: var(--muted-2); }
+.cmp-key { background: #eef3f8; border: 1px solid #c5d6ea; border-radius: 3px; padding: 0 4px; color: #3a5572; font-size: 10.5px; }
+.muted-note { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11.5px; margin-left: 8px; }
+.muted-note b { color: var(--muted-2); font-weight: 700; }
+
+/* Sticky save bar at the bottom of the form column */
+.edit-actions {
+  display: flex; gap: 8px; position: sticky; bottom: 0;
+  background: linear-gradient(to top, var(--card) 70%, transparent);
+  padding: 14px 0 16px; margin-top: 14px; z-index: 5;
+}
 
 /* Output preview controls inside the drawer */
 .opv__bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }

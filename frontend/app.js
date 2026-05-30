@@ -5129,13 +5129,29 @@ function _workWarningsBadges(workId) {
 let _drawer = {
   importId: null,
   workId: null,
-  mode: 'read',        // 'read' | 'full'
-  workIds: [],         // flat ordered list across all sections, for the pager
-  templates: null,     // summary list from /templates (id + name + is_builtin)
-  tplFull: {},         // id -> full config (with components), cached on demand
-  tplId: null,         // selected template id for the output preview
-  tab: 'struct',       // 'struct' | 'tagged'
+  mode: 'read',           // 'read' | 'full'
+  workIds: [],            // flat ordered list across all sections, for the pager
+  templates: null,        // summary list from /templates (id + name + is_builtin)
+  tplFull: {},            // id -> full config (with components), cached on demand
+  tplId: null,            // selected template id for the output preview
+  tab: 'struct',          // 'struct' | 'tagged'
+  existingOverride: undefined, // Pack 04c -- full-mode-only; null = fetched-no-override-exists, undefined = not yet fetched
 };
+
+// Pack 04c -- fetch the work's existing override (if any) so the full-mode
+// form starts pre-populated. Caches in _drawer.existingOverride; on 404
+// (no override yet) stores null.
+async function _drawerFetchExistingOverride() {
+  if (!_drawer.importId || !_drawer.workId) return null;
+  try {
+    const existing = await api('GET', `/imports/${_drawer.importId}/works/${_drawer.workId}/override`);
+    _drawer.existingOverride = existing;
+    return existing;
+  } catch (err) {
+    _drawer.existingOverride = null;
+    return null;
+  }
+}
 
 // /templates returns only summaries (no components). The output preview
 // needs the full config -- fetched lazily per template id and cached.
@@ -5189,10 +5205,17 @@ function _drawerFlatWorkIds() {
 }
 
 async function _openDrawer(importId, workId) {
+  const isDifferentWork = _drawer.workId !== workId;
   _drawer.importId = importId;
   _drawer.workId = workId;
   _drawer.workIds = _drawerFlatWorkIds();
   if (_drawer.workIds.indexOf(workId) < 0) { _closeDrawer(); return; }
+  // Pack 04c: opening a different work invalidates any cached override
+  // from the previous one. Drop to read mode -- full-mode work is per-work.
+  if (isDifferentWork) {
+    _drawer.existingOverride = undefined;
+    _drawer.mode = 'read';
+  }
   if (!_drawer.templates) {
     try { _drawer.templates = await api('GET', '/templates'); }
     catch { _drawer.templates = []; }
@@ -5215,6 +5238,8 @@ async function _openDrawer(importId, workId) {
 
 function _closeDrawer() {
   if (!_drawer.workId) return;
+  // Pack 04c: prompt before discarding unsaved form values.
+  if (!_drawerConfirmDiscard()) return;
   _drawer.workId = null;
   _drawer.mode = 'read';
   const aside = document.getElementById('works-drawer');
@@ -5234,13 +5259,23 @@ function _closeDrawer() {
   }
 }
 
-function _drawerPage(delta) {
+async function _drawerPage(delta) {
   if (!_drawer.workId || !_drawer.workIds.length) return;
   const idx = _drawer.workIds.indexOf(_drawer.workId);
   if (idx < 0) return;
   const next = idx + delta;
   if (next < 0 || next >= _drawer.workIds.length) return; // clamp
+  // Pack 04c: prompt before discarding unsaved form values from the
+  // current work. The user can stay (Cancel) or page anyway (OK).
+  if (!_drawerConfirmDiscard()) return;
   _drawer.workId = _drawer.workIds[next];
+  // Pack 04c: paging to a new work invalidates the cached override. If
+  // we're in full mode, fetch the new work's override before re-rendering
+  // so the form starts populated.
+  _drawer.existingOverride = undefined;
+  if (_drawer.mode === 'full') {
+    await _drawerFetchExistingOverride();
+  }
   _drawerRefreshView();
   _drawerUpdateActiveRow();
   _drawerUpdateURL();
@@ -5248,7 +5283,17 @@ function _drawerPage(delta) {
   if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function _drawerSetMode(mode) {
+async function _drawerSetMode(mode) {
+  // Pack 04c QA (2026-05-31): leaving full mode (Done / Cancel / Esc /
+  // Close) with unsaved form values prompts to confirm. The user can
+  // cancel and keep editing, or proceed and lose the pending values.
+  if (mode === 'read' && _drawer.mode === 'full' && !_drawerConfirmDiscard()) return;
+  // Pack 04c: entering full mode requires the existing override to be
+  // fetched (so the form starts populated). Fire-and-forget from event
+  // handlers -- the refresh re-renders once the fetch resolves.
+  if (mode === 'full' && _drawer.existingOverride === undefined) {
+    await _drawerFetchExistingOverride();
+  }
   _drawer.mode = mode;
   _drawerRefreshView();
 }
@@ -5290,19 +5335,55 @@ function _drawerRefreshView() {
     btn.addEventListener('click', () => _drawerSetMode(btn.dataset.drawerMode));
   });
   aside.querySelector('[data-drawer-exclude]')?.addEventListener('click', _drawerToggleExclude);
+  // Pack 04c -- Save / Delete in the sticky top bar (form's internal
+  // Save/Delete buttons were removed). saveOverride / deleteOverride
+  // still read the form by its #ovf-${workId} id and write the status
+  // span by #ovs-${workId} (now in the top bar) -- no signature change.
+  aside.querySelector('[data-drawer-save]')?.addEventListener('click', () => saveOverride(_drawer.importId, _drawer.workId));
+  aside.querySelector('[data-drawer-delete]')?.addEventListener('click', () => deleteOverride(_drawer.importId, _drawer.workId));
   aside.querySelector('[data-drawer-tpl]')?.addEventListener('change', async (e) => {
     _drawer.tplId = e.target.value;
     // Fetch the full config (with components) for the newly-selected
     // template before re-rendering -- /templates returned summaries only.
     await _drawerEnsureFullTemplate(_drawer.tplId);
-    _drawerRefreshView();
+    // Pack 04c QA (2026-05-31): in full mode, do NOT do a heavyweight
+    // _drawerRefreshView -- that would re-render the form via
+    // showOverrideForm and lose any typed-but-unsaved values. Just
+    // re-render the preview body against the pending form values.
+    // The dropdown's selected option is already updated by the user.
+    if (_drawer.mode === 'full') _drawerOnFormInput();
+    else _drawerRefreshView();
   });
   aside.querySelectorAll('[data-drawer-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       _drawer.tab = btn.dataset.drawerTab;
-      _drawerRefreshView();
+      if (_drawer.mode === 'full') {
+        // Same reason as the template change: don't re-render the form.
+        // Toggle the .on class on the tab buttons manually (the bar
+        // isn't being re-rendered) + refresh the preview body.
+        aside.querySelectorAll('[data-drawer-tab]').forEach(b => {
+          b.classList.toggle('on', b.dataset.drawerTab === _drawer.tab);
+        });
+        _drawerOnFormInput();
+      } else {
+        _drawerRefreshView();
+      }
     });
   });
+  // Pack 04c -- full-mode: populate the override form into the
+  // #ovc-${workId} host that _renderDrawer's full branch emitted, and
+  // wire input listeners so the live preview re-renders on each
+  // keystroke. existingOverride === undefined means we haven't fetched
+  // yet (caller -- _drawerSetMode / _drawerPage -- should have); null
+  // means fetched and there isn't one yet.
+  if (_drawer.mode === 'full' && _drawer.existingOverride !== undefined) {
+    showOverrideForm(_drawer.importId, _drawer.workId, _drawer.existingOverride);
+    const formEl = document.getElementById(`ovf-${_drawer.workId}`);
+    if (formEl) {
+      formEl.addEventListener('input', _drawerOnFormInput);
+      formEl.addEventListener('change', _drawerOnFormInput);
+    }
+  }
 }
 
 async function _drawerToggleExclude() {
@@ -5325,7 +5406,14 @@ async function _drawerToggleExclude() {
 // Applies override on top of normalised values, with the same display
 // formatting as workRowHTML uses for the row.
 function _workEffectiveFieldValues(w, cfg) {
-  const o = w.override || {};
+  return _workEffectiveFieldValuesWith(w, w.override, cfg);
+}
+
+// Pack 04c -- same shape as _workEffectiveFieldValues but takes the
+// override object explicitly so the drawer's full mode can preview
+// pending (unsaved) form values without mutating w.override.
+function _workEffectiveFieldValuesWith(w, override, cfg) {
+  const o = override || {};
   cfg = cfg || _getDisplayCfg();
   const title       = o.title_override        ?? w.title        ?? '';
   const title_cased = o.title_cased_override  ?? w.title_cased  ?? '';
@@ -5375,6 +5463,29 @@ function _renderDrawer() {
     : esc(pos);
   const prevDisabled = idx <= 0 ? ' disabled' : '';
   const nextDisabled = idx < 0 || idx >= _drawer.workIds.length - 1 ? ' disabled' : '';
+  // Pack 04c (2026-05-31): action buttons live in the sticky top bar
+  // so they're always reachable regardless of form scroll position.
+  // Read mode: Exclude + "All changes & edit →". Full mode: Save +
+  // Delete (only if an override exists) + Done. Status span (#ovs-)
+  // lives in the full-mode top bar so saveOverride/deleteOverride
+  // find it where the user is looking.
+  const hasOvr = !!_drawer.existingOverride;
+  let actions = '';
+  if (_drawer.mode === 'full') {
+    actions = `
+      <div class="drawer__actions">
+        <button type="button" class="btn btn-sm btn-primary" data-drawer-save>Save</button>
+        ${hasOvr ? '<button type="button" class="btn btn-sm btn-danger" data-drawer-delete>Delete override</button>' : ''}
+        <button type="button" class="btn btn-sm" data-drawer-mode="read">&larr; Done</button>
+        <span id="ovs-${esc(w.id)}" class="status-msg drawer__status"></span>
+      </div>`;
+  } else {
+    actions = `
+      <div class="drawer__actions">
+        ${ifEditor(`<button type="button" class="btn btn-sm" data-drawer-exclude>${w.include_in_export !== false ? 'Exclude from export' : 'Re-include'}</button>`)}
+        ${ifEditor('<button type="button" class="btn btn-sm btn-primary" data-drawer-mode="full">All changes &amp; edit &rarr;</button>')}
+      </div>`;
+  }
   const top = `
     <div class="drawer__top">
       <div class="drawer__pager">
@@ -5382,15 +5493,43 @@ function _renderDrawer() {
         <button type="button" data-drawer-next title="Next (→)"${nextDisabled}>›</button>
       </div>
       <span class="drawer__pos">${positionLabel}</span>
+      ${actions}
       <button type="button" class="drawer__close" title="Close (Esc)">×</button>
     </div>`;
   if (_drawer.mode === 'full') {
+    // Pack 04c -- wide drawer: untruncated diff table on top, two columns
+    // below (override form on left, pinned live preview on right). The
+    // form host (#ovc-${workId}) is populated by showOverrideForm via
+    // _drawerRefreshView after this innerHTML lands. The preview body
+    // (#drawer-full-preview) is populated inline and re-rendered on
+    // every form input.
+    const initialPending = _drawer.existingOverride || {};
+    const fieldValues = _workEffectiveFieldValuesWith(w, initialPending, cfg);
+    const previewBody = _drawerRenderOutputPreviewBodyHTML(w, fieldValues);
     return top + `
-      <div class="drawer__ovr-stub">
-        Full mode (untruncated diff + override form + pinned live preview)
-        lands in Pack 04c. For now, back to read mode and use the existing
-        controls there.
-        <div style="margin-top:14px"><button type="button" class="btn btn-sm" data-drawer-mode="read">← Back to read mode</button></div>
+      <div class="drawer__full">
+        <div class="full-diff">
+          <div class="drawer__sec-lab">
+            All changes
+            <span class="muted-note">spreadsheet → normalised → override${_drawerHasReconForCurrent() ? ' → selected export' : ''}</span>
+            <span class="muted-note"><b>Bold</b> marks a value changed in that step</span>
+          </div>
+          ${_drawerBuildFullDiffTable(w)}
+        </div>
+        <div class="full-cols">
+          <div class="full-form">
+            <div class="edit-pane__head">
+              Edit override
+              <span>leave a field blank to keep current · click a chip to copy · Enter for line breaks</span>
+            </div>
+            <div id="wk-ovc-${esc(w.id)}"></div>
+          </div>
+          <div class="full-prev">
+            <div class="preview-pane__head">Live preview</div>
+            ${_drawerRenderOutputPreviewBarHTML()}
+            <div id="drawer-full-preview">${previewBody}</div>
+          </div>
+        </div>
       </div>`;
   }
   return top + `
@@ -5403,10 +5542,6 @@ function _renderDrawer() {
       <div class="drawer__sec">
         <div class="drawer__sec-lab">What changed</div>
         ${_drawerRenderWhatChangedHTML(w, cfg)}
-      </div>
-      <div class="drawer__ovr">
-        ${ifEditor('<button type="button" class="btn btn-sm btn-primary" data-drawer-mode="full">View all changes &amp; edit override →</button>')}
-        ${ifEditor(`<button type="button" class="btn btn-sm" data-drawer-exclude>${w.include_in_export !== false ? 'Exclude from export' : 'Re-include'}</button>`)}
       </div>
     </div>`;
 }
@@ -5504,15 +5639,16 @@ function _drawerRenderHeroHTML(w, cfg) {
     </div>`;
 }
 
-function _drawerRenderOutputPreviewHTML(w, cfg) {
+// Pack 04c -- split into bar + body so the full mode can re-render just
+// the body on every form input (live preview), without rebuilding the
+// template selector / tabs (which would lose focus and selection state).
+function _drawerRenderOutputPreviewBarHTML() {
   const templates = _drawer.templates || [];
   const selectedId = _drawer.tplId || (templates[0] && templates[0].id);
-  const summary = templates.find(t => t.id === selectedId) || templates[0];
-  const full = selectedId ? _drawer.tplFull[selectedId] : null;
   const optionsHTML = templates.length
     ? templates.map(t => `<option value="${esc(t.id)}"${t.id === selectedId ? ' selected' : ''}>${esc(t.name || 'Untitled')}</option>`).join('')
     : '<option value="">(no templates)</option>';
-  const tplBar = `
+  return `
     <div class="opv__bar">
       <label class="opv__tmpl">Template
         <select data-drawer-tpl>${optionsHTML}</select>
@@ -5522,35 +5658,204 @@ function _drawerRenderOutputPreviewHTML(w, cfg) {
         <button type="button" data-drawer-tab="tagged" class="${_drawer.tab === 'tagged' ? 'on' : ''}">Tagged Text</button>
       </div>
     </div>`;
-  if (!summary) {
-    return tplBar + '<p class="cmpl-none">No templates available.</p>';
-  }
-  if (!full) {
-    // Full config (with components) still loading from /templates/{id}.
-    return tplBar + '<p class="cmpl-none">Loading template…</p>';
-  }
+}
+
+function _drawerRenderOutputPreviewBodyHTML(w, fieldValues) {
+  const templates = _drawer.templates || [];
+  const selectedId = _drawer.tplId || (templates[0] && templates[0].id);
+  const summary = templates.find(t => t.id === selectedId) || templates[0];
+  const full = selectedId ? _drawer.tplFull[selectedId] : null;
+  if (!summary) return '<p class="cmpl-none">No templates available.</p>';
+  if (!full)    return '<p class="cmpl-none">Loading template…</p>';
   if (!Array.isArray(full.components) || full.components.length === 0) {
-    return tplBar + '<p class="cmpl-none">Template has no components configured.</p>';
+    return '<p class="cmpl-none">Template has no components configured.</p>';
   }
-  // Inject per-field char_style onto each component -- the API stores
-  // char styles as top-level template fields (title_style, artist_style,
-  // ...), not on the components themselves. The editor does the same
-  // injection in renderTemplateEdit so renderEntryPreview /
-  // renderEntryTaggedText receive components that carry their style.
+  // Inject per-field char_style from top-level template fields
+  // (title_style, artist_style, ...) -- the API doesn't put them on
+  // components directly; the editor does the same injection.
   const componentsWithStyles = full.components.map(c => ({
     ...c,
     char_style: c.char_style || full[_TE_CHAR_KEY[c.field]] || '',
   }));
-  const fieldValues = _workEffectiveFieldValues(w, cfg);
   const opts = {
     entry_style: full.entry_style || '',
     leading_separator: full.leading_separator || 'none',
     trailing_separator: full.trailing_separator || 'none',
   };
-  const body = _drawer.tab === 'tagged'
+  return _drawer.tab === 'tagged'
     ? renderEntryTaggedText(componentsWithStyles, fieldValues, opts)
     : renderEntryPreview(componentsWithStyles, fieldValues, { ...opts, mode: 'works' });
-  return tplBar + body;
+}
+
+// Read mode wrapper -- composes bar + body using the saved override.
+function _drawerRenderOutputPreviewHTML(w, cfg) {
+  const fieldValues = _workEffectiveFieldValues(w, cfg);
+  return _drawerRenderOutputPreviewBarHTML() + _drawerRenderOutputPreviewBodyHTML(w, fieldValues);
+}
+
+// Pack 04c -- is there a reconcile snapshot selected for the import the
+// drawer is currently showing? Drives the "Selected export" column in
+// the full-mode diff table.
+function _drawerHasReconForCurrent() {
+  return !!(_reconState && _reconState.diff && _reconState.importId === _drawer.importId);
+}
+
+// Pack 04c -- read the current form input values into the same shape
+// saveOverride sends to the API. Used for the live preview during
+// typing (and only for that -- the actual save still reads from the
+// form directly inside saveOverride so the canonical save path is
+// unchanged).
+function _drawerReadFormAsOverride(workId) {
+  const formEl = document.getElementById(`ovf-${workId}`);
+  if (!formEl) return {};
+  const read = (name) => (formEl.querySelector(`[name="${name}"]`)?.value ?? '').trim();
+  const readNum = (name) => { const v = read(name); return v ? Number(v) : null; };
+  return {
+    title_override: read('title_override') || null,
+    title_cased_override: read('title_cased_override') || null,
+    artist_name_override: read('artist_name_override') || null,
+    artist_honorifics_override: read('artist_honorifics_override') || null,
+    price_text_override: read('price_text_override') || null,
+    price_numeric_override: readNum('price_numeric_override'),
+    edition_total_override: readNum('edition_total_override'),
+    edition_price_numeric_override: readNum('edition_price_numeric_override'),
+    artwork_override: readNum('artwork_override'),
+    medium_override: read('medium_override') || null,
+    notes: read('notes') || '',
+  };
+}
+
+// Pack 04c QA (2026-05-31) -- has the user typed into the override form
+// without saving? Compares the form's current values to the saved
+// baseline (_drawer.existingOverride). Used to prompt before discarding
+// changes via close / page / return-to-read.
+function _drawerIsFormDirty() {
+  if (_drawer.mode !== 'full') return false;
+  const formEl = document.getElementById(`ovf-${_drawer.workId}`);
+  if (!formEl) return false;
+  const pending = _drawerReadFormAsOverride(_drawer.workId);
+  const saved = _drawer.existingOverride || {};
+  for (const k of Object.keys(pending)) {
+    const p = (pending[k] === '' || pending[k] == null) ? null : pending[k];
+    const s = (saved[k] === '' || saved[k] == null) ? null : saved[k];
+    if (p !== s) return true;
+  }
+  return false;
+}
+
+function _drawerConfirmDiscard() {
+  if (!_drawerIsFormDirty()) return true;
+  return confirm('You have unsaved changes. Discard them?');
+}
+
+// Pack 04c -- form input -> re-render the live preview body only
+// (NOT the bar -- preserves selected template + active tab + focus).
+function _drawerOnFormInput() {
+  const w = _workCache[_drawer.workId];
+  if (!w) return;
+  const previewHostEl = document.getElementById('drawer-full-preview');
+  if (!previewHostEl) return;
+  const pending = _drawerReadFormAsOverride(_drawer.workId);
+  const fieldValues = _workEffectiveFieldValuesWith(w, pending, _getDisplayCfg());
+  previewHostEl.innerHTML = _drawerRenderOutputPreviewBodyHTML(w, fieldValues);
+}
+
+// Pack 04c -- the full-mode diff table. Same data sources as
+// _buildWorkDetailTable but with the proto-aligned skin: table-layout
+// fixed + word-break so values render untruncated; .ph for cells
+// "changed in that step" (Normalised when it differs from Spreadsheet,
+// Override when set); .cmp-col + .cmp-dif for the tinted Selected-
+// export comparison lane (not bold; only deeper-tinted when the snapshot
+// differs from what would export now).
+function _drawerBuildFullDiffTable(w) {
+  const hasOvr = !!w.override;
+  const o = w.override || {};
+  const cat = String(w.raw_cat_no ?? '');
+  const diff = _drawerHasReconForCurrent() ? _reconState.diff : null;
+  const low = (diff && diff.low_by_cat && cat) ? diff.low_by_cat[cat] : null;
+  const showLow = !!low;
+  const sigSet = showLow
+    ? new Set((diff.findings || []).filter(f => f.field).map(f => `${f.cat_no}|${f.field}`))
+    : null;
+
+  function lowCell(field, currentExportVal) {
+    if (!showLow) return '';
+    const snap = low[field] ?? '';
+    const sig = sigSet.has(`${cat}|${field}`);
+    const diffsNow = String(snap) !== String(currentExportVal ?? '');
+    const cls = ['cmp-col'];
+    if (sig && diffsNow) cls.push('cmp-dif');
+    return `<td class="${cls.join(' ')}">${esc(snap)}</td>`;
+  }
+
+  const headLow = showLow ? '<th class="cmp-col">Selected export</th>' : '';
+  const cols = '<colgroup><col class="c-field"><col><col>' +
+    (hasOvr ? '<col>' : '') + (showLow ? '<col>' : '') + '</colgroup>';
+  const thead = hasOvr
+    ? `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th><th>Override</th>${headLow}</tr></thead>`
+    : `<thead><tr><th>Field</th><th>Spreadsheet</th><th>Normalised</th>${headLow}</tr></thead>`;
+
+  function row(label, field, rawVal, normVal, ovrVal) {
+    const raw  = rawVal  ?? '';
+    const norm = normVal ?? '';
+    const ovr  = ovrVal  ?? '';
+    const normChanged = String(raw).trim() !== String(norm).trim() && String(norm) !== '';
+    const ovrChanged = ovr !== '';
+    const normCls = normChanged ? 'ph' : '';
+    const ovrCls  = ovrChanged ? 'ph' : 'mut';
+    const ovrCell = hasOvr ? `<td class="${ovrCls}">${ovr ? esc(ovr) : '—'}</td>` : '';
+    const currentExportVal = ovr || norm;
+    return `<tr>
+      <td class="lbl">${esc(label)}</td>
+      <td>${raw ? esc(raw) : '<span class="mut">—</span>'}</td>
+      <td class="${normCls}">${norm ? esc(norm) : '<span class="mut">—</span>'}</td>
+      ${ovrCell}${lowCell(field, currentExportVal)}
+    </tr>`;
+  }
+
+  function derivedRow(label, field, normVal, ovrVal) {
+    const norm = normVal ?? '';
+    const ovr  = ovrVal  ?? '';
+    const ovrChanged = ovr !== '';
+    const ovrCls  = ovrChanged ? 'ph' : 'mut';
+    const ovrCell = hasOvr ? `<td class="${ovrCls}">${ovr ? esc(ovr) : '—'}</td>` : '';
+    const currentExportVal = ovr || norm;
+    return `<tr>
+      <td class="lbl">${esc(label)}</td>
+      <td class="mut">—</td>
+      <td>${norm ? esc(norm) : '<span class="mut">—</span>'}</td>
+      ${ovrCell}${lowCell(field, currentExportVal)}
+    </tr>`;
+  }
+
+  const normPrice = w.price_text ?? (w.price_numeric != null ? String(w.price_numeric) : '');
+  const ovrPrice  = o.price_text_override ?? (o.price_numeric_override != null ? String(o.price_numeric_override) : '');
+  const normEd = [w.edition_total ? String(w.edition_total) : '', w.edition_price_numeric ? `at ${w.edition_price_numeric}` : ''].filter(Boolean).join(' ');
+  const ovrEd  = [o.edition_total_override ? String(o.edition_total_override) : '', o.edition_price_numeric_override ? `at ${o.edition_price_numeric_override}` : ''].filter(Boolean).join(' ');
+
+  const rows = [
+    row('Artist',  'artist',     w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
+    derivedRow('Honorifics',     'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
+    row('Title',   'title',      w.raw_title,   w.title ?? '',        o.title_override ?? ''),
+    derivedRow('Title Case Title','title_cased',     w.title_cased ?? '',       o.title_cased_override ?? ''),
+    row('Price',   'price',      w.raw_price,   normPrice,            ovrPrice),
+    row('Edition', 'edition',    w.raw_edition, normEd,               ovrEd),
+    row('Artwork', 'artwork',    w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
+    row('Medium',  'medium',     w.raw_medium,  w.medium ?? '',       o.medium_override ?? ''),
+  ];
+  if (hasOvr && o.notes) {
+    const lowBlank = showLow ? '<td class="mut">—</td>' : '';
+    rows.push(`<tr><td class="lbl">Notes</td><td class="mut">—</td><td class="mut">—</td><td>${esc(o.notes)}</td>${lowBlank}</tr>`);
+  }
+
+  // Bold-key now lives in the section header (saves a line of depth).
+  // Below-table note is only needed when a Selected-export comparison
+  // lane is showing -- it explains the tint/highlight semantics.
+  const note = showLow
+    ? `<p class="diff-note">The <span class="cmp-key">Selected export</span> column is a comparison against the chosen InDesign snapshot — tinted rather than bold; highlighted cells differ from what would export now.</p>`
+    : '';
+
+  return `<div class="fulltbl-wrap"><table class="fulltbl">${cols}${thead}<tbody>${rows.join('')}</tbody></table></div>${note}`;
 }
 
 function _drawerRenderWhatChangedHTML(w, cfg) {
@@ -5763,12 +6068,14 @@ function showOverrideForm(importId, workId, existing) {
 
   const cell = document.getElementById(`wk-ovc-${workId}`);
   if (!cell) return;
+  // Pack 04c (2026-05-31): the form's internal header (with Close ✕)
+  // and Save / Delete footer were removed -- those actions live in the
+  // drawer's sticky top bar now (always reachable regardless of form
+  // scroll position). The status span (#ovs-${workId}) moves to the
+  // top bar too, where saveOverride/deleteOverride continue to target
+  // it by the same ID.
   cell.innerHTML = `
-    <div class="override-form" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
-        <h5 style="margin:0">Override Fields <span class="muted" style="text-transform:none;font-weight:400">&ndash; leave blank to use current value &middot; click a current or InDesign chip to copy &middot; use Enter in text fields to control line breaks in exports</span></h5>
-        <button type="button" class="btn btn-xs btn-secondary" style="flex-shrink:0;margin-left:16px" onclick="event.stopPropagation(); toggleWorkOverrideForm('${esc(importId)}','${esc(workId)}')">Close &#x2715;</button>
-      </div>
+    <div class="override-form">
       <div class="override-field-form" id="ovf-${esc(workId)}">
         <div class="low-ovr-grid ovr-grid">
           <div class="ka-section">
@@ -5822,11 +6129,6 @@ function showOverrideForm(importId, workId, existing) {
             <label>Notes</label>
             <input type="text" name="notes" value="${val('notes')}" placeholder="Why this override exists">
           </div>
-          <div class="ovr-actions">
-            <button class="btn btn-primary" onclick="saveOverride('${esc(importId)}','${esc(workId)}')">Save</button>
-            ${existing ? `<button class="btn btn-danger" onclick="deleteOverride('${esc(importId)}','${esc(workId)}')">Delete Override</button>` : ''}
-            <span id="ovs-${esc(workId)}" class="status-msg"></span>
-          </div>
         </div>
       </div>
     </div>`;
@@ -5869,10 +6171,17 @@ async function saveOverride(importId, workId) {
     // Update cache so the form re-renders with normalised hints intact
     if (_workCache[workId]) _workCache[workId].override = result;
     _refreshWorkRow(importId, workId);
-    // Pack 04b -- drawer refresh hook lands in Pack 04c (when the override
-    // form lives inside the drawer's full mode). For now the row refresh
-    // above is enough; the user can re-open the drawer to see updated state.
-    showOverrideForm(importId, workId, result);
+    // Pack 04c -- drawer-aware refresh. Per Luke's decision (2026-05-31),
+    // stay in full mode after save so the user can keep editing without
+    // bouncing back to read. _drawerRefreshView will re-render the diff
+    // table + re-call showOverrideForm to repopulate the form with the
+    // saved values + re-wire the live-preview input listener.
+    if (_drawer.workId === workId && _drawer.mode === 'full') {
+      _drawer.existingOverride = result;
+      _drawerRefreshView();
+    } else {
+      showOverrideForm(importId, workId, result);
+    }
     const s = document.getElementById(`ovs-${workId}`);
     if (s) { s.textContent = '\u2713 Saved'; s.className = 'status-msg success'; }
   } catch (err) {
@@ -5889,9 +6198,14 @@ async function deleteOverride(importId, workId) {
     // Remove from cache
     if (_workCache[workId]) _workCache[workId].override = null;
     _refreshWorkRow(importId, workId);
-    // Pack 04b -- drawer refresh hook lands in Pack 04c (when the override
-    // form lives inside the drawer's full mode). For now the row refresh
-    // above is enough; the user can re-open the drawer to see updated state.
+    // Pack 04c -- drawer-aware refresh. If the drawer is open in full mode
+    // for this work, clear existingOverride and re-render -- the form
+    // re-populates with empty fields (no override exists anymore) and the
+    // diff table loses the Override column.
+    if (_drawer.workId === workId && _drawer.mode === 'full') {
+      _drawer.existingOverride = null;
+      _drawerRefreshView();
+    }
     showToast('Override deleted', 'success');
   } catch (err) {
     if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.className = 'status-msg error'; }
