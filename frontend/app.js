@@ -5096,10 +5096,25 @@ let _drawer = {
   workId: null,
   mode: 'read',        // 'read' | 'full'
   workIds: [],         // flat ordered list across all sections, for the pager
-  templates: null,     // cached LoW templates (lazy-fetched on first open)
+  templates: null,     // summary list from /templates (id + name + is_builtin)
+  tplFull: {},         // id -> full config (with components), cached on demand
   tplId: null,         // selected template id for the output preview
   tab: 'struct',       // 'struct' | 'tagged'
 };
+
+// /templates returns only summaries (no components). The output preview
+// needs the full config -- fetched lazily per template id and cached.
+async function _drawerEnsureFullTemplate(tplId) {
+  if (!tplId) return null;
+  if (_drawer.tplFull[tplId]) return _drawer.tplFull[tplId];
+  try {
+    const cfg = await api('GET', `/templates/${tplId}`);
+    _drawer.tplFull[tplId] = cfg;
+    return cfg;
+  } catch (err) {
+    return null;
+  }
+}
 
 function _drawerMount() {
   if (document.getElementById('works-drawer')) return; // idempotent
@@ -5150,6 +5165,9 @@ async function _openDrawer(importId, workId) {
   if (!_drawer.tplId && _drawer.templates.length) {
     _drawer.tplId = (_drawer.templates.find(t => t.is_default) || _drawer.templates[0]).id;
   }
+  // Pre-fetch the selected template's FULL config (components etc.) so
+  // the output preview has something to render on first paint.
+  if (_drawer.tplId) await _drawerEnsureFullTemplate(_drawer.tplId);
   _drawerRefreshView();
   const drawerWidth = Math.min(640, window.innerWidth * 0.94);
   const leftMargin = Math.max(0, (window.innerWidth - 1240) / 2);
@@ -5237,8 +5255,11 @@ function _drawerRefreshView() {
     btn.addEventListener('click', () => _drawerSetMode(btn.dataset.drawerMode));
   });
   aside.querySelector('[data-drawer-exclude]')?.addEventListener('click', _drawerToggleExclude);
-  aside.querySelector('[data-drawer-tpl]')?.addEventListener('change', (e) => {
+  aside.querySelector('[data-drawer-tpl]')?.addEventListener('change', async (e) => {
     _drawer.tplId = e.target.value;
+    // Fetch the full config (with components) for the newly-selected
+    // template before re-rendering -- /templates returned summaries only.
+    await _drawerEnsureFullTemplate(_drawer.tplId);
     _drawerRefreshView();
   });
   aside.querySelectorAll('[data-drawer-tab]').forEach(btn => {
@@ -5392,9 +5413,11 @@ function _drawerRenderHeroHTML(w, cfg) {
 
 function _drawerRenderOutputPreviewHTML(w, cfg) {
   const templates = _drawer.templates || [];
-  const tpl = templates.find(t => t.id === _drawer.tplId) || templates[0];
+  const selectedId = _drawer.tplId || (templates[0] && templates[0].id);
+  const summary = templates.find(t => t.id === selectedId) || templates[0];
+  const full = selectedId ? _drawer.tplFull[selectedId] : null;
   const optionsHTML = templates.length
-    ? templates.map(t => `<option value="${esc(t.id)}"${tpl && t.id === tpl.id ? ' selected' : ''}>${esc(t.name || 'Untitled')}</option>`).join('')
+    ? templates.map(t => `<option value="${esc(t.id)}"${t.id === selectedId ? ' selected' : ''}>${esc(t.name || 'Untitled')}</option>`).join('')
     : '<option value="">(no templates)</option>';
   const tplBar = `
     <div class="opv__bar">
@@ -5406,18 +5429,25 @@ function _drawerRenderOutputPreviewHTML(w, cfg) {
         <button type="button" data-drawer-tab="tagged" class="${_drawer.tab === 'tagged' ? 'on' : ''}">Tagged Text</button>
       </div>
     </div>`;
-  if (!tpl || !Array.isArray(tpl.components)) {
-    return tplBar + '<p class="cmpl-none">No template available for preview.</p>';
+  if (!summary) {
+    return tplBar + '<p class="cmpl-none">No templates available.</p>';
+  }
+  if (!full) {
+    // Full config (with components) still loading from /templates/{id}.
+    return tplBar + '<p class="cmpl-none">Loading template…</p>';
+  }
+  if (!Array.isArray(full.components) || full.components.length === 0) {
+    return tplBar + '<p class="cmpl-none">Template has no components configured.</p>';
   }
   const fieldValues = _workEffectiveFieldValues(w, cfg);
   const opts = {
-    entry_style: tpl.entry_style || '',
-    leading_separator: tpl.leading_separator || 'none',
-    trailing_separator: tpl.trailing_separator || 'none',
+    entry_style: full.entry_style || '',
+    leading_separator: full.leading_separator || 'none',
+    trailing_separator: full.trailing_separator || 'none',
   };
   const body = _drawer.tab === 'tagged'
-    ? renderEntryTaggedText(tpl.components, fieldValues, opts)
-    : renderEntryPreview(tpl.components, fieldValues, { ...opts, mode: 'works' });
+    ? renderEntryTaggedText(full.components, fieldValues, opts)
+    : renderEntryPreview(full.components, fieldValues, { ...opts, mode: 'works' });
   return tplBar + body;
 }
 
