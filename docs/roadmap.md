@@ -623,3 +623,26 @@ controls and editor UX around it.
 
 - **Request tracing**: add `X-Request-Id` propagation to logs for easier
   troubleshooting.
+
+- **Entry-Layout preview: `final_sep_from_last_component` is invisible.**
+  The "If the last element is omitted, use its separator after the final
+  non-empty field instead" checkbox in the Entry Layout editor updates the
+  template config correctly and the backend export renderer honours it,
+  but the live preview pane does not — `renderEntryPreview` ignores the
+  setting entirely, so the editor gives no visual feedback that the
+  toggle has done anything. Discovered during Pack 04a (2026-05-30) while
+  fixing the adjacent missing-re-render bug on the three wrap-options
+  handlers. Two viable directions:
+
+  1. *Implement preview-side support.* The renderer would need to inspect
+     visible items after filtering, detect when the last enabled component
+     was omitted-because-empty, and substitute its `separator_after` after
+     the final remaining item. Modest amount of code; matches the export
+     renderer's existing logic.
+  2. *Mark it as export-only.* Add a small inline hint next to the
+     checkbox ("affects export only — not previewable") and leave the
+     renderer alone. Lower cost; honest about scope.
+
+  No correctness issue in the export itself — the bug is purely editor
+  ergonomics. Currently the user has no way to tell whether the toggle
+  is doing what they expect without exporting and inspecting the file.
