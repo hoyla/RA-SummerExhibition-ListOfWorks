@@ -1468,6 +1468,19 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .loading  { color: var(--muted); font-style: italic; }
 .error    { color: var(--danger); }
 
+/* Shared empty / loading state — Pack 05c-2 (2026-05-30).
+   Use in place of ad-hoc <p class="muted" style="padding:Xpx 0">No X</p>
+   or <p class="loading" style="padding:Xpx 0">Loading…</p> blocks.
+   The text content carries the semantic ("Loading…" vs "No X yet") --
+   the class just handles the visual register. */
+.empty-state {
+  color: var(--muted);
+  font-style: italic;
+  padding: var(--sp-6) 0;
+  text-align: center;
+}
+.empty-state--compact { padding: var(--sp-1) 0; }
+
 /* ------------------------------------------------------------------ */
 /* Toast notifications                                                 */
 /* ------------------------------------------------------------------ */
