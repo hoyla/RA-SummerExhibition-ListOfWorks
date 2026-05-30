@@ -647,6 +647,32 @@ controls and editor UX around it.
   ergonomics. Currently the user has no way to tell whether the toggle
   is doing what they expect without exporting and inspecting the file.
 
+- **Entry-Layout preview doesn't style RA honorifics separately from the
+  artist name.** The actual backend export renderer wraps the artist name
+  and the honorifics in two distinct `<CharStyle:…>` runs (using
+  `artist_style` and `honorifics_style` respectively), so an export for
+  "Sir Anish Kapoor RA" emits something like
+  `<CharStyle:Artist>Sir Anish Kapoor<CharStyle:> <CharStyle:Honorifics>RA<CharStyle:>`.
+  The Entry-Layout editor's preview (`_tePreviewHTML` → `renderEntryPreview`)
+  and the drawer's output preview both concatenate the honorifics into the
+  artist string and apply one style, so RA artists look mono-styled when
+  they will actually export bi-styled. Pre-existing in the editor; the
+  drawer inherits it. Discovered during Pack 04b QA (2026-05-30).
+
+  Fix shape (modest, contained):
+  1. Pass `honorifics` as a separate value in `fieldValues` (and add it to
+     `_TE_SAMPLES` for the editor).
+  2. Add a `honorifics` entry to `_TE_CHAR_KEY` mapped to `honorifics_style`.
+  3. Teach `renderEntryPreview` + `renderEntryTaggedText` that when
+     emitting the `artist` component's token, also emit a separately-
+     styled `honorifics` token after it (space-separated) if
+     `fieldValues.honorifics` is present.
+
+  Affects ~25%+ of works in any catalogue (every RA artist). The drawer's
+  output-preview pitch — "this is what export will produce" — is
+  materially wrong for those. Worth folding into a Pack 04 follow-up or
+  taking as its own small PR.
+
 - **Index template editor has no Tagged Text preview tab.** The LoW
   template editor (`renderTemplateEdit` for `list_of_works` templates)
   has two preview tabs: a structural preview and a Tagged Text preview
