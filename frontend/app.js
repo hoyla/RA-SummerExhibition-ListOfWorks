@@ -3840,9 +3840,9 @@ function _teSetSepCb(idx) { return (v) => { _te.components[idx].separator_after 
 function _teSetLeading(v) { _te.leading_separator = v; _teRender(); }
 function _teSetTrailing(v) { _te.trailing_separator = v; _teRender(); }
 function _teToggleFinalSep(on) { _te.final_sep_from_last_component = on; }
-function _teSetMaxChars(idx, v) { _te.components[idx].max_line_chars = v ? parseInt(v, 10) : null; }
-function _teSetNextPos(idx, v) { _te.components[idx].next_component_position = v; }
-function _teToggleBalance(idx, on) { _te.components[idx].balance_lines = on; }
+function _teSetMaxChars(idx, v) { _te.components[idx].max_line_chars = v ? parseInt(v, 10) : null; _teRenderPreview(); }
+function _teSetNextPos(idx, v) { _te.components[idx].next_component_position = v; _teRenderPreview(); }
+function _teToggleBalance(idx, on) { _te.components[idx].balance_lines = on; _teRenderPreview(); }
 function _teToggleWrap(idx) { if (_te.wrapOpen.has(idx)) _te.wrapOpen.delete(idx); else _te.wrapOpen.add(idx); _teRender(); }
 function _teTab(tab) { _te.activeTab = tab; _teRenderPreview(); }
 function _teSample(v) { _te.sampleVariant = v; _teRenderPreview(); }
