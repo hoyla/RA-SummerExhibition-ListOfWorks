@@ -5512,6 +5512,7 @@ function _renderDrawer() {
           <div class="drawer__sec-lab">
             All changes
             <span class="muted-note">spreadsheet → normalised → override${_drawerHasReconForCurrent() ? ' → selected export' : ''}</span>
+            <span class="muted-note muted-note--right"><b>Bold</b> marks a value changed in that step</span>
           </div>
           ${_drawerBuildFullDiffTable(w)}
         </div>
@@ -5847,9 +5848,12 @@ function _drawerBuildFullDiffTable(w) {
     rows.push(`<tr><td class="lbl">Notes</td><td class="mut">—</td><td class="mut">—</td><td>${esc(o.notes)}</td>${lowBlank}</tr>`);
   }
 
-  const note = `<p class="diff-note"><b>Bold</b> marks a value changed in that step (normalisation, override)` +
-    (showLow ? ` · the <span class="cmp-key">Selected export</span> column is a comparison against the chosen InDesign snapshot — tinted rather than bold; highlighted cells differ from what would export now` : '') +
-    `.</p>`;
+  // Bold-key now lives in the section header (saves a line of depth).
+  // Below-table note is only needed when a Selected-export comparison
+  // lane is showing -- it explains the tint/highlight semantics.
+  const note = showLow
+    ? `<p class="diff-note">The <span class="cmp-key">Selected export</span> column is a comparison against the chosen InDesign snapshot — tinted rather than bold; highlighted cells differ from what would export now.</p>`
+    : '';
 
   return `<div class="fulltbl-wrap"><table class="fulltbl">${cols}${thead}<tbody>${rows.join('')}</tbody></table></div>${note}`;
 }

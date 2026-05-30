@@ -2781,6 +2781,11 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .diff-note b { color: var(--muted-2); }
 .cmp-key { background: #eef3f8; border: 1px solid #c5d6ea; border-radius: 3px; padding: 0 4px; color: #3a5572; font-size: 10.5px; }
 .muted-note { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11.5px; margin-left: 8px; }
+/* Pack 04c -- right-aligned caption in the section header (e.g. the
+   "Bold marks a value changed in that step" key paired with the
+   left-aligned column-flow note). */
+.muted-note--right { margin-left: auto; }
+.muted-note--right b { color: var(--muted-2); font-weight: 700; }
 
 /* Sticky save bar at the bottom of the form column */
 .edit-actions {
