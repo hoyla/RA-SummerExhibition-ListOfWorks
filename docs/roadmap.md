@@ -623,3 +623,49 @@ controls and editor UX around it.
 
 - **Request tracing**: add `X-Request-Id` propagation to logs for easier
   troubleshooting.
+
+- **Entry-Layout preview: `final_sep_from_last_component` is invisible.**
+  The "If the last element is omitted, use its separator after the final
+  non-empty field instead" checkbox in the Entry Layout editor updates the
+  template config correctly and the backend export renderer honours it,
+  but the live preview pane does not — `renderEntryPreview` ignores the
+  setting entirely, so the editor gives no visual feedback that the
+  toggle has done anything. Discovered during Pack 04a (2026-05-30) while
+  fixing the adjacent missing-re-render bug on the three wrap-options
+  handlers. Two viable directions:
+
+  1. *Implement preview-side support.* The renderer would need to inspect
+     visible items after filtering, detect when the last enabled component
+     was omitted-because-empty, and substitute its `separator_after` after
+     the final remaining item. Modest amount of code; matches the export
+     renderer's existing logic.
+  2. *Mark it as export-only.* Add a small inline hint next to the
+     checkbox ("affects export only — not previewable") and leave the
+     renderer alone. Lower cost; honest about scope.
+
+  No correctness issue in the export itself — the bug is purely editor
+  ergonomics. Currently the user has no way to tell whether the toggle
+  is doing what they expect without exporting and inspecting the file.
+
+- **Index template editor has no Tagged Text preview tab.** The LoW
+  template editor (`renderTemplateEdit` for `list_of_works` templates)
+  has two preview tabs: a structural preview and a Tagged Text preview
+  showing the actual `<ParaStyle:…>` / `<CharStyle:…>` codes that will
+  be written to the export. The Index template editor has only the
+  structural preview. Discovered during Pack 04a QA (2026-05-30). Two
+  viable directions:
+
+  1. *Build the tab on Index.* `_teTaggedTextHTML`-equivalent for index
+     templates exists in spirit (the backend index renderer emits the
+     same kind of tagged output), so it's mostly a matter of wiring the
+     existing logic into the editor. Symmetry with LoW; helps when
+     debugging unexpected styling in the published index.
+  2. *Document the asymmetry as deliberate.* The Index output is
+     simpler than LoW (no LPG counterpart, fewer character styles per
+     entry) and the structural preview already shows what the editor
+     needs. Add a short note in the Index template editor explaining
+     that the Tagged Text view isn't available because the output
+     shape is predictable from the structural preview alone.
+
+  No correctness impact in either case — pure editor ergonomics, and
+  Index editors are a small audience.

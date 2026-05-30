@@ -3609,79 +3609,161 @@ function _teWrapValue(comp, value) {
   return comp.balance_lines ? _teBalanceWrap(value, comp.max_line_chars) : _teWrapLines(value, comp.max_line_chars);
 }
 
-function _teTokenHTML(comp, text) {
-  const styled = !!comp.char_style;
+// Pack 04a (2026-05-30) — Style maps for works-mode preview rendering.
+// Walks the components in order and collects distinct char_style and
+// paragraph_style names. entry_style is prepended to the pa map (it's
+// the implicit style for paragraph 1 when no explicit override is set),
+// so the colour index for the first paragraph is stable.
+function _buildStyleMaps(components, entry_style) {
+  const cs = [];
+  const pa = [];
+  if (entry_style) pa.push(entry_style);
+  components.forEach(c => {
+    if (c.char_style && cs.indexOf(c.char_style) < 0) cs.push(c.char_style);
+    if (c.paragraph_style && pa.indexOf(c.paragraph_style) < 0) pa.push(c.paragraph_style);
+  });
+  return { cs, pa };
+}
+
+// Pack 04a — Render a single token. mode:'editor' keeps the current
+// pv-tok--styled treatment with a visible style-name label; mode:'works'
+// emits pv-tok pv-tok--cs cs-N where N is the char_style's index in the
+// style map (modulo 6 colour slots), with no label.
+function _renderPreviewTokenHTML(comp, text, mode, maps) {
   const body = text !== '' && text != null
     ? esc(text)
     : `<em class="pv-tok__empty">(${esc(_TE_FIELD_LABEL[comp.field] || comp.field)})</em>`;
+  if (mode === 'works' && maps) {
+    const idx = comp.char_style ? maps.cs.indexOf(comp.char_style) : -1;
+    const cls = idx >= 0 ? `pv-tok pv-tok--cs cs-${idx % 6}` : 'pv-tok';
+    return `<span class="pv-pair"><span class="${cls}">${body}</span></span>`;
+  }
+  const styled = !!comp.char_style;
   const lbl = styled ? `<span class="pv-tok__label">${esc(comp.char_style)}</span>` : '';
   return `<span class="pv-pair"><span class="pv-tok${styled ? ' pv-tok--styled' : ''}">${body}${lbl}</span></span>`;
 }
 
-function _tePreviewHTML() {
-  const groups = _teComputeParagraphs(_te.components);
-  const sample = _TE_SAMPLES[_te.sampleVariant];
-  const renderable = groups.map((g, gi) => ({ g, gi, items: _teVisibleItems(g, sample) })).filter(o => o.items.length);
-  const firstGi = renderable.length ? renderable[0].gi : -1;
-  const lastGi = renderable.length ? renderable[renderable.length - 1].gi : -1;
+// Pack 04a — Wrap a paragraph's inner lines. mode:'editor' keeps the
+// current pv-para__tag header showing the paragraph-style name above
+// the lines; mode:'works' emits pv-para pa-N (bordered box, colour per
+// paragraph_style) with no inline tag.
+function _renderPreviewParagraphHTML(linesHTML, styleName, mode, maps) {
+  if (mode === 'works' && maps) {
+    const idx = styleName ? maps.pa.indexOf(styleName) : -1;
+    const cls = idx >= 0 ? `pv-para pa-${idx % 6}` : 'pv-para pa-none';
+    return `<div class="${cls}">${linesHTML}</div>`;
+  }
+  return `<div class="pv-para"><div class="pv-para__tag"><span class="pv-tag--para">&para; ${styleName ? esc(styleName) : '<em>default</em>'}</span></div>${linesHTML}</div>`;
+}
 
-  let paper = renderable.map(({ g, gi, items }) => {
-    const styleName = g.paragraph_style || (gi === 0 ? _te.entry_style : '');
-    // Build visual lines (each becomes its own .pv-para__line), so wrapped
-    // components actually break at their max-chars width.
-    const vlines = [''];
-    let cur = 0;
-    const add = (html) => { vlines[cur] += html; };
-    const breakLine = () => { vlines.push(''); cur = vlines.length - 1; };
-    const skip = new Set();
-
-    if (gi === firstGi && _te.leading_separator && _te.leading_separator !== 'none') {
-      add(`<span class="pv-edge" title="Leading separator">${_teSepGlyph(_te.leading_separator)}</span>`);
-    }
-    items.forEach(({ comp }, ci) => {
-      if (skip.has(ci)) return;
-      const value = sample[comp.field] ?? '';
-      const wrapped = _teWrapValue(comp, value);
-      const isLast = ci === items.length - 1;
-      if (wrapped.length <= 1) {
-        add(_teTokenHTML(comp, value));
-        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
-      } else if (comp.next_component_position === 'end_of_first_line' && ci + 1 < items.length) {
-        // First wrapped line, this component's separator, then the NEXT element
-        // inline; the remaining wrapped lines drop below.
-        const nc = items[ci + 1].comp;
-        const ncVal = sample[nc.field] ?? '';
-        add(_teTokenHTML(comp, wrapped[0]));
-        if (comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
-        add(_teTokenHTML(nc, ncVal));
-        skip.add(ci + 1);
-        for (let li = 1; li < wrapped.length; li++) { add(_teSepGlyph('soft_return')); breakLine(); add(_teTokenHTML(comp, wrapped[li])); }
-        if (ci + 1 !== items.length - 1 && nc.separator_after !== 'none') add(_teSepGlyph(nc.separator_after));
-      } else {
-        // Multi-line, normal: one visual line per wrapped line (soft return between).
-        for (let li = 0; li < wrapped.length; li++) {
-          if (li > 0) { add(_teSepGlyph('soft_return')); breakLine(); }
-          add(_teTokenHTML(comp, wrapped[li]));
-        }
-        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
-      }
-    });
-    if (gi === lastGi && _te.trailing_separator && _te.trailing_separator !== 'none') {
-      add(`<span class="pv-edge" title="Trailing separator">${_teSepGlyph(_te.trailing_separator)}</span>`);
-    }
-    const linesHTML = vlines.map(l => `<div class="pv-para__line">${l}</div>`).join('');
-    return `<div class="pv-para"><div class="pv-para__tag"><span class="pv-tag--para">&para; ${styleName ? esc(styleName) : '<em>default</em>'}</span></div>${linesHTML}</div>`;
-  }).join('');
-  if (!paper) paper = `<p style="color:var(--muted);font-size:13px;margin:0">No visible elements for this sample.</p>`;
-
-  return `<div class="preview"><div class="preview__paper">${paper}</div>
-    <div class="preview__legend">
+// Pack 04a — Render the preview legend. mode:'editor' is the existing
+// 5-icon static key; mode:'works' is the colour-swatch map from
+// _buildStyleMaps plus the canonical separator key.
+function _renderPreviewLegendHTML(mode, maps) {
+  if (mode === 'works' && maps) {
+    const cs = maps.cs.length
+      ? maps.cs.map((n, i) => `<span class="lg-item"><span class="lg-sw cs-${i % 6}"></span>${esc(n)}</span>`).join('')
+      : '<span class="lg-item"><em>none</em></span>';
+    const pa = maps.pa.length
+      ? maps.pa.map((n, i) => `<span class="lg-item"><span class="lg-sw lg-pa pa-${i % 6}"></span>${esc(n)}</span>`).join('')
+      : '<span class="lg-item"><em>none</em></span>';
+    return `<div class="preview__legend">` +
+      `<span class="lg-grp"><b>fill = character style</b>${cs}</span>` +
+      `<span class="lg-grp"><b>border = paragraph</b>${pa}</span>` +
+      `<span class="lg-grp"><b>separators</b> <i>&middot;</i> space <i>&rarr;</i> tab <i>&#8677;</i> right-tab <i>&#8629;</i> return</span></div>`;
+  }
+  return `<div class="preview__legend">
       <span><i class="lg lg--styled"></i> character-styled</span>
       <span><i class="lg lg--tab">&rarr;</i> tab</span>
       <span><i class="lg lg--rtab">&#8677;</i> right-indent tab</span>
       <span><i class="lg lg--soft">&#8629;</i> soft return / wrap</span>
       <span><i class="lg lg--para">&para;</i> new paragraph</span>
-    </div></div>`;
+    </div>`;
+}
+
+// Pack 04a (2026-05-30) — Pure preview-renderer. Takes a template's
+// components, a sample/work's field values, and rendering options;
+// returns the same HTML string the Entry-Layout editor used to build
+// internally. The Entry-Layout editor calls this via _tePreviewHTML
+// with mode:'editor' (no behaviour change). Pack 04b's drawer will
+// call it with mode:'works' to render the output preview using the
+// colour-coded skin (fill = character style, border = paragraph,
+// no inline labels).
+function renderEntryPreview(components, fieldValues, opts) {
+  opts = opts || {};
+  const mode = opts.mode || 'editor';
+  const entry_style = opts.entry_style || '';
+  const leading_separator = opts.leading_separator || 'none';
+  const trailing_separator = opts.trailing_separator || 'none';
+
+  const groups = _teComputeParagraphs(components);
+  const renderable = groups
+    .map((g, gi) => ({ g, gi, items: _teVisibleItems(g, fieldValues) }))
+    .filter(o => o.items.length);
+  const firstGi = renderable.length ? renderable[0].gi : -1;
+  const lastGi = renderable.length ? renderable[renderable.length - 1].gi : -1;
+
+  const maps = mode === 'works' ? _buildStyleMaps(components, entry_style) : null;
+
+  let paper = renderable.map(({ g, gi, items }) => {
+    const styleName = g.paragraph_style || (gi === 0 ? entry_style : '');
+    const vlines = [''];
+    let cur = 0;
+    const add = (html) => { vlines[cur] += html; };
+    const breakLine = () => { vlines.push(''); cur = vlines.length - 1; };
+    const skip = new Set();
+    const renderToken = (comp, text) => _renderPreviewTokenHTML(comp, text, mode, maps);
+
+    if (gi === firstGi && leading_separator && leading_separator !== 'none') {
+      add(`<span class="pv-edge" title="Leading separator">${_teSepGlyph(leading_separator)}</span>`);
+    }
+    items.forEach(({ comp }, ci) => {
+      if (skip.has(ci)) return;
+      const value = fieldValues[comp.field] ?? '';
+      const wrapped = _teWrapValue(comp, value);
+      const isLast = ci === items.length - 1;
+      if (wrapped.length <= 1) {
+        add(renderToken(comp, value));
+        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+      } else if (comp.next_component_position === 'end_of_first_line' && ci + 1 < items.length) {
+        const nc = items[ci + 1].comp;
+        const ncVal = fieldValues[nc.field] ?? '';
+        add(renderToken(comp, wrapped[0]));
+        if (comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+        add(renderToken(nc, ncVal));
+        skip.add(ci + 1);
+        for (let li = 1; li < wrapped.length; li++) { add(_teSepGlyph('soft_return')); breakLine(); add(renderToken(comp, wrapped[li])); }
+        if (ci + 1 !== items.length - 1 && nc.separator_after !== 'none') add(_teSepGlyph(nc.separator_after));
+      } else {
+        for (let li = 0; li < wrapped.length; li++) {
+          if (li > 0) { add(_teSepGlyph('soft_return')); breakLine(); }
+          add(renderToken(comp, wrapped[li]));
+        }
+        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+      }
+    });
+    if (gi === lastGi && trailing_separator && trailing_separator !== 'none') {
+      add(`<span class="pv-edge" title="Trailing separator">${_teSepGlyph(trailing_separator)}</span>`);
+    }
+    const linesHTML = vlines.map(l => `<div class="pv-para__line">${l}</div>`).join('');
+    return _renderPreviewParagraphHTML(linesHTML, styleName, mode, maps);
+  }).join('');
+  if (!paper) paper = `<p style="color:var(--muted);font-size:13px;margin:0">No visible elements for this sample.</p>`;
+
+  const wrapperCls = mode === 'works' ? 'preview preview--works' : 'preview';
+  return `<div class="${wrapperCls}"><div class="preview__paper">${paper}</div>${_renderPreviewLegendHTML(mode, maps)}</div>`;
+}
+
+// Thin wrapper used by the Entry-Layout editor — translates the editor's
+// module-level _te state into the parameters renderEntryPreview expects.
+// Behaviour and output are identical to the pre-Pack-04a code path.
+function _tePreviewHTML() {
+  return renderEntryPreview(_te.components, _TE_SAMPLES[_te.sampleVariant], {
+    mode: 'editor',
+    entry_style: _te.entry_style,
+    leading_separator: _te.leading_separator,
+    trailing_separator: _te.trailing_separator,
+  });
 }
 
 function _teTaggedSepChars(k) {
@@ -3758,9 +3840,9 @@ function _teSetSepCb(idx) { return (v) => { _te.components[idx].separator_after 
 function _teSetLeading(v) { _te.leading_separator = v; _teRender(); }
 function _teSetTrailing(v) { _te.trailing_separator = v; _teRender(); }
 function _teToggleFinalSep(on) { _te.final_sep_from_last_component = on; }
-function _teSetMaxChars(idx, v) { _te.components[idx].max_line_chars = v ? parseInt(v, 10) : null; }
-function _teSetNextPos(idx, v) { _te.components[idx].next_component_position = v; }
-function _teToggleBalance(idx, on) { _te.components[idx].balance_lines = on; }
+function _teSetMaxChars(idx, v) { _te.components[idx].max_line_chars = v ? parseInt(v, 10) : null; _teRenderPreview(); }
+function _teSetNextPos(idx, v) { _te.components[idx].next_component_position = v; _teRenderPreview(); }
+function _teToggleBalance(idx, on) { _te.components[idx].balance_lines = on; _teRenderPreview(); }
 function _teToggleWrap(idx) { if (_te.wrapOpen.has(idx)) _te.wrapOpen.delete(idx); else _te.wrapOpen.add(idx); _teRender(); }
 function _teTab(tab) { _te.activeTab = tab; _teRenderPreview(); }
 function _teSample(v) { _te.sampleVariant = v; _teRenderPreview(); }
