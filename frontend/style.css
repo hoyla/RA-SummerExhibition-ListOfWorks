@@ -560,6 +560,19 @@ a:hover { text-decoration: underline; }
   word-break: break-all;
 }
 
+/* Muted UID/date/recency strip next to an import detail page heading */
+.heading-meta {
+  font-size: var(--t-mini);
+  font-weight: 400;
+  color: var(--muted);
+  white-space: normal;
+  margin-left: 4px;
+}
+.heading-meta .import-id { vertical-align: middle; }
+.recency { font-weight: 600; }
+.recency--latest { color: var(--success); }
+.recency--stale  { color: var(--warning); }
+
 .breadcrumb {
   margin-bottom: 12px;
   font-size: 13px;

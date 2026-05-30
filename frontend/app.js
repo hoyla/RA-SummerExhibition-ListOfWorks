@@ -4365,6 +4365,22 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// Muted metadata shown next to an import/index detail page heading: the full
+// UID (chip, hover for full value), the upload date/time, and a recency tag so
+// it's obvious at a glance whether you're on the most recent import or an
+// older one. `imp` is an import-list row ({ id, uploaded_at }); `isLatest`
+// is true when it's the first (newest) row in its list. Returns escaped HTML.
+function _importHeadingMeta(imp, isLatest) {
+  const parts = [
+    `<code class="import-id" title="${esc(imp.id)}">${esc(imp.id.slice(0, 8))}…</code>`,
+  ];
+  if (imp.uploaded_at) parts.push(`imported ${esc(formatDate(imp.uploaded_at))}`);
+  parts.push(isLatest
+    ? '<span class="recency recency--latest">most recent</span>'
+    : '<span class="recency recency--stale">not the most recent import</span>');
+  return `<span class="heading-meta">${parts.join(' · ')}</span>`;
+}
+
 function formatPrice(price_numeric, price_text, cfg) {
   if (price_numeric != null) {
     const dp  = (cfg?.decimal_places    ?? 0);
@@ -4486,17 +4502,25 @@ async function renderDetail(importId) {
 
   // Fetch import metadata for filename mismatch detection + heading
   let originalFilename = null;
+  let thisImport = null;
+  let isLatest = false;
   try {
     const allImports = await api('GET', '/imports');
-    const thisImport = allImports.find(i => i.id === importId);
-    if (thisImport) originalFilename = thisImport.filename;
+    thisImport = allImports.find(i => i.id === importId) || null;
+    if (thisImport) {
+      originalFilename = thisImport.filename;
+      isLatest = allImports[0]?.id === importId;
+    }
   } catch (_) { /* non-critical */ }
 
-  // Show filename in heading
-  document.getElementById('detail-heading').textContent =
-    originalFilename
-      ? `Import \u2013 ${originalFilename}`
-      : `Import \u2013 ${importId.slice(0, 8)}\u2026`;
+  // Show filename + UID/date/recency metadata in heading
+  const detailHeadingEl = document.getElementById('detail-heading');
+  if (thisImport) {
+    detailHeadingEl.innerHTML =
+      `Import \u2013 ${esc(originalFilename)} ${_importHeadingMeta(thisImport, isLatest)}`;
+  } else {
+    detailHeadingEl.textContent = `Import \u2013 ${importId.slice(0, 8)}\u2026`;
+  }
 
   // Warn on filename mismatch
   const fileInput = document.getElementById('reimport-file');
@@ -6952,16 +6976,24 @@ async function renderIndexDetail(importId) {
 
   // Fetch import metadata
   let importFilename = null;
+  let thisImport = null;
+  let isLatest = false;
   try {
     const imports = await api('GET', '/index/imports');
-    const thisImport = imports.find(i => i.id === importId);
-    if (thisImport) importFilename = thisImport.filename;
+    thisImport = imports.find(i => i.id === importId) || null;
+    if (thisImport) {
+      importFilename = thisImport.filename;
+      isLatest = imports[0]?.id === importId;
+    }
   } catch (_) {}
 
-  document.getElementById('index-detail-heading').textContent =
-    importFilename
-      ? `Artists Index \u2013 ${importFilename}`
-      : `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
+  const idxHeadingEl = document.getElementById('index-detail-heading');
+  if (thisImport) {
+    idxHeadingEl.innerHTML =
+      `Artists Index \u2013 ${esc(importFilename)} ${_importHeadingMeta(thisImport, isLatest)}`;
+  } else {
+    idxHeadingEl.textContent = `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
+  }
 
   // Filename mismatch warning for reimport
   const idxFileInput = document.getElementById('index-reimport-file');
