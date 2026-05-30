@@ -1037,12 +1037,23 @@ async function renderAuditLog() {
     <section class="panel" id="audit-global"><p class="loading">Loading\u2026</p></section>`;
 
   try {
-    const logs = await api('GET', '/audit-log?limit=500');
+    // Fetch the audit log alongside both import lists, so each import group can
+    // show its filename and link to the correct detail route (LoW vs index).
+    const [logs, lowImports, idxImports] = await Promise.all([
+      api('GET', '/audit-log?limit=500'),
+      api('GET', '/imports').catch(() => []),
+      api('GET', '/index/imports').catch(() => []),
+    ]);
     const container = document.getElementById('audit-global');
     if (!logs.length) {
       container.innerHTML = '<p class="muted">No audit log entries.</p>';
       return;
     }
+
+    // import_id -> { filename, kind } from whichever list owns it
+    const importMeta = new Map();
+    for (const imp of lowImports) importMeta.set(imp.id, { filename: imp.filename, kind: 'low' });
+    for (const imp of idxImports) importMeta.set(imp.id, { filename: imp.filename, kind: 'index' });
 
     // Split into template-level and import-level entries
     const templateLogs = logs.filter(l => !l.import_id);
@@ -1071,12 +1082,25 @@ async function renderAuditLog() {
 
     // Import event sections
     for (const [importId, iLogs] of byImport) {
+      // Prefer the import list for type + filename; if the import has since been
+      // deleted, infer the kind from the entries (artist rows => index import).
+      const meta = importMeta.get(importId);
+      const kind = meta?.kind
+        ?? (iLogs.some(l => l.artist_id && l.index_artist_name) ? 'index' : 'low');
+      const route = kind === 'index' ? '#/index/' : '#/import/';
+      const viewLabel = kind === 'index' ? 'View index' : 'View import';
+      const nameLabel = meta
+        ? `<span class="audit-import-file">${esc(meta.filename)}</span> `
+        : '<span class="muted">(deleted) </span>';
+      const viewLink = meta
+        ? `<a href="${route}${esc(importId)}" class="btn btn-xs btn-secondary" style="margin-left:auto" onclick="event.stopPropagation()">${viewLabel}</a>`
+        : '';
       html += `
         <details class="section-block" open>
           <summary class="section-summary">
-            <span class="section-name">Import <code class="import-id" title="${esc(importId)}">${esc(importId.slice(0, 8))}&hellip;</code></span>
+            <span class="section-name">${nameLabel}<code class="import-id" title="${esc(importId)}">${esc(importId.slice(0, 8))}&hellip;</code></span>
             <span class="section-meta">${iLogs.length} entr${iLogs.length !== 1 ? 'ies' : 'y'}</span>
-            <a href="#/import/${esc(importId)}" class="btn btn-xs btn-secondary" style="margin-left:auto" onclick="event.stopPropagation()">View import</a>
+            ${viewLink}
           </summary>
           ${_auditLogTable(iLogs, true)}
         </details>`;

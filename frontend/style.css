@@ -1461,6 +1461,9 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   cursor: default;
 }
 
+/* Filename shown next to the import UID in the global Audit Log group header */
+.audit-import-file { font-weight: 600; }
+
 .muted    { color: var(--muted); }
 .loading  { color: var(--muted); font-style: italic; }
 .error    { color: var(--danger); }
