@@ -957,16 +957,27 @@ function _auditActionLabel(action) {
   return labels[action] || action;
 }
 
-function _auditLogTable(logs) {
+// `navigate`: on the global Audit Log page the work/artist rows live on a
+// different page, so an in-page scrollToWork() silently no-ops. Emit deep-link
+// anchors instead (reusing the ?scrollWork= / ?scrollArtist= machinery that
+// renderDetail / renderIndexDetail already honour). The in-page audit panels
+// (import + index detail) keep the lighter scroll buttons.
+function _auditLogTable(logs, navigate = false) {
   if (!logs.length) return '<p class="muted">No audit log entries.</p>';
 
   const rows = logs.map(log => {
     const who = [log.cat_no, log.artist_name, log.title].filter(Boolean).join(' \u2013 ');
     let workCell;
     if (log.work_id) {
-      workCell = `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${esc(who || log.work_id.slice(0, 8) + '\u2026')}</button>`;
+      const label = esc(who || log.work_id.slice(0, 8) + '\u2026');
+      workCell = (navigate && log.import_id)
+        ? `<a class="link-btn" href="#/import/${esc(log.import_id)}?scrollWork=${encodeURIComponent(log.work_id)}">${label}</a>`
+        : `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${label}</button>`;
     } else if (log.artist_id && log.index_artist_name) {
-      workCell = `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(log.artist_id)}')">${esc(log.index_artist_name)}</button>`;
+      const label = esc(log.index_artist_name);
+      workCell = (navigate && log.import_id)
+        ? `<a class="link-btn" href="#/index/${esc(log.import_id)}?scrollArtist=${encodeURIComponent(log.artist_id)}">${label}</a>`
+        : `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(log.artist_id)}')">${label}</button>`;
     } else if (log.template_name) {
       workCell = `<span class="muted">${esc(log.template_name)}</span>`;
     } else {
@@ -1026,12 +1037,23 @@ async function renderAuditLog() {
     <section class="panel" id="audit-global"><p class="loading">Loading\u2026</p></section>`;
 
   try {
-    const logs = await api('GET', '/audit-log?limit=500');
+    // Fetch the audit log alongside both import lists, so each import group can
+    // show its filename and link to the correct detail route (LoW vs index).
+    const [logs, lowImports, idxImports] = await Promise.all([
+      api('GET', '/audit-log?limit=500'),
+      api('GET', '/imports').catch(() => []),
+      api('GET', '/index/imports').catch(() => []),
+    ]);
     const container = document.getElementById('audit-global');
     if (!logs.length) {
       container.innerHTML = '<p class="muted">No audit log entries.</p>';
       return;
     }
+
+    // import_id -> { filename, kind } from whichever list owns it
+    const importMeta = new Map();
+    for (const imp of lowImports) importMeta.set(imp.id, { filename: imp.filename, kind: 'low' });
+    for (const imp of idxImports) importMeta.set(imp.id, { filename: imp.filename, kind: 'index' });
 
     // Split into template-level and import-level entries
     const templateLogs = logs.filter(l => !l.import_id);
@@ -1054,20 +1076,33 @@ async function renderAuditLog() {
             <span class="section-name">Template changes</span>
             <span class="section-meta">${templateLogs.length} entr${templateLogs.length !== 1 ? 'ies' : 'y'}</span>
           </summary>
-          ${_auditLogTable(templateLogs)}
+          ${_auditLogTable(templateLogs, true)}
         </details>`;
     }
 
     // Import event sections
     for (const [importId, iLogs] of byImport) {
+      // Prefer the import list for type + filename; if the import has since been
+      // deleted, infer the kind from the entries (artist rows => index import).
+      const meta = importMeta.get(importId);
+      const kind = meta?.kind
+        ?? (iLogs.some(l => l.artist_id && l.index_artist_name) ? 'index' : 'low');
+      const route = kind === 'index' ? '#/index/' : '#/import/';
+      const viewLabel = kind === 'index' ? 'View index' : 'View import';
+      const nameLabel = meta
+        ? `<span class="audit-import-file">${esc(meta.filename)}</span> `
+        : '<span class="muted">(deleted) </span>';
+      const viewLink = meta
+        ? `<a href="${route}${esc(importId)}" class="btn btn-xs btn-secondary" style="margin-left:auto" onclick="event.stopPropagation()">${viewLabel}</a>`
+        : '';
       html += `
         <details class="section-block" open>
           <summary class="section-summary">
-            <span class="section-name">Import <code class="import-id" title="${esc(importId)}">${esc(importId.slice(0, 8))}&hellip;</code></span>
+            <span class="section-name">${nameLabel}<code class="import-id" title="${esc(importId)}">${esc(importId.slice(0, 8))}&hellip;</code></span>
             <span class="section-meta">${iLogs.length} entr${iLogs.length !== 1 ? 'ies' : 'y'}</span>
-            <a href="#/import/${esc(importId)}" class="btn btn-xs btn-secondary" style="margin-left:auto" onclick="event.stopPropagation()">View import</a>
+            ${viewLink}
           </summary>
-          ${_auditLogTable(iLogs)}
+          ${_auditLogTable(iLogs, true)}
         </details>`;
     }
     container.innerHTML = html;
@@ -4330,6 +4365,22 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// Muted metadata shown next to an import/index detail page heading: the full
+// UID (chip, hover for full value), the upload date/time, and a recency tag so
+// it's obvious at a glance whether you're on the most recent import or an
+// older one. `imp` is an import-list row ({ id, uploaded_at }); `isLatest`
+// is true when it's the first (newest) row in its list. Returns escaped HTML.
+function _importHeadingMeta(imp, isLatest) {
+  const parts = [
+    `<code class="import-id" title="${esc(imp.id)}">${esc(imp.id.slice(0, 8))}…</code>`,
+  ];
+  if (imp.uploaded_at) parts.push(`imported ${esc(formatDate(imp.uploaded_at))}`);
+  parts.push(isLatest
+    ? '<span class="recency recency--latest">most recent</span>'
+    : '<span class="recency recency--stale">not the most recent import</span>');
+  return `<span class="heading-meta">${parts.join(' · ')}</span>`;
+}
+
 function formatPrice(price_numeric, price_text, cfg) {
   if (price_numeric != null) {
     const dp  = (cfg?.decimal_places    ?? 0);
@@ -4451,17 +4502,25 @@ async function renderDetail(importId) {
 
   // Fetch import metadata for filename mismatch detection + heading
   let originalFilename = null;
+  let thisImport = null;
+  let isLatest = false;
   try {
     const allImports = await api('GET', '/imports');
-    const thisImport = allImports.find(i => i.id === importId);
-    if (thisImport) originalFilename = thisImport.filename;
+    thisImport = allImports.find(i => i.id === importId) || null;
+    if (thisImport) {
+      originalFilename = thisImport.filename;
+      isLatest = allImports[0]?.id === importId;
+    }
   } catch (_) { /* non-critical */ }
 
-  // Show filename in heading
-  document.getElementById('detail-heading').textContent =
-    originalFilename
-      ? `Import \u2013 ${originalFilename}`
-      : `Import \u2013 ${importId.slice(0, 8)}\u2026`;
+  // Show filename + UID/date/recency metadata in heading
+  const detailHeadingEl = document.getElementById('detail-heading');
+  if (thisImport) {
+    detailHeadingEl.innerHTML =
+      `Import \u2013 ${esc(originalFilename)} ${_importHeadingMeta(thisImport, isLatest)}`;
+  } else {
+    detailHeadingEl.textContent = `Import \u2013 ${importId.slice(0, 8)}\u2026`;
+  }
 
   // Warn on filename mismatch
   const fileInput = document.getElementById('reimport-file');
@@ -6917,16 +6976,24 @@ async function renderIndexDetail(importId) {
 
   // Fetch import metadata
   let importFilename = null;
+  let thisImport = null;
+  let isLatest = false;
   try {
     const imports = await api('GET', '/index/imports');
-    const thisImport = imports.find(i => i.id === importId);
-    if (thisImport) importFilename = thisImport.filename;
+    thisImport = imports.find(i => i.id === importId) || null;
+    if (thisImport) {
+      importFilename = thisImport.filename;
+      isLatest = imports[0]?.id === importId;
+    }
   } catch (_) {}
 
-  document.getElementById('index-detail-heading').textContent =
-    importFilename
-      ? `Artists Index \u2013 ${importFilename}`
-      : `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
+  const idxHeadingEl = document.getElementById('index-detail-heading');
+  if (thisImport) {
+    idxHeadingEl.innerHTML =
+      `Artists Index \u2013 ${esc(importFilename)} ${_importHeadingMeta(thisImport, isLatest)}`;
+  } else {
+    idxHeadingEl.textContent = `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
+  }
 
   // Filename mismatch warning for reimport
   const idxFileInput = document.getElementById('index-reimport-file');
