@@ -3728,24 +3728,42 @@ function renderEntryPreview(components, fieldValues, opts) {
       const value = fieldValues[comp.field] ?? '';
       const wrapped = _teWrapValue(comp, value);
       const isLast = ci === items.length - 1;
+      // Honour soft_return as a real visual line break when it appears
+      // as a component's separator_after. Pre-Pack-04a the glyph was shown
+      // but didn't break the line, which the brief's design language
+      // (the ↵ glyph means "line break here") contradicted. Discovered
+      // during Pack 04b QA (2026-05-30); applies to both editor and
+      // works mode since the renderer is shared.
       if (wrapped.length <= 1) {
         add(renderToken(comp, value));
-        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+        if (!isLast && comp.separator_after !== 'none') {
+          add(_teSepGlyph(comp.separator_after));
+          if (comp.separator_after === 'soft_return') breakLine();
+        }
       } else if (comp.next_component_position === 'end_of_first_line' && ci + 1 < items.length) {
         const nc = items[ci + 1].comp;
         const ncVal = fieldValues[nc.field] ?? '';
         add(renderToken(comp, wrapped[0]));
-        if (comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+        if (comp.separator_after !== 'none') {
+          add(_teSepGlyph(comp.separator_after));
+          if (comp.separator_after === 'soft_return') breakLine();
+        }
         add(renderToken(nc, ncVal));
         skip.add(ci + 1);
         for (let li = 1; li < wrapped.length; li++) { add(_teSepGlyph('soft_return')); breakLine(); add(renderToken(comp, wrapped[li])); }
-        if (ci + 1 !== items.length - 1 && nc.separator_after !== 'none') add(_teSepGlyph(nc.separator_after));
+        if (ci + 1 !== items.length - 1 && nc.separator_after !== 'none') {
+          add(_teSepGlyph(nc.separator_after));
+          if (nc.separator_after === 'soft_return') breakLine();
+        }
       } else {
         for (let li = 0; li < wrapped.length; li++) {
           if (li > 0) { add(_teSepGlyph('soft_return')); breakLine(); }
           add(renderToken(comp, wrapped[li]));
         }
-        if (!isLast && comp.separator_after !== 'none') add(_teSepGlyph(comp.separator_after));
+        if (!isLast && comp.separator_after !== 'none') {
+          add(_teSepGlyph(comp.separator_after));
+          if (comp.separator_after === 'soft_return') breakLine();
+        }
       }
     });
     if (gi === lastGi && trailing_separator && trailing_separator !== 'none') {
@@ -5299,7 +5317,10 @@ function _workEffectiveFieldValues(w, cfg) {
   const artistFull  = hon ? `${artist} ${hon}`.trim() : artist;
   const priceText   = o.price_text_override   ?? w.price_text   ?? '';
   const priceNum    = o.price_numeric_override ?? w.price_numeric;
-  const priceDisplay = priceText || (priceNum != null ? formatPrice(priceNum, null, cfg) : '');
+  // Match workRowHTML's call shape: formatPrice handles the
+  // price_text-vs-price_numeric priority AND prepends the currency
+  // symbol when the text is a bare number ("600" -> "£600").
+  const priceDisplay = formatPrice(priceNum, priceText, cfg);
   const eTotal = o.edition_total_override ?? w.edition_total;
   const ePrice = o.edition_price_numeric_override ?? w.edition_price_numeric;
   const prefix = (cfg.edition_prefix ?? 'edition of').trim();
