@@ -1106,8 +1106,9 @@ details.section-block[open] > .section-summary::before {
   font-variant-numeric: tabular-nums;
 }
 
-/* Hover: deepen the existing colour */
-.badge-warning.warning-filter-btn:hover { background: #ffe8a0; border-color: #daa800; }
+/* Hover: deepen the existing colour (badge-warning variant orphan since
+   Pack 02a, dropped in Pack 05a). The badge-info variant still has a caller
+   -- the Reconcile cosmetic toggle button uses .badge.badge-info.warning-filter-btn. */
 .badge-info.warning-filter-btn:hover    { background: #a2d4de; border-color: #5fb8ca; }
 
 /* Greyed-out state when a type is hidden */
@@ -1215,7 +1216,6 @@ details.section-block[open] > .section-summary::before {
   font-weight: 600;
   white-space: nowrap;
 }
-.badge-warning { background: #fff3cd; color: #8a6000; border: 1px solid #f0c040; }
 .badge-info { background: #d1ecf1; color: #0c5460; border: 1px solid #8dd3df; }
 .badge-audit { background: #e8f0fe; color: #1a56db; border: 1px solid #a4c3f5; }
 
@@ -1613,22 +1613,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
    Templates list
    ----------------------------------------------------------------------- */
 
-.badge-builtin {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border-radius: 10px;
-  background: #e8f0fe;
-  color: #1a56a0;
-  border: 1px solid #bbd0f5;
-  vertical-align: middle;
-  line-height: 1;
-}
-
 .table-actions {
   white-space: nowrap;
   text-align: right;
@@ -1723,96 +1707,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   font-size: 12px;
   max-width: 260px;
   word-break: break-word;
-}
-
-.badge-ra {
-  background: var(--ra-red);
-  color: #fff;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  /* Inherits font-size, padding, border-radius from base .badge so it sits at
-     the same intrinsic height as Trimmed/Override/Norm in the flags column. */
-}
-
-.badge-company {
-  background: #6c757d;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.badge-company-off {
-  background: transparent;
-  color: #ccc;
-  border: 1px dashed #ccc;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 0 4px;
-  border-radius: 3px;
-  cursor: pointer;
-}
-.badge-company-off:hover {
-  color: #6c757d;
-  border-color: #6c757d;
-}
-
-.badge-toggle {
-  cursor: pointer;
-  border: none;
-  line-height: 1.3;
-}
-.badge-toggle.badge-company {
-  border: 1px solid transparent;
-}
-.badge-toggle.badge-company:hover {
-  background: #545b62;
-}
-
-.badge-overridden {
-  box-shadow: 0 0 0 2px var(--ra-red);
-}
-
-.badge-normalised {
-  background: #e8f4f0;
-  color: #1a7a5a;
-  border: 1px solid #8fd6b8;
-  font-weight: 600;
-  /* Inherits font-size/padding/border-radius from base .badge so it sits
-     at the same intrinsic height as other flag pills (was 10px / 1px 5px). */
-}
-
-.badge-known {
-  background: #eef2fa;
-  color: #4060a0;
-  border: 1px solid #b0c8e8;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-/* Override = "a human has edited this work". Semantically the opposite of the
-   amber 'needs review' warnings — so it gets the editorial-layer slate-blue
-   palette that's already used for .cell-overridden (italic slate) and the
-   work-detail panel borders. Inherits font-size/padding/border-radius from
-   base .badge so it sits at the same intrinsic height as other flag pills. */
-.badge-override {
-  background: #eef2fa;
-  color: #5070a0;
-  border: 1px solid #c7d8f5;
-  font-weight: 600;
-}
-
-.badge-merged {
-  background: #fce4ec;
-  color: #b71c1c;
-  border: 1px solid #ef9a9a;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
 }
 
 /* Known Artist resolved field cells */
@@ -2226,21 +2120,7 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   background: #eaeaea !important;
   opacity: 0.8;
 }
-.cmp-count {
-  font-variant-numeric: tabular-nums;
-  margin-left: 3px;
-  opacity: 0.7;
-}
 
-/* Match-level badges */
-.cmp-badge-exact           { background: #d4edda; color: #155724; border: 1px solid #a3d9a5; }
-.cmp-badge-equivalent      { background: #d1ecf1; color: #0c5460; border: 1px solid #8dd3df; }
-.cmp-badge-partial_title   { background: #e8eef4; color: #4a5568; border: 1px solid #b8c9dc; }
-.cmp-badge-partial_honorific { background: #fff3cd; color: #856404; border: 1px solid #f0c040; }
-.cmp-badge-partial_ra      { background: #ffe0b2; color: #7c4400; border: 1px solid #f0a040; }
-.cmp-badge-partial_name    { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-.cmp-badge-none            { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-.cmp-badge-missing         { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
 
 /* Difference badges */
 .cmp-diff-badge {
@@ -2603,9 +2483,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .pv-sep--hard .pv-sep__glyph { background: #fdf3f2; border: 1px solid #eed5d1; border-radius: 3px; padding: 1px 5px; font-size: 11px; }
 .preview__legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--border); font-size: 11px; color: var(--muted); }
 .preview__legend span { display: inline-flex; align-items: center; gap: 5px; }
-.lg { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; font-family: var(--mono); font-style: normal; font-size: 12px; font-weight: 600; border-radius: 3px; }
-.lg--styled { background: var(--tok-bg); border: 1px solid var(--tok-bd); }
-.lg--tab, .lg--rtab, .lg--soft, .lg--para { color: var(--ra-red); border: 1px solid #eed5d1; background: #fdf3f2; }
 
 /* ------------------------------------------------------------------ */
 /* Works-mode preview overrides — Pack 04a (2026-05-30)                */
@@ -2736,10 +2613,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
   color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
 }
 .drawer__sec-lab .star { color: var(--ra-red); }
-.drawer__ovr { padding: 18px 20px; display: flex; gap: 8px; flex-wrap: wrap; }
-.drawer__ovr .btn-primary { background: var(--ra-dark); color: #fff; border-color: var(--ra-dark); font-weight: 600; }
-.drawer__ovr .btn-primary:hover { background: #000; }
-.drawer__ovr-stub { padding: 18px 20px; color: var(--muted); font-style: italic; font-size: 13px; }
 
 /* ---- Full mode (Pack 04c 2026-05-31) ----
    Wide drawer (set on .drawer.full). Top: untruncated diff table.
@@ -2784,11 +2657,6 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 .muted-note b { color: var(--muted-2); font-weight: 700; }
 
 /* Sticky save bar at the bottom of the form column */
-.edit-actions {
-  display: flex; gap: 8px; position: sticky; bottom: 0;
-  background: linear-gradient(to top, var(--card) 70%, transparent);
-  padding: 14px 0 16px; margin-top: 14px; z-index: 5;
-}
 
 /* Output preview controls inside the drawer */
 .opv__bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
