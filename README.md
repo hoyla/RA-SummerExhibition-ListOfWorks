@@ -18,7 +18,7 @@ Supports two data products:
 
 ### List of Works
 
-<img width="100%" alt="List of works with preview" src="https://github.com/user-attachments/assets/95727072-88c8-42b4-ba7f-d4a05a8abcdf" />
+<img width="100%" alt="list of works with preview" src="https://github.com/user-attachments/assets/bc7972a7-5caa-4643-94fc-fb43bd6bf4d3" />
 
 - Excel upload and structured import model (Import → Section → Work)
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
