@@ -1,3 +1,4 @@
+<img width="1800" height="1005" alt="Picture 398" src="https://github.com/user-attachments/assets/d98774a2-11e2-4a7e-be92-7cecfab62f46" />
 # Royal Academy Summer Exhibition catalogue tool
 
 The Royal Academy's annual Summer Exhibition features a printed catalogue.
@@ -18,7 +19,7 @@ Supports two data products:
 
 ### List of Works
 
-<img width="100%" alt="Picture 370" src="https://github.com/user-attachments/assets/06b8670f-f297-47ed-bcca-8c61bc992af9" />
+<img width="100%" alt="List of works with preview" src="https://github.com/user-attachments/assets/95727072-88c8-42b4-ba7f-d4a05a8abcdf" />
 
 - Excel upload and structured import model (Import → Section → Work)
 - Deterministic normalisation (price, edition, artwork, medium, honorifics)
