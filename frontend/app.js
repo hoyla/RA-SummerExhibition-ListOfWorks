@@ -5512,7 +5512,7 @@ function _renderDrawer() {
           <div class="drawer__sec-lab">
             All changes
             <span class="muted-note">spreadsheet → normalised → override${_drawerHasReconForCurrent() ? ' → selected export' : ''}</span>
-            <span class="muted-note muted-note--right"><b>Bold</b> marks a value changed in that step</span>
+            <span class="muted-note"><b>Bold</b> marks a value changed in that step</span>
           </div>
           ${_drawerBuildFullDiffTable(w)}
         </div>
