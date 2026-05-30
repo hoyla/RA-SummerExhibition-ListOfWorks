@@ -957,16 +957,27 @@ function _auditActionLabel(action) {
   return labels[action] || action;
 }
 
-function _auditLogTable(logs) {
+// `navigate`: on the global Audit Log page the work/artist rows live on a
+// different page, so an in-page scrollToWork() silently no-ops. Emit deep-link
+// anchors instead (reusing the ?scrollWork= / ?scrollArtist= machinery that
+// renderDetail / renderIndexDetail already honour). The in-page audit panels
+// (import + index detail) keep the lighter scroll buttons.
+function _auditLogTable(logs, navigate = false) {
   if (!logs.length) return '<p class="muted">No audit log entries.</p>';
 
   const rows = logs.map(log => {
     const who = [log.cat_no, log.artist_name, log.title].filter(Boolean).join(' \u2013 ');
     let workCell;
     if (log.work_id) {
-      workCell = `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${esc(who || log.work_id.slice(0, 8) + '\u2026')}</button>`;
+      const label = esc(who || log.work_id.slice(0, 8) + '\u2026');
+      workCell = (navigate && log.import_id)
+        ? `<a class="link-btn" href="#/import/${esc(log.import_id)}?scrollWork=${encodeURIComponent(log.work_id)}">${label}</a>`
+        : `<button type="button" class="link-btn" onclick="scrollToWork('${esc(log.work_id)}')">${label}</button>`;
     } else if (log.artist_id && log.index_artist_name) {
-      workCell = `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(log.artist_id)}')">${esc(log.index_artist_name)}</button>`;
+      const label = esc(log.index_artist_name);
+      workCell = (navigate && log.import_id)
+        ? `<a class="link-btn" href="#/index/${esc(log.import_id)}?scrollArtist=${encodeURIComponent(log.artist_id)}">${label}</a>`
+        : `<button type="button" class="link-btn" onclick="scrollToIndexArtist('${esc(log.artist_id)}')">${label}</button>`;
     } else if (log.template_name) {
       workCell = `<span class="muted">${esc(log.template_name)}</span>`;
     } else {
@@ -1054,7 +1065,7 @@ async function renderAuditLog() {
             <span class="section-name">Template changes</span>
             <span class="section-meta">${templateLogs.length} entr${templateLogs.length !== 1 ? 'ies' : 'y'}</span>
           </summary>
-          ${_auditLogTable(templateLogs)}
+          ${_auditLogTable(templateLogs, true)}
         </details>`;
     }
 
@@ -1067,7 +1078,7 @@ async function renderAuditLog() {
             <span class="section-meta">${iLogs.length} entr${iLogs.length !== 1 ? 'ies' : 'y'}</span>
             <a href="#/import/${esc(importId)}" class="btn btn-xs btn-secondary" style="margin-left:auto" onclick="event.stopPropagation()">View import</a>
           </summary>
-          ${_auditLogTable(iLogs)}
+          ${_auditLogTable(iLogs, true)}
         </details>`;
     }
     container.innerHTML = html;
