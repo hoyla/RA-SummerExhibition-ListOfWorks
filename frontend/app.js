@@ -5390,6 +5390,10 @@ async function _drawerToggleExclude() {
   const w = _workCache[_drawer.workId];
   if (!w) return;
   const wasIncluded = w.include_in_export !== false;
+  // Pack 05a drive-by (Luke 2026-05-31): confirm before excluding -- the
+  // top-bar button is now prominent and an accidental click would silently
+  // drop a work from export. Re-including is harmless so no prompt there.
+  if (wasIncluded && !confirm('Exclude this work from export? You can re-include it from the same drawer.')) return;
   try {
     await api('PATCH', `/imports/${_drawer.importId}/works/${_drawer.workId}/exclude?exclude=${wasIncluded}`);
     w.include_in_export = !wasIncluded;
