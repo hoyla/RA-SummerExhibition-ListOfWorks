@@ -624,6 +624,47 @@ controls and editor UX around it.
 - **Request tracing**: add `X-Request-Id` propagation to logs for easier
   troubleshooting.
 
+- **Sticky-shadow feature dropped 2026-05-30 — unresolved compositing
+  mystery.** Pack 03 (2026-05-29) shipped a stuck-shadow under sticky
+  section headers via `.is-stuck` (toggled by an IntersectionObserver)
+  and a CSS rule `box-shadow: 0 8px 10px -9px rgba(.25)` on either the
+  summary or the thead th. Luke flagged the shadow as invisible in
+  both Firefox and Chrome during Pack 03 QA. On 2026-05-30 we
+  investigated for ~1h:
+
+  Findings (verified via Chrome DevTools driving):
+    * IntersectionObserver wiring works; `.is-stuck` is toggled on the
+      correct summaries when sentinels cross the viewport top.
+    * CSS rule matches: with `.is-stuck` present and the thead pattern,
+      the computed `box-shadow` on the thead th is exactly what the
+      rule specifies (verified with both subtle and DIAGNOSTIC 60%-red
+      values).
+    * No `overflow:hidden` anywhere up the ancestor chain.
+    * TH is sticky-pinned at `top:71px`, z-index:15, sitting visibly
+      above a transparent body. Geometry of where the shadow SHOULD
+      paint (~y=96-128 with the diagnostic value) is well inside the
+      visible viewport.
+
+  Despite all of the above, even the deliberately-obnoxious 60%-red
+  diagnostic shadow did NOT read visibly during real-time inspection.
+  Most likely a stacking-context / sticky-compositing subtlety (the
+  shadow may be rendering "behind" something invisible to
+  `elementsFromPoint` analysis, or paint order between the sticky TH
+  and the section.panel siblings is interacting unexpectedly), but
+  the time budget for the investigation ran out before we could pin
+  it down.
+
+  PR #99 (2026-05-30) removes both shadow CSS rules entirely. The
+  sticky pinning itself (summary + thead) works correctly and stays
+  -- it's a useful affordance even without the visual "you are stuck"
+  cue. The `.is-stuck` class is still toggled by the JS, harmlessly,
+  in case a future fix or alternative use wants the hook.
+
+  To revive: the existing JS scaffolding (sentinel + IO + class) is
+  intact, so a future attempt only needs to add the CSS rule back and
+  diagnose the compositing puzzle in real time. The investigation
+  notes above are the head start.
+
 - **Seed loaders never UPSERT changed values on existing rows.** Both
   `seed_known_artists` and `seed_builtin_templates` are insert-if-missing
   only — neither updates the *resolved values* of an existing entry when
