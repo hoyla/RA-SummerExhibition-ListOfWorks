@@ -324,3 +324,147 @@ def test_seed_known_artists_is_idempotent(db_session):
         f"loader is not idempotent: first run {first_count} rows, "
         f"second run {second_count} rows (duplicate inserts)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Known-artists loader: coexistence semantics
+# ---------------------------------------------------------------------------
+#
+# Schema-level: known_artists has a unique constraint on
+# (match_first_name, match_last_name, match_quals, is_seeded). The is_seeded
+# discriminator in that constraint is deliberate -- it allows one seed row
+# and one user-customised row to coexist for the same match key. The
+# lookup code in build_known_artist_cache() then prefers user rows over
+# seed rows at lookup time ("User entries take priority over seeded ones").
+#
+# The seed loader must respect both halves of this: when an editor has
+# created a user override for a seed key, the loader should still insert
+# the seed row alongside (so that deleting the user override later falls
+# back to the seed value rather than to no-match).
+
+
+def test_seed_known_artists_inserts_alongside_user_override(db_session):
+    """If a user row exists for a seed key, the seed row is still inserted."""
+    from backend.app.models.known_artist_model import KnownArtist
+    from backend.app.services.seed_service import seed_known_artists
+
+    # Pick a real seed entry to clash on
+    with open(SEED_DIR / "known-artists.json", encoding="utf-8") as fp:
+        entries = json.load(fp)
+    target = entries[0]
+
+    # Pre-create a user override with the same match key but a different
+    # resolved value -- mimicking an editor who has customised this artist.
+    user_row = KnownArtist(
+        match_first_name=target.get("match_first_name"),
+        match_last_name=target.get("match_last_name"),
+        match_quals=target.get("match_quals"),
+        resolved_first_name="USER_OVERRIDE",
+        resolved_last_name="OVERRIDDEN",
+        is_seeded=False,
+    )
+    db_session.add(user_row)
+    db_session.commit()
+
+    seed_known_artists(db=db_session)
+    db_session.commit()
+
+    matching = (
+        db_session.query(KnownArtist)
+        .filter(
+            KnownArtist.match_first_name == target.get("match_first_name"),
+            KnownArtist.match_last_name == target.get("match_last_name"),
+            KnownArtist.match_quals == target.get("match_quals"),
+        )
+        .all()
+    )
+
+    # Both rows should now exist for this match key
+    assert len(matching) == 2, (
+        f"expected user row + seed row to coexist for match key, got {len(matching)}"
+    )
+    flags = sorted([r.is_seeded for r in matching])
+    assert flags == [False, True], f"expected one user + one seed, got is_seeded={flags}"
+
+    # User row's resolved value must be preserved -- the loader must not
+    # touch existing rows
+    user = next(r for r in matching if not r.is_seeded)
+    assert user.resolved_first_name == "USER_OVERRIDE"
+    assert user.resolved_last_name == "OVERRIDDEN"
+
+
+def test_seed_known_artists_returns_added_skipped_counts(db_session):
+    """Loader returns (added, skipped) tuple for caller bookkeeping."""
+    from backend.app.services.seed_service import seed_known_artists
+
+    with open(SEED_DIR / "known-artists.json", encoding="utf-8") as fp:
+        entries = json.load(fp)
+
+    added, skipped = seed_known_artists(db=db_session)
+    assert added == len(entries), f"first run: expected all {len(entries)} inserted, got {added}"
+    assert skipped == 0, f"first run: expected nothing skipped, got {skipped}"
+
+    added2, skipped2 = seed_known_artists(db=db_session)
+    assert added2 == 0, f"second run: expected nothing inserted, got {added2}"
+    assert skipped2 == len(entries), (
+        f"second run: expected all {len(entries)} skipped, got {skipped2}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Built-in templates loader: structural round-trip
+# ---------------------------------------------------------------------------
+#
+# Analogous to the known-artists round-trip test above: assert that every
+# seed JSON file produces a Ruleset row with the expected slug/name/config
+# values. Catches the same class of bug -- column added to Ruleset (or
+# semantics changed in the JSON shape) but the loader's constructor or
+# upsert path not updated.
+
+
+def test_seed_builtin_templates_round_trip(db_session):
+    """Every seed JSON file (excluding known-artists.json) produces one Ruleset row."""
+    import hashlib
+
+    from backend.app.services.seed_service import seed_builtin_templates
+
+    seed_builtin_templates(db=db_session)
+
+    seed_files = sorted(f for f in SEED_DIR.glob("*.json") if f.name != "known-artists.json")
+    rulesets_by_slug = {r.slug: r for r in db_session.query(Ruleset).all()}
+
+    assert len(rulesets_by_slug) == len(seed_files), (
+        f"loader created {len(rulesets_by_slug)} rulesets from {len(seed_files)} seed files"
+    )
+
+    for seed_file in seed_files:
+        slug = seed_file.stem
+        assert slug in rulesets_by_slug, f"no Ruleset row inserted for seed file {seed_file.name}"
+        row = rulesets_by_slug[slug]
+
+        with open(seed_file, encoding="utf-8") as fp:
+            raw = json.load(fp)
+        expected_name = raw.pop("_name", slug)
+        expected_config_type = raw.pop("_config_type", "template")
+        expected_hash = hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()
+
+        assert row.name == expected_name, f"{slug}: name mismatch"
+        assert row.config_type == expected_config_type, f"{slug}: config_type mismatch"
+        assert row.config == raw, f"{slug}: config payload mismatch"
+        assert row.config_hash == expected_hash, f"{slug}: hash mismatch"
+        assert row.is_builtin is True, f"{slug}: is_builtin must be True for loader-inserted rows"
+
+
+def test_seed_builtin_templates_is_idempotent(db_session):
+    """Running the loader twice does not duplicate rows."""
+    from backend.app.services.seed_service import seed_builtin_templates
+
+    seed_builtin_templates(db=db_session)
+    first_count = db_session.query(Ruleset).count()
+
+    seed_builtin_templates(db=db_session)
+    second_count = db_session.query(Ruleset).count()
+
+    assert first_count == second_count, (
+        f"loader is not idempotent: first run {first_count}, second run {second_count}"
+    )

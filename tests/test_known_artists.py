@@ -100,3 +100,49 @@ class TestKnownArtistsCRUD:
         data2 = resp2.json()
         assert data2["added"] == 0
         assert data2["skipped"] == data["total"]
+
+    def test_seed_propagates_fields_and_marks_is_seeded(self, client, db_session):
+        """Endpoint inserts rows that round-trip every JSON field + carry is_seeded=True.
+
+        The structural test in tests/test_seed_templates.py asserts the same
+        guarantees against the *service function*. This test asserts they
+        also hold via the API endpoint -- i.e. confirms the consolidation
+        in the 2026-05-30 seed-loader-audit PR did not regress field
+        propagation when the endpoint switched from its own constructor
+        to delegating to the service.
+        """
+        import json
+        from pathlib import Path
+
+        resp = client.post("/known-artists/seed")
+        assert resp.status_code == 200
+
+        seed_file = (
+            Path(__file__).resolve().parent.parent
+            / "backend"
+            / "seed_templates"
+            / "known-artists.json"
+        )
+        with open(seed_file, encoding="utf-8") as fp:
+            entries = json.load(fp)
+
+        rows = db_session.query(KnownArtist).all()
+        assert len(rows) == len(entries)
+
+        rows_by_key = {(r.match_first_name, r.match_last_name, r.match_quals): r for r in rows}
+        for entry in entries:
+            key = (
+                entry.get("match_first_name"),
+                entry.get("match_last_name"),
+                entry.get("match_quals"),
+            )
+            row = rows_by_key[key]
+            for field, expected in entry.items():
+                actual = getattr(row, field)
+                assert actual == expected, (
+                    f"endpoint did not propagate {field!r} on entry {key!r}: "
+                    f"json={expected!r} db={actual!r}"
+                )
+            assert row.is_seeded is True, (
+                f"endpoint left is_seeded={row.is_seeded!r} on entry {key!r}"
+            )
