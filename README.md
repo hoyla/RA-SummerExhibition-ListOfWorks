@@ -1,4 +1,3 @@
-<img width="1800" height="1005" alt="Picture 398" src="https://github.com/user-attachments/assets/d98774a2-11e2-4a7e-be92-7cecfab62f46" />
 # Royal Academy Summer Exhibition catalogue tool
 
 The Royal Academy's annual Summer Exhibition features a printed catalogue.
