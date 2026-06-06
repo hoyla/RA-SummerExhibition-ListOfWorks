@@ -5132,8 +5132,12 @@ function _buildWorkDetailTable(w) {
 
   function derivedRow(label, field, normVal, ovrVal) {
     const norm = normVal ?? '';
-    const ovr  = ovrVal  ?? '';
-    const ovrCell = hasOvr ? `<td class="${_valClass(norm, ovr)}">${esc(ovr)}</td>` : '';
+    // ovrVal: null/undefined = no override; "" = explicitly removed (blank in
+    // export); a string = override value. Keep the three states distinct.
+    const cleared = ovrVal === '';
+    const ovr  = ovrVal ?? '';
+    const ovrText = cleared ? '<em class="muted">removed</em>' : esc(ovr);
+    const ovrCell = hasOvr ? `<td class="${_valClass(norm, ovr)}">${ovrText}</td>` : '';
     return `<tr>
       <td>${esc(label)}</td>
       <td class="muted">&mdash;</td>
@@ -5152,9 +5156,9 @@ function _buildWorkDetailTable(w) {
 
   const rows = [
     row('Artist',  'artist',     w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
-    derivedRow('Honorifics', 'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
+    derivedRow('Honorifics', 'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override),
     row('Title',   'title',      w.raw_title,   w.title ?? '',        o.title_override ?? ''),
-    derivedRow('Title Case Title', 'title_cased', w.title_cased ?? '', o.title_cased_override ?? ''),
+    derivedRow('Title Case Title', 'title_cased', w.title_cased ?? '', o.title_cased_override),
     row('Price',   'price',      w.raw_price,   normPrice,            ovrPrice),
     row('Edition', 'edition',    w.raw_edition, normEd,               ovrEd),
     row('Artwork', 'artwork',    w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
@@ -5861,11 +5865,19 @@ function _drawerReadFormAsOverride(workId) {
   if (!formEl) return {};
   const read = (name) => (formEl.querySelector(`[name="${name}"]`)?.value ?? '').trim();
   const readNum = (name) => { const v = read(name); return v ? Number(v) : null; };
+  // Clearable text field: empty + data-cleared => "" (explicit blank), empty
+  // without the flag => null (inherit). Mirrors saveOverride's canonical path.
+  const readClearable = (name) => {
+    const el = formEl.querySelector(`[name="${name}"]`);
+    const v = (el?.value ?? '').trim();
+    if (v !== '') return v;
+    return el?.dataset.cleared === '1' ? '' : null;
+  };
   return {
     title_override: read('title_override') || null,
     title_cased_override: read('title_cased_override') || null,
     artist_name_override: read('artist_name_override') || null,
-    artist_honorifics_override: read('artist_honorifics_override') || null,
+    artist_honorifics_override: readClearable('artist_honorifics_override'),
     price_text_override: read('price_text_override') || null,
     price_numeric_override: readNum('price_numeric_override'),
     edition_total_override: readNum('edition_total_override'),
@@ -5887,8 +5899,11 @@ function _drawerIsFormDirty() {
   const pending = _drawerReadFormAsOverride(_drawer.workId);
   const saved = _drawer.existingOverride || {};
   for (const k of Object.keys(pending)) {
-    const p = (pending[k] === '' || pending[k] == null) ? null : pending[k];
-    const s = (saved[k] === '' || saved[k] == null) ? null : saved[k];
+    // For honorifics, "" (explicit Remove) is a real change distinct from null
+    // (no override); for every other field, empty and null are equivalent.
+    const collapse = k !== 'artist_honorifics_override';
+    const p = (pending[k] == null || (collapse && pending[k] === '')) ? null : pending[k];
+    const s = (saved[k]   == null || (collapse && saved[k]   === '')) ? null : saved[k];
     if (p !== s) return true;
   }
   return false;
@@ -5966,11 +5981,17 @@ function _drawerBuildFullDiffTable(w) {
 
   function derivedRow(label, field, normVal, ovrVal) {
     const norm = normVal ?? '';
-    const ovr  = ovrVal  ?? '';
-    const ovrChanged = ovr !== '';
-    const ovrCls  = ovrChanged ? 'ph' : 'mut';
-    const ovrCell = hasOvr ? `<td class="${ovrCls}">${ovr ? esc(ovr) : '—'}</td>` : '';
-    const currentExportVal = ovr || norm;
+    // ovrVal: null/undefined = no override; "" = explicitly removed (blank in
+    // export); a string = override value. A removal is a real change, and the
+    // current export becomes "" (not the normalised value) — so the Selected-
+    // export comparison and the drill-down read truthfully.
+    const hasOvrVal = ovrVal != null;
+    const cleared = ovrVal === '';
+    const ovr  = ovrVal ?? '';
+    const ovrCls  = hasOvrVal ? 'ph' : 'mut';
+    const ovrText = cleared ? '<em class="mut">removed</em>' : (ovr ? esc(ovr) : '—');
+    const ovrCell = hasOvr ? `<td class="${ovrCls}">${ovrText}</td>` : '';
+    const currentExportVal = hasOvrVal ? ovr : norm;
     return `<tr>
       <td class="lbl">${esc(label)}</td>
       <td class="mut">—</td>
@@ -5986,9 +6007,9 @@ function _drawerBuildFullDiffTable(w) {
 
   const rows = [
     row('Artist',  'artist',     w.raw_artist,  w.artist_name ?? '',  o.artist_name_override ?? ''),
-    derivedRow('Honorifics',     'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override ?? ''),
+    derivedRow('Honorifics',     'honorifics',      w.artist_honorifics ?? '', o.artist_honorifics_override),
     row('Title',   'title',      w.raw_title,   w.title ?? '',        o.title_override ?? ''),
-    derivedRow('Title Case Title','title_cased',     w.title_cased ?? '',       o.title_cased_override ?? ''),
+    derivedRow('Title Case Title','title_cased',     w.title_cased ?? '',       o.title_cased_override),
     row('Price',   'price',      w.raw_price,   normPrice,            ovrPrice),
     row('Edition', 'edition',    w.raw_edition, normEd,               ovrEd),
     row('Artwork', 'artwork',    w.raw_artwork, w.artwork != null ? String(w.artwork) : '', o.artwork_override != null ? String(o.artwork_override) : ''),
@@ -6220,6 +6241,19 @@ function showOverrideForm(importId, workId, existing) {
     return parts.join('');
   };
 
+  // Honorifics clear/remove affordance. The box pre-fills only from a saved
+  // override, so an empty box means "inherit the normalised honorific". To
+  // *remove* a wrongly-extracted honorific we need an explicit empty-string
+  // override (the backend treats "" as a real value, null as "no override").
+  // The Remove button is what flags that intent; saveOverride reads the
+  // data-cleared flag and sends "". Mirrors the Known-Artists clear idiom.
+  const honCleared = o.artist_honorifics_override === '';
+  const honEff = cur.artist_honorifics_override;            // effective honorific
+  const showHonClear = honCleared || honEff !== '';
+  const honClearBtn = showHonClear
+    ? `<button type="button" class="ka-clear-btn${honCleared ? ' ka-clear-active' : ''}" title="${honCleared ? 'Undo: restore the honorific' : 'Remove the honorific (leave it blank in the export)'}" onclick="_toggleHonClear(this)">${honCleared ? 'Undo' : '✕ Remove'}</button>`
+    : '';
+
   const cell = document.getElementById(`wk-ovc-${workId}`);
   if (!cell) return;
   // Pack 04c (2026-05-31): the form's internal header (with Close ✕)
@@ -6254,7 +6288,10 @@ function showOverrideForm(importId, workId, existing) {
                 <textarea name="artist_name_override" rows="2" placeholder="Override artist (use Enter for line breaks)">${val('artist_name_override')}</textarea></div>
               <div class="form-row"><label>Honorifics</label>
                 ${fills('artist_honorifics_override','artist_honorifics_override','honorifics')}
-                <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="e.g. RA"></div>
+                <div class="ka-field-input">
+                  <input type="text" name="artist_honorifics_override" value="${val('artist_honorifics_override')}" placeholder="${honCleared ? '(removed — no honorific)' : 'e.g. RA'}"${honCleared ? ' disabled data-cleared="1"' : ''} oninput="_onHonInput(this)">
+                  ${honClearBtn}
+                </div></div>
             </div>
           </div>
           <div class="ka-section">
@@ -6288,6 +6325,46 @@ function showOverrideForm(importId, workId, existing) {
     </div>`;
 }
 
+// Honorifics "✕ Remove" toggle — mirrors the Known-Artists clear idiom
+// (_toggleKaClear). The cleared state is an explicit empty-string override
+// (blank in the export); the data-cleared flag is what saveOverride and the
+// live-preview reader use to send "" instead of null.
+function _toggleHonClear(btn) {
+  const wrap = btn.closest('.ka-field-input') || btn.parentElement;
+  const input = wrap.querySelector('input[name="artist_honorifics_override"]');
+  if (!input) return;
+  const nowCleared = btn.classList.toggle('ka-clear-active');
+  if (nowCleared) {
+    input.value = '';
+    input.dataset.cleared = '1';
+    input.disabled = true;
+    input.placeholder = '(removed — no honorific)';
+    btn.textContent = 'Undo';
+    btn.title = 'Undo: restore the honorific';
+  } else {
+    delete input.dataset.cleared;
+    input.disabled = false;
+    input.placeholder = 'e.g. RA';
+    btn.textContent = '✕ Remove';
+    btn.title = 'Remove the honorific (leave it blank in the export)';
+  }
+  if (_drawer && _drawer.mode === 'full') _drawerOnFormInput();  // refresh live preview
+}
+
+// Typing a honorific cancels the cleared state (back to a normal override).
+function _onHonInput(input) {
+  if (input.dataset.cleared) {
+    delete input.dataset.cleared;
+    const btn = (input.closest('.ka-field-input') || input.parentElement)?.querySelector('.ka-clear-btn');
+    if (btn) {
+      btn.classList.remove('ka-clear-active');
+      btn.textContent = '✕ Remove';
+      btn.title = 'Remove the honorific (leave it blank in the export)';
+    }
+  }
+  // The form-level 'input' listener drives the live-preview refresh.
+}
+
 /** Re-render the visible work row cells after an override save/delete. */
 function _refreshWorkRow(importId, workId) {
   const w = _workCache[workId];
@@ -6315,7 +6392,10 @@ async function saveOverride(importId, workId) {
   for (const f of allFields) {
     const input = formEl.querySelector(`[name="${f}"]`);
     const raw = input?.value.trim() ?? '';
-    if (raw === '') { body[f] = null; }
+    // An empty box normally means "no override" (null → inherit). But a field
+    // flagged data-cleared (the honorifics Remove button) means "override to
+    // empty" → send "" so the backend blanks it rather than inheriting.
+    if (raw === '') { body[f] = (input?.dataset.cleared === '1') ? '' : null; }
     else if (numFields.has(f)) { body[f] = Number(raw); }
     else { body[f] = raw; }
   }
