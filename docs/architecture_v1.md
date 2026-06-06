@@ -115,6 +115,20 @@ uploaded *corrected* LOW Tagged Text file (`import_id`, `template_id`,
 `filename`, `encoding`, inline `raw_text`, `uploaded_at`). The diff is recomputed
 live from it against current data; the raw upload is never mutated.
 
+### ImportSnapshot
+
+Append-only snapshot of an import's **full mutable state**, captured
+automatically just before every re-import so the change can be diffed after the
+fact and undone. See §5.3.
+
+- `id` (UUID), `import_id` (FK), `kind` (`pre_reimport` | `pre_restore`),
+  `note` (e.g. the incoming filename), `state` (JSONB), `created_at`
+- `state` is the serialised tree of sections → works (**all** raw + normalised
+  columns) → override + per-work warnings, plus import-level warnings. Every
+  column is serialised generically (not a hand-maintained subset), so a new
+  field can't silently fall out; `Decimal` is stored as a string to preserve
+  price precision. Nothing is mutated in place — each re-import adds a row.
+
 ### ValidationWarning
 
 <img width="100%" alt="Picture 366" src="https://github.com/user-attachments/assets/bb80ba22-a49e-4e40-ba49-27bdb644e535" />
@@ -579,6 +593,69 @@ If no previous snapshot exists: `{has_changes: false, no_previous_export: true}`
 
 ---
 
+## 5.3 Reimport snapshots, diff & undo
+
+Whereas §5.2's export diff compares against the last *export*, this compares
+against the state captured just before the last *Update Import* — answering
+"what did the re-import change, and why?" — and lets an editor undo it. LoW
+only.
+
+### Capture
+
+`backend/app/services/import_snapshot.py`
+
+`reimport_excel` calls `create_snapshot()` immediately before it deletes the old
+data — **inside the same transaction**, so a failed/rolled-back re-import
+discards the snapshot too, and skipped on `dry_run`. The whole import is
+snapshot even for a gallery-scoped re-import, so a later undo is always
+coherent. `serialize_import_state()` walks the full tree (see `ImportSnapshot`
+in §3). Snapshots are kept indefinitely (append-only; the volume is tiny).
+
+### Attributed diff
+
+`backend/app/services/import_diff.py`
+
+`diff_states(old, new)` pairs the works of two serialised states and, for each
+matched pair, reports field-level changes **attributed to their cause**:
+
+- `source` — the raw spreadsheet value changed
+- `normalisation` — raw identical, but the normalised value moved (i.e. the
+  normalisation rules drifted between the two states)
+- `override` — the editorial override changed
+
+Plus added / removed / unchanged, catalogue-number renumbers, section moves and
+include/exclude toggles. Price (`price_numeric` + `price_text`) and edition are
+compared at the column level — so a numeric change masked by a stable display
+text (e.g. "POA") still surfaces — and merely *grouped* under one label in the UI.
+
+**Pairing** shares the `compute_fingerprint` primitive with
+`reimport_matcher` but **inverts the pass order**: fingerprint first (catches
+unchanged + renumbered works), then catalogue number for the remainder (catches
+same-slot content edits). This is the opposite of the matcher's
+cat-no-first-gated-on-fingerprint policy, because a diff must *surface* the
+content edits the conservative preservation matcher would show as remove + add.
+The attributed renderer is reusable by a future "compare two imports" tool —
+only the source of the two states changes.
+
+### Restore (undo)
+
+`restore_snapshot()` replaces the import's current sections / works / overrides
+/ warnings with the state captured in a snapshot, restoring original row ids
+(audit references stay valid) and normalised values verbatim (no
+re-normalisation). It is itself reversible — a `pre_restore` snapshot of the
+current state is captured first — and writes a `snapshot_restore` audit entry.
+(It does not currently restore the Import record's `filename`/`description`.)
+
+### API & UI
+
+`backend/app/api/low_snapshots.py` — `GET …/reimport-diff`,
+`GET …/snapshots`, `GET …/snapshots/{sid}/diff` (read-only), and
+`POST …/snapshots/{sid}/restore` (editor-gated). The LoW detail page shows a
+"What the last update changed" panel (full-width, cause badges) that
+auto-expands after a re-import, with an editor-only "Undo this update" button.
+
+---
+
 ## 6. Export layer
 
 ### List of Works export
@@ -676,6 +753,7 @@ Routes are split across focused modules under `backend/app/api/`:
 - `low_overrides.py` — per-work override CRUD and exclude toggle
 - `low_exports.py` — Tagged Text, JSON, XML, CSV exports (full import and per-section)
 - `low_reconcile.py` — LOW → LPG reconciliation: diff a corrected LOW export against the DB, persist snapshots (see [`reconcile.md`](./reconcile.md))
+- `low_snapshots.py` — pre-reimport snapshots: list, attributed reimport-diff, and restore/undo (§5.3)
 - `low_templates.py` — LoW export template CRUD and duplication
 - `normalisation_config.py` — global normalisation config
 - `known_artists.py` — Known Artists CRUD and seed
@@ -735,6 +813,10 @@ CORS middleware is enabled when `CORS_ORIGINS` env var is set.
 | GET    | `/templates/{id}/export`                   | Export template as seed-format JSON       |
 | PUT    | `/imports/{id}/reimport`                   | Re-import with override preservation      |
 | GET    | `/imports/{id}/export-diff`                | Diff against last export snapshot         |
+| GET    | `/imports/{id}/reimport-diff`              | Attributed diff vs the pre-reimport snapshot (§5.3) |
+| GET    | `/imports/{id}/snapshots`                  | List pre-reimport snapshots               |
+| GET    | `/imports/{id}/snapshots/{sid}/diff`       | Diff a specific snapshot vs current        |
+| POST   | `/imports/{id}/snapshots/{sid}/restore`    | Restore (undo to) a snapshot              |
 | GET    | `/imports/{id}/audit-log`                  | Audit log for an import                   |
 | GET    | `/audit-log`                               | Global audit log                          |
 | POST   | `/admin/cleanup-uploads`                   | Remove orphaned upload files              |
