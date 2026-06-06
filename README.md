@@ -170,11 +170,17 @@ tests/            # pytest suite (~975 tests across 40 test files)
 .github/workflows/
   ci.yml          # GitHub Actions CI/CD pipeline
 .aws/
-  task-definition-staging.json  # ECS task definition (staging)
-  task-definition-prod.json     # ECS task definition (production)
+  setup-infrastructure.sh        # One-time AWS build (ECR, S3, RDS, ECS, ALB, IAM)
+  mothball-prod.sh               # Tear prod down to near-zero cost between seasons
+  restore-prod.sh                # Rebuild prod from a mothball snapshot
+  migrate-to-per-env-secrets.sh  # One-off secrets migration
+  task-definition-prod.json      # ECS task definition (production)
 docs/
   architecture_v1.md
-  dev-guide.md      # Developer guide (local setup, migrations, environments)
+  dev-guide.md                  # Developer guide (local setup, migrations, environments)
+  mothball-and-restore.md       # Seasonal prod teardown/rebuild runbook
+  staging-rebuild-checklist.md  # How to recreate the decommissioned staging env
+  reconcile.md
   export_spec_v1.md
   roadmap.md
 ```

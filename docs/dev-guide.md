@@ -573,3 +573,6 @@ aws ec2 delete-security-group --group-id "$SG"
 > Automatic snapshots are also visible in the AWS console under RDS →
 > Snapshots and can be restored to a new instance there without the CLI — the
 > same approach, just click-driven.
+
+> To tear the **whole** production stack down between exhibitions (not just
+> dump the database), see [`mothball-and-restore.md`](mothball-and-restore.md).

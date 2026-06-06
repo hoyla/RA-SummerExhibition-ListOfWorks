@@ -2,6 +2,11 @@
 
 If staging needs to be recreated, here's what existed and how to rebuild it.
 
+> **See also:** [`mothball-and-restore.md`](mothball-and-restore.md) — production
+> uses the same teardown/rebuild pattern (snapshot the DB, delete the
+> cost-incurring resources, rebuild from the snapshot), but scripted end-to-end
+> for the seasonal mothball cycle.
+
 ## Region / Account
 - **Region**: eu-north-1
 - **Account**: 028597908565
