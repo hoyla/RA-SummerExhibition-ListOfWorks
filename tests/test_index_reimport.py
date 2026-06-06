@@ -239,6 +239,33 @@ class TestIndexReimportOverrides:
         artists_after = _get_artists(client, import_id)
         assert not any(a["last_name"] == "Brown" for a in artists_after)
 
+    def test_shared_surname_override_preserved(self, client, db_session):
+        """Regression: artist2/3_shared_surname_override must survive a re-import.
+
+        These tri-state shared-surname overrides were absent from
+        _INDEX_OVERRIDE_FIELDS, so Update Import silently dropped them — the
+        override row was recreated but the shared-surname values reset to None.
+        """
+        _, import_id = _upload_index(client)
+        artists = _get_artists(client, import_id)
+        adams = next(a for a in artists if a["last_name"] == "Adams")
+        client.put(
+            f"/index/imports/{import_id}/artists/{adams['id']}/override",
+            json={
+                "artist2_shared_surname_override": True,
+                "artist3_shared_surname_override": False,
+            },
+        )
+
+        r = _reimport_index(client, import_id)
+        assert r.json()["overrides_preserved"] >= 1
+
+        artists_after = _get_artists(client, import_id)
+        adams_after = next(a for a in artists_after if a["last_name"] == "Adams")
+        ovr = client.get(f"/index/imports/{import_id}/artists/{adams_after['id']}/override").json()
+        assert ovr["artist2_shared_surname_override"] is True
+        assert ovr["artist3_shared_surname_override"] is False
+
     def test_company_override_preserved(self, client, db_session):
         _, import_id = _upload_index(client)
 
@@ -256,6 +283,28 @@ class TestIndexReimportOverrides:
         ovr = client.get(f"/index/imports/{import_id}/artists/{adams_after['id']}/override")
         assert ovr.status_code == 200
         assert ovr.json()["is_company_override"] is True
+
+
+class TestIndexOverrideFieldsCoverage:
+    """Structural guard: _INDEX_OVERRIDE_FIELDS must stay in sync with the model."""
+
+    def test_index_override_fields_covers_all_overridable_columns(self):
+        """Every overridable column on IndexArtistOverride must appear in
+        _INDEX_OVERRIDE_FIELDS, otherwise re-import silently drops it (as
+        happened with the shared-surname overrides). Pins the contract so a
+        newly-added override column can't fall out of reimport unnoticed."""
+        from backend.app.models.index_override_model import IndexArtistOverride
+        from backend.app.services.index_importer import _INDEX_OVERRIDE_FIELDS
+
+        # artist_id is the PK (identity, not an editable value); updated_at is
+        # auto-managed metadata. Everything else on the row is overridable.
+        non_override_cols = {"artist_id", "updated_at"}
+        overridable = {c.name for c in IndexArtistOverride.__table__.columns} - non_override_cols
+        assert overridable == set(_INDEX_OVERRIDE_FIELDS), (
+            "_INDEX_OVERRIDE_FIELDS is out of sync with the IndexArtistOverride "
+            "model — re-import would silently drop the symmetric-difference "
+            f"field(s): {overridable ^ set(_INDEX_OVERRIDE_FIELDS)}"
+        )
 
 
 class TestIndexReimportCourtesy:

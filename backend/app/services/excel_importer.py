@@ -283,6 +283,7 @@ def _open_and_parse_workbook(file_path: str) -> Tuple[List[str], List[dict], Lis
 
 OVERRIDE_FIELDS = [
     "title_override",
+    "title_cased_override",
     "artist_name_override",
     "artist_honorifics_override",
     "price_numeric_override",

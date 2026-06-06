@@ -875,6 +875,8 @@ _INDEX_OVERRIDE_FIELDS = [
     "artist1_ra_styled_override",
     "artist2_ra_styled_override",
     "artist3_ra_styled_override",
+    "artist2_shared_surname_override",
+    "artist3_shared_surname_override",
     "company_override",
     "address_override",
     "notes",

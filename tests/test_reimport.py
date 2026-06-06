@@ -257,6 +257,36 @@ class TestReimportOverridePreservation:
         assert ovr["edition_total_override"] == 50
         assert ovr["notes"] == "Curator requested change"
 
+    def test_title_cased_override_preserved(self, client):
+        """Regression: title_cased_override must survive a re-import.
+
+        It was absent from OVERRIDE_FIELDS, so Update Import silently dropped
+        any Title-Case correction an editor had made on a work — even one that
+        matched cleanly by cat-no and content.
+        """
+        import_id = _do_import(client)
+        sections = _get_sections(client, import_id)
+        all_works = [w for s in sections for w in s["works"]]
+        # cat 2 "Dawn" is content-identical across the re-import, so it matches
+        # cleanly and its override must be carried over intact.
+        work2 = next(w for w in all_works if w["raw_cat_no"] == "2")
+
+        _set_override(
+            client,
+            import_id,
+            work2["id"],
+            title_cased_override="Dawn (Title Case Fix)",
+        )
+
+        r = _do_reimport(client, import_id)
+        assert r.json()["overrides_preserved"] == 1
+
+        sections = _get_sections(client, import_id)
+        all_works = [w for s in sections for w in s["works"]]
+        work2_new = next(w for w in all_works if w["raw_cat_no"] == "2")
+        assert work2_new["override"] is not None
+        assert work2_new["override"]["title_cased_override"] == "Dawn (Title Case Fix)"
+
     def test_include_in_export_preserved(self, client, db_session):
         import_id = _do_import(client)
         sections = _get_sections(client, import_id)
@@ -322,6 +352,28 @@ class TestReimportOverridePreservation:
         assert data["added"] == 1
         assert data["removed"] == 3  # all 3 originals removed
         assert data["overrides_preserved"] == 0
+
+
+class TestOverrideFieldsCoverage:
+    """Structural guard: OVERRIDE_FIELDS must stay in sync with the model."""
+
+    def test_override_fields_covers_all_overridable_columns(self):
+        """Every overridable column on WorkOverride must appear in
+        OVERRIDE_FIELDS, otherwise re-import silently drops it (as happened
+        with title_cased_override). This pins the contract so a newly-added
+        override column can't fall out of reimport preservation unnoticed."""
+        from backend.app.models.override_model import WorkOverride
+        from backend.app.services.excel_importer import OVERRIDE_FIELDS
+
+        # work_id is the PK (identity, not an editable value); updated_at is
+        # auto-managed metadata. Everything else on the row is overridable.
+        non_override_cols = {"work_id", "updated_at"}
+        overridable = {c.name for c in WorkOverride.__table__.columns} - non_override_cols
+        assert overridable == set(OVERRIDE_FIELDS), (
+            "OVERRIDE_FIELDS is out of sync with the WorkOverride model — "
+            "re-import would silently drop the symmetric-difference field(s): "
+            f"{overridable ^ set(OVERRIDE_FIELDS)}"
+        )
 
 
 class TestReimportEdgeCases:

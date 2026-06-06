@@ -573,9 +573,16 @@ a:hover { text-decoration: underline; }
 .recency--latest { color: var(--success); }
 .recency--stale  { color: var(--warning); }
 
-/* Free-text "Import description" beside the detail heading. Editable inline for
-   editors; read-only span otherwise. Sized down so it doesn't inherit the h2. */
+/* Free-text "Import description" inline beside the detail heading meta strip
+   (kept on the heading row to spare vertical space). The input auto-grows with
+   its content via the `size` attribute, clamped here to [356, 712]px. Editable
+   for editors; read-only text otherwise. Sized down so it doesn't inherit h2. */
 .import-description-input {
+  box-sizing: border-box;
+  min-width: 356px;
+  max-width: 712px;
+  margin-left: 8px;
+  vertical-align: middle;
   font-family: var(--font);
   font-size: var(--t-label);
   font-weight: 400;
@@ -584,10 +591,6 @@ a:hover { text-decoration: underline; }
   border: 1px solid transparent;
   border-radius: var(--radius);
   padding: 2px 6px;
-  margin-left: 8px;
-  min-width: 200px;
-  max-width: 380px;
-  vertical-align: middle;
 }
 .import-description-input:hover { border-color: var(--border); }
 .import-description-input:focus {
@@ -598,11 +601,11 @@ a:hover { text-decoration: underline; }
 }
 .import-description-input::placeholder { color: var(--muted); font-style: italic; }
 .import-description {
+  margin-left: 8px;
+  vertical-align: middle;
   font-size: var(--t-label);
   font-weight: 400;
   color: var(--muted-2);
-  margin-left: 8px;
-  vertical-align: middle;
 }
 /* Truncated read-only description in the import-list tables (full text on hover) */
 .import-description-cell span:not(.muted) {
