@@ -1421,6 +1421,14 @@ details.section-block[open] > .section-summary::before {
 .diff-new { color: #27ae60; font-weight: 600; }
 .diff-row-added td { background: #f0faf0; }
 .diff-row-removed td { background: #fde8e8; text-decoration: line-through; color: #999; }
+/* Reimport-diff cause badges (why a value changed) */
+.badge-source   { background: #e7f0fb; color: #1b4f8a; border: 1px solid #a9cdf0; }
+.badge-rules    { background: #f0e9fb; color: #5b3b9a; border: 1px solid #c9b3ec; }
+.badge-override { background: #e1f5f3; color: #176f66; border: 1px solid #8fd3cb; }
+.diff-cause-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
+/* Sub-label for grouped diff fields (e.g. Price → number / display). inline-block
+   so the strikethrough on a changed "before" cell doesn't strike the label. */
+.diff-sub { display: inline-block; color: #888; text-decoration: none; font-size: 11px; margin-right: 4px; }
 
 /* Tools panel (collapsed by default to keep the Works list near the top) */
 details.tools-panel[open] > .section-summary::before { transform: rotate(90deg); }
@@ -1441,6 +1449,10 @@ details.tools-panel[open] > .section-summary::before { transform: rotate(90deg);
 /* Reconcile results span the full width below the three tool cards */
 .tool-output { grid-column: 1 / -1; }
 .tool-output:empty { display: none; }
+/* The reimport-diff renders as a full-width band below the tool cards (a wide
+   changes table needs the room), collapsing away when there's nothing to show. */
+.reimport-diff-output { grid-column: 1 / -1; }
+.reimport-diff-output:empty { display: none; }
 
 /* Reconcile corrected LOW */
 .recon-cosmetic { margin-top: 16px; }

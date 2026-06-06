@@ -4352,6 +4352,11 @@ async function _commitReimport() {
     document.getElementById('reimport-file').value = '';
     _resetReimportPreview();
     await renderDetail(importId);
+    // Surface what the update just changed, right where the user is: open the
+    // Tools panel and auto-expand the attributed diff.
+    document.querySelector('.tools-panel')?.setAttribute('open', '');
+    const diffBtn = document.getElementById('reimport-diff-btn');
+    if (diffBtn) toggleReimportDiff(importId, diffBtn);
   } catch (err) {
     if (err.message === 'Auth') return;
     statusEl.textContent = `Re-import failed: ${err.message}`;
@@ -4514,6 +4519,12 @@ async function renderDetail(importId) {
           <p id="reimport-status" class="status-msg" style="margin-top:8px"></p>
           <div id="reimport-preview" style="display:none;margin-top:14px"></div>
         </section>`)}
+        <section class="tool-block" id="reimport-diff-block">
+          <h4>What the last update changed</h4>
+          <p class="muted" style="font-size:12px;margin-bottom:10px">Compares the data now against the snapshot taken automatically just before the most recent Update Import — including <em>why</em> each value changed.</p>
+          <button type="button" class="btn btn-secondary" id="reimport-diff-btn">Show what changed</button>
+        </section>
+        <div id="reimport-diff-panel-${esc(importId)}" class="reimport-diff-output" data-visible=""></div>
         ${ifEditor(`<section class="tool-block" id="reconcile-panel">
           <h4>Reconcile corrected LOW</h4>
           <p class="muted" style="font-size:12px;margin-bottom:10px">Upload a corrected InDesign LOW tags export to find data changes made downstream that aren\u2019t yet in this data. Detection only \u2014 nothing is changed automatically.</p>
@@ -4554,6 +4565,11 @@ async function renderDetail(importId) {
     } else {
       _resetReimportPreview();
     }
+  });
+
+  // "What the last update changed" — toggle the attributed before/after diff.
+  document.getElementById('reimport-diff-btn')?.addEventListener('click', (e) => {
+    toggleReimportDiff(importId, e.currentTarget);
   });
 
   // Fetch import metadata for filename mismatch detection + heading
@@ -6424,6 +6440,235 @@ function _renderDiffPanel(diff) {
     for (const w of diff.removed) {
       parts.push(`<tr class="diff-row-removed"><td>${esc(w.cat_no ?? '\u2014')}</td><td>${esc(w.section)}</td><td>${esc(w.artist ?? '')}</td><td>${esc(w.title ?? '')}</td><td>${esc(w.price_text ?? '')}</td></tr>`);
     }
+    parts.push('</tbody></table>');
+  }
+
+  parts.push('</div>');
+  return parts.join('');
+}
+
+// ---------------------------------------------------------------------------
+// Reimport diff — "what the last Update Import changed", attributed by cause
+// ---------------------------------------------------------------------------
+
+// Maps a change cause to its [badge class, short label]. The diff engine tags
+// every field change as source (spreadsheet), normalisation (rules drift), or
+// override (editorial).
+const _CAUSE_BADGE = {
+  source: ['badge-source', 'Spreadsheet'],
+  normalisation: ['badge-rules', 'Rules'],
+  override: ['badge-override', 'Override'],
+  unknown: ['badge-unchanged', '?'],
+};
+
+function _causeBadges(causes) {
+  return (causes || [])
+    .map(c => {
+      const [cls, label] = _CAUSE_BADGE[c] || _CAUSE_BADGE.unknown;
+      return `<span class="badge ${cls}" title="${esc(c)}">${esc(label)}</span>`;
+    })
+    .join(' ');
+}
+
+// Plain-English labels for the diff's resolved fields.
+const _DIFF_FIELD_LABEL = {
+  cat_no: 'Cat No',
+  title: 'Title',
+  title_cased: 'Title (Title Case)',
+  artist_name: 'Artist',
+  artist_honorifics: 'Honorifics',
+  artwork: 'Artwork (pieces)',
+  medium: 'Medium',
+  section: 'Section',
+  include_in_export: 'Included in export',
+};
+
+// Price and Edition each span two resolved columns. We group them under one
+// label so the diff reads as a single logical field — but we still COMPARE the
+// columns separately (no information loss): a change to the underlying number
+// that a 'display' price (e.g. "POA") masks in print still surfaces here.
+const _PRICE_MEMBERS = [['price_numeric', 'number'], ['price_text', 'display']];
+const _EDITION_MEMBERS = [['edition_total', 'of'], ['edition_price_numeric', 'at £']];
+
+// True when price number and display text carry the same value on BOTH sides —
+// i.e. the two columns are just two representations of one edit, so showing one
+// line loses nothing. Diverging values (text masking a number) return false.
+function _samePriceValue(byField) {
+  const n = byField['price_numeric'];
+  const t = byField['price_text'];
+  if (!n || !t) return false;
+  const eq = (a, b) =>
+    a != null && b != null && a !== '' && b !== '' && Number(a) === Number(b);
+  return eq(n.old, t.old) && eq(n.new, t.new);
+}
+
+// Transform a changed work's flat field list into display rows, grouping
+// Price/Edition. Returns [{label, lines:[{sub,old,new}], causes:[...]}].
+function _groupChangeFields(fields) {
+  const byField = {};
+  for (const f of fields) byField[f.field] = f;
+  const rows = [];
+
+  const pushField = (field) => {
+    const f = byField[field];
+    if (!f) return;
+    rows.push({
+      label: _DIFF_FIELD_LABEL[field] || field,
+      lines: [{ sub: null, old: f.old, new: f.new }],
+      causes: f.causes || [],
+    });
+  };
+
+  const pushGroup = (label, members, dedup) => {
+    const present = members.filter(([fld]) => byField[fld]);
+    if (!present.length) return;
+    const causes = new Set();
+    present.forEach(([fld]) => (byField[fld].causes || []).forEach(c => causes.add(c)));
+    let lines;
+    if (dedup) {
+      const t = byField['price_text'];
+      lines = [{ sub: null, old: t.old, new: t.new }];
+    } else {
+      lines = present.map(([fld, sub]) => ({
+        sub: present.length > 1 ? sub : null,
+        old: byField[fld].old,
+        new: byField[fld].new,
+      }));
+    }
+    rows.push({ label, lines, causes: [...causes] });
+  };
+
+  pushField('cat_no');
+  pushField('title');
+  pushField('title_cased');
+  pushField('artist_name');
+  pushField('artist_honorifics');
+  pushGroup('Price', _PRICE_MEMBERS, _samePriceValue(byField));
+  pushGroup('Edition', _EDITION_MEMBERS, false);
+  pushField('artwork');
+  pushField('medium');
+  pushField('section');
+  pushField('include_in_export');
+
+  // Safety net: surface any field not covered by the ordered list above.
+  const handled = new Set([
+    'cat_no', 'title', 'title_cased', 'artist_name', 'artist_honorifics',
+    'price_numeric', 'price_text', 'edition_total', 'edition_price_numeric',
+    'artwork', 'medium', 'section', 'include_in_export',
+  ]);
+  for (const f of fields) if (!handled.has(f.field)) pushField(f.field);
+
+  return rows;
+}
+
+// Render the stacked before/after lines of one display row for the given side.
+function _diffLines(lines, side) {
+  return lines
+    .map(l => {
+      const v = l[side];
+      const val = v != null && v !== '' ? esc(String(v)) : '<span class="muted">—</span>';
+      const sub = l.sub ? `<span class="diff-sub">${esc(l.sub)}</span>` : '';
+      return `<div>${sub}${val}</div>`;
+    })
+    .join('');
+}
+
+async function toggleReimportDiff(importId, btnEl) {
+  const panel = document.getElementById(`reimport-diff-panel-${importId}`);
+  if (!panel) return;
+
+  // Toggle off if already showing
+  if (panel.dataset.visible === '1') {
+    panel.innerHTML = '';
+    panel.dataset.visible = '';
+    return;
+  }
+
+  const restore = btnLoading(btnEl, 'Loading');
+  try {
+    const diff = await api('GET', `/imports/${importId}/reimport-diff`);
+    panel.dataset.visible = '1';
+    panel.innerHTML = _renderReimportDiffPanel(diff);
+  } catch (err) {
+    if (err.message === 'Auth') return;
+    panel.innerHTML = `<p class="error" style="margin-top:8px">${esc(err.message)}</p>`;
+  } finally {
+    restore();
+  }
+}
+
+function _diffSummaryRows(works) {
+  return works
+    .map(w =>
+      `<tr><td>${esc(String(w.cat_no ?? '—'))}</td><td>${esc(w.section ?? '')}</td>` +
+      `<td>${esc(w.artist ?? '')}</td><td>${esc(w.title ?? '')}</td></tr>`
+    )
+    .join('');
+}
+
+function _renderReimportDiffPanel(diff) {
+  if (diff.no_snapshot) {
+    return `<div class="diff-result diff-info"><p>No Update Import has been run on this import yet, so there’s nothing to compare. Run <strong>Update Import</strong> above and this will show what it changed.</p></div>`;
+  }
+
+  const snap = diff.snapshot;
+  const snapMeta = snap
+    ? `<span class="muted">(before re-import${snap.note ? ` of ${esc(snap.note)}` : ''}, ${esc(formatDate(snap.created_at))})</span>`
+    : '';
+
+  if (!diff.has_changes) {
+    return `<div class="diff-result diff-ok"><p>✓ No differences from the pre-update snapshot ${snapMeta}</p></div>`;
+  }
+
+  const parts = ['<div class="diff-result">'];
+  parts.push(`<p class="diff-summary">Changes since the last Update Import ${snapMeta}:</p>`);
+
+  const badges = [];
+  if (diff.changed.length) badges.push(`<span class="badge badge-changed">${diff.changed.length} changed</span>`);
+  if (diff.added.length) badges.push(`<span class="badge badge-added">${diff.added.length} added</span>`);
+  if (diff.removed.length) badges.push(`<span class="badge badge-removed">${diff.removed.length} removed</span>`);
+  if (diff.unchanged_count) badges.push(`<span class="badge badge-unchanged">${diff.unchanged_count} unchanged</span>`);
+  parts.push(`<div class="diff-badges">${badges.join(' ')}</div>`);
+
+  // Cause legend so the "Why" column reads clearly.
+  parts.push(
+    `<p class="diff-cause-legend muted">Why each value changed: ` +
+    `${_causeBadges(['source'])} spreadsheet · ${_causeBadges(['normalisation'])} normalisation rules · ${_causeBadges(['override'])} editorial override</p>`
+  );
+
+  // Changed works — field-level detail with cause attribution
+  if (diff.changed.length) {
+    parts.push('<h4 class="diff-heading">Changed works</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Section</th><th>Field</th><th>Before</th><th>After</th><th>Why</th></tr></thead><tbody>');
+    for (const w of diff.changed) {
+      const drows = _groupChangeFields(w.fields);
+      const rowspan = drows.length;
+      const cat = w.new?.cat_no ?? w.old?.cat_no ?? '—';
+      const section = w.new?.section ?? w.old?.section ?? '';
+      drows.forEach((row, i) => {
+        parts.push('<tr>');
+        if (i === 0) parts.push(`<td rowspan="${rowspan}" class="diff-catno">${esc(String(cat))}</td><td rowspan="${rowspan}">${esc(section)}</td>`);
+        parts.push(`<td>${esc(row.label)}</td>`);
+        parts.push(`<td class="diff-old">${_diffLines(row.lines, 'old')}</td>`);
+        parts.push(`<td class="diff-new">${_diffLines(row.lines, 'new')}</td>`);
+        parts.push(`<td>${_causeBadges(row.causes)}</td>`);
+        parts.push('</tr>');
+      });
+    }
+    parts.push('</tbody></table>');
+  }
+
+  if (diff.added.length) {
+    parts.push('<h4 class="diff-heading">Added works</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Section</th><th>Artist</th><th>Title</th></tr></thead><tbody class="diff-row-added">');
+    parts.push(_diffSummaryRows(diff.added));
+    parts.push('</tbody></table>');
+  }
+
+  if (diff.removed.length) {
+    parts.push('<h4 class="diff-heading">Removed works</h4>');
+    parts.push('<table class="data-table diff-table"><thead><tr><th>Cat No</th><th>Section</th><th>Artist</th><th>Title</th></tr></thead><tbody class="diff-row-removed">');
+    parts.push(_diffSummaryRows(diff.removed));
     parts.push('</tbody></table>');
   }
 
