@@ -25,6 +25,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from backend.app.models.audit_log_model import AuditLog
 from backend.app.models.import_snapshot_model import ImportSnapshot
 from backend.app.models.override_model import WorkOverride
 from backend.app.models.section_model import Section
@@ -180,3 +181,165 @@ def create_snapshot(
     db.add(snap)
     db.flush()
     return snap
+
+
+# ---------------------------------------------------------------------------
+# Restore (undo) — rebuild an import's state from a snapshot
+# ---------------------------------------------------------------------------
+
+# Server-managed timestamps are never restored explicitly — a restored row is
+# genuinely (re-)created now.
+_SKIP_COLS = {"created_at", "updated_at"}
+
+
+def _coerce(col, val):
+    """Coerce a JSON-decoded snapshot value back to the column's Python type
+    (UUID string -> UUID, Decimal string -> Decimal); pass primitives through."""
+    if val is None:
+        return None
+    try:
+        pytype = col.type.python_type
+    except (NotImplementedError, AttributeError):
+        pytype = None
+    if pytype is _uuid.UUID and isinstance(val, str):
+        return _uuid.UUID(val)
+    if pytype is Decimal and not isinstance(val, Decimal):
+        return Decimal(str(val))
+    return val
+
+
+def _instance_from_dict(model, data: dict):
+    """Rebuild an ORM instance from a serialised row dict, restoring every
+    mapped column (so a new column can't silently drop out of restore) except
+    server-managed timestamps."""
+    kwargs = {
+        col.name: _coerce(col, data[col.name])
+        for col in model.__table__.columns
+        if col.name not in _SKIP_COLS and col.name in data
+    }
+    return model(**kwargs)
+
+
+def restore_snapshot(
+    import_id: _uuid.UUID,
+    snapshot: ImportSnapshot,
+    db: Session,
+    *,
+    snapshot_current_first: bool = True,
+) -> dict:
+    """Replace an import's current state with the one captured in ``snapshot``.
+
+    Wipes the import's current sections / works / overrides / validation
+    warnings and rebuilds them verbatim from ``snapshot.state`` — restoring the
+    original row ids so audit-log references stay valid, and the normalised
+    values exactly as they were (no re-normalisation).
+
+    Append-only and itself reversible: by default a ``pre_restore`` snapshot of
+    the *current* state is captured first, so an unwanted restore can be undone
+    too. Writes an audit-log entry. The caller commits.
+
+    Returns counts: ``{"sections", "works", "overrides", "warnings"}``.
+    """
+    # Read everything we need off the snapshot up front: we expunge the session
+    # below, which would detach it.
+    state = snapshot.state or {}
+    snapshot_created_iso = _iso(snapshot.created_at)
+
+    # Capture the current state first so the restore is itself undoable.
+    if snapshot_current_first:
+        create_snapshot(
+            import_id,
+            db,
+            kind="pre_restore",
+            note=f"Before restoring snapshot taken {snapshot_created_iso}",
+        )
+
+    # Wipe current state (overrides -> warnings -> works -> sections).
+    work_ids = [row.id for row in db.query(Work.id).filter(Work.import_id == import_id).all()]
+    if work_ids:
+        db.query(WorkOverride).filter(WorkOverride.work_id.in_(work_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(ValidationWarning).filter(ValidationWarning.import_id == import_id).delete(
+        synchronize_session=False
+    )
+    db.query(Work).filter(Work.import_id == import_id).delete(synchronize_session=False)
+    db.query(Section).filter(Section.import_id == import_id).delete(synchronize_session=False)
+    db.flush()
+
+    # Bulk deletes with synchronize_session=False leave stale instances in the
+    # identity map; clear it so re-inserting rows with their original ids (for
+    # audit continuity) can't collide with those ghosts.
+    db.expunge_all()
+
+    # Recreate sections first (FK targets), then works + overrides + warnings.
+    counts = {"sections": 0, "works": 0, "overrides": 0, "warnings": 0}
+    for sdict in state.get("sections", []):
+        db.add(
+            Section(
+                id=_uuid.UUID(sdict["id"]),
+                import_id=import_id,
+                name=sdict["name"],
+                position=sdict["position"],
+            )
+        )
+        counts["sections"] += 1
+    db.flush()
+
+    for sdict in state.get("sections", []):
+        for wdict in sdict.get("works", []):
+            work = _instance_from_dict(Work, wdict)
+            work.import_id = import_id  # belt-and-braces: pin to this import
+            db.add(work)
+            db.flush()  # work row must exist before its override/warnings (FK)
+            counts["works"] += 1
+
+            ovr = wdict.get("override")
+            if ovr:
+                override = _instance_from_dict(WorkOverride, ovr)
+                override.work_id = work.id
+                db.add(override)
+                counts["overrides"] += 1
+
+            for wn in wdict.get("warnings", []):
+                db.add(
+                    ValidationWarning(
+                        import_id=import_id,
+                        work_id=work.id,
+                        warning_type=wn["warning_type"],
+                        message=wn["message"],
+                    )
+                )
+                counts["warnings"] += 1
+
+    for iw in state.get("import_warnings", []):
+        db.add(
+            ValidationWarning(
+                import_id=import_id,
+                work_id=None,
+                warning_type=iw["warning_type"],
+                message=iw["message"],
+            )
+        )
+        counts["warnings"] += 1
+
+    db.add(
+        AuditLog(
+            import_id=import_id,
+            work_id=None,
+            action="snapshot_restore",
+            field=None,
+            old_value=None,
+            new_value=(
+                f"restored snapshot taken {snapshot_created_iso} "
+                f"(sections={counts['sections']}, works={counts['works']}, "
+                f"overrides={counts['overrides']})"
+            ),
+        )
+    )
+
+    return counts
+
+
+def _iso(dt) -> str:
+    return dt.isoformat() if dt is not None else "?"

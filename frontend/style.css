@@ -1429,6 +1429,7 @@ details.section-block[open] > .section-summary::before {
 /* Sub-label for grouped diff fields (e.g. Price → number / display). inline-block
    so the strikethrough on a changed "before" cell doesn't strike the label. */
 .diff-sub { display: inline-block; color: #888; text-decoration: none; font-size: 11px; margin-right: 4px; }
+.reimport-undo-bar { margin: 2px 0 12px; }
 
 /* Tools panel (collapsed by default to keep the Works list near the top) */
 details.tools-panel[open] > .section-summary::before { transform: rotate(90deg); }

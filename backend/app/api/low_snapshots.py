@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.models.import_model import Import
 from backend.app.services.import_diff import diff_states
@@ -18,6 +19,7 @@ from backend.app.services.import_snapshot import (
     get_latest_snapshot,
     get_snapshot,
     list_snapshots,
+    restore_snapshot,
     serialize_import_state,
 )
 
@@ -74,3 +76,20 @@ def get_snapshot_diff(import_id: UUID, snapshot_id: UUID, db: Session = Depends(
         "snapshot": _snapshot_meta(snap),
         **diff_states(snap.state, current),
     }
+
+
+@router.post(
+    "/imports/{import_id}/snapshots/{snapshot_id}/restore",
+    dependencies=[Depends(require_role("editor"))],
+)
+def restore_import_snapshot(import_id: UUID, snapshot_id: UUID, db: Session = Depends(get_db)):
+    """Restore (undo to) a snapshot: replace the import's current data with the
+    state captured in the snapshot. A pre-restore snapshot of the current state
+    is taken first, so this is itself reversible."""
+    _require_import(import_id, db)
+    snap = get_snapshot(snapshot_id, db)
+    if snap is None or snap.import_id != import_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found")
+    counts = restore_snapshot(import_id, snap, db)
+    db.commit()
+    return {"restored": True, "snapshot_id": str(snapshot_id), **counts}
