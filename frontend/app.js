@@ -3195,11 +3195,14 @@ const _TE_SEPARATORS = [
   { v: 'soft_return', glyph: '↵', label: 'soft return' },
   { v: 'hard_return', glyph: '¶', label: 'hard return' },
 ];
+// Honorifics live in their own field (artist = name only), mirroring the data
+// model and the export renderer: the preview appends the honorific as a
+// separate character-styled run rather than baking it into the artist string.
 const _TE_SAMPLES = {
-  standard:   { work_number:'1',  artist:'Nicola Turner', title:'The Meddling Fiend', title_cased:'The Meddling Fiend', edition:'(edition of 10 at £500)', price:'£5,000', medium:'mixed media', artwork:'RA-2025-0001' },
-  long_title: { work_number:'117', artist:'Sir Anish Kapoor RA', title:'Untitled (after the long shadow of an October afternoon, IV)', title_cased:'Untitled (After the Long Shadow of an October Afternoon, IV)', edition:'', price:'£42,000', medium:'pigment on aluminium, mounted in a poplar shadow-box', artwork:'RA-2025-0117' },
-  nfs:        { work_number:'42', artist:'Rana Begum', title:'No. 1124', title_cased:'No. 1124', edition:'', price:'NFS', medium:'powder-coated aluminium', artwork:'RA-2025-0042' },
-  empty_fields:{ work_number:'8', artist:'Eileen Cooper RA', title:'', title_cased:'', edition:'', price:'£3,200', medium:'charcoal on paper', artwork:'' },
+  standard:   { work_number:'1',  artist:'Nicola Turner', artist_honorifics:'RA', title:'The Meddling Fiend', title_cased:'The Meddling Fiend', edition:'(edition of 10 at £500)', price:'£5,000', medium:'mixed media', artwork:'RA-2025-0001' },
+  long_title: { work_number:'117', artist:'Sir Anish Kapoor', artist_honorifics:'RA', title:'Untitled (after the long shadow of an October afternoon, IV)', title_cased:'Untitled (After the Long Shadow of an October Afternoon, IV)', edition:'', price:'£42,000', medium:'pigment on aluminium, mounted in a poplar shadow-box', artwork:'RA-2025-0117' },
+  nfs:        { work_number:'42', artist:'Rana Begum', artist_honorifics:'', title:'No. 1124', title_cased:'No. 1124', edition:'', price:'NFS', medium:'powder-coated aluminium', artwork:'RA-2025-0042' },
+  empty_fields:{ work_number:'8', artist:'Eileen Cooper', artist_honorifics:'RA', title:'', title_cased:'', edition:'', price:'£3,200', medium:'charcoal on paper', artwork:'' },
 };
 const _TE_DEFAULT_COMPONENTS = [
   { field:'work_number', separator_after:'tab',  omit_sep_when_empty:true, enabled:true,  max_line_chars:null, next_component_position:'end_of_text', balance_lines:false, paragraph_style:null },
@@ -3655,7 +3658,7 @@ function _teWrapValue(comp, value) {
 // paragraph_style names. entry_style is prepended to the pa map (it's
 // the implicit style for paragraph 1 when no explicit override is set),
 // so the colour index for the first paragraph is stable.
-function _buildStyleMaps(components, entry_style) {
+function _buildStyleMaps(components, entry_style, honorifics_style) {
   const cs = [];
   const pa = [];
   if (entry_style) pa.push(entry_style);
@@ -3663,6 +3666,10 @@ function _buildStyleMaps(components, entry_style) {
     if (c.char_style && cs.indexOf(c.char_style) < 0) cs.push(c.char_style);
     if (c.paragraph_style && pa.indexOf(c.paragraph_style) < 0) pa.push(c.paragraph_style);
   });
+  // The honorific is not a component, but it carries its own character style
+  // (a separate run beside the artist). Give it a colour slot + legend entry
+  // so it reads as distinct. Only added when this work actually has one.
+  if (honorifics_style && cs.indexOf(honorifics_style) < 0) cs.push(honorifics_style);
   return { cs, pa };
 }
 
@@ -3670,18 +3677,36 @@ function _buildStyleMaps(components, entry_style) {
 // pv-tok--styled treatment with a visible style-name label; mode:'works'
 // emits pv-tok pv-tok--cs cs-N where N is the char_style's index in the
 // style map (modulo 6 colour slots), with no label.
-function _renderPreviewTokenHTML(comp, text, mode, maps) {
+function _renderPreviewTokenHTML(comp, text, mode, maps, extraHTML) {
   const body = text !== '' && text != null
     ? esc(text)
     : `<em class="pv-tok__empty">(${esc(_TE_FIELD_LABEL[comp.field] || comp.field)})</em>`;
+  extraHTML = extraHTML || '';
   if (mode === 'works' && maps) {
     const idx = comp.char_style ? maps.cs.indexOf(comp.char_style) : -1;
     const cls = idx >= 0 ? `pv-tok pv-tok--cs cs-${idx % 6}` : 'pv-tok';
-    return `<span class="pv-pair"><span class="${cls}">${body}</span></span>`;
+    return `<span class="pv-pair"><span class="${cls}">${body}</span>${extraHTML}</span>`;
   }
   const styled = !!comp.char_style;
   const lbl = styled ? `<span class="pv-tok__label">${esc(comp.char_style)}</span>` : '';
-  return `<span class="pv-pair"><span class="pv-tok${styled ? ' pv-tok--styled' : ''}">${body}${lbl}</span></span>`;
+  return `<span class="pv-pair"><span class="pv-tok${styled ? ' pv-tok--styled' : ''}">${body}${lbl}</span>${extraHTML}</span>`;
+}
+
+// Render the honorific as a second character-styled run that sits inside the
+// artist token's pv-pair (the 2px flex gap stands in for the space), so it
+// reads as a distinct style beside the name — mirroring the export's separate
+// <CharStyle:…honorifics> run. Returns just the inner token span; the caller
+// threads it into the pv-pair via _renderPreviewTokenHTML's extraHTML param.
+function _renderPreviewHonorificInner(text, styleName, mode, maps) {
+  const body = esc(text);
+  if (mode === 'works' && maps) {
+    const idx = styleName ? maps.cs.indexOf(styleName) : -1;
+    const cls = idx >= 0 ? `pv-tok pv-tok--cs cs-${idx % 6}` : 'pv-tok';
+    return `<span class="${cls}">${body}</span>`;
+  }
+  const styled = !!styleName;
+  const lbl = styled ? `<span class="pv-tok__label">${esc(styleName)}</span>` : '';
+  return `<span class="pv-tok${styled ? ' pv-tok--styled' : ''}">${body}${lbl}</span>`;
 }
 
 // Pack 04a — Wrap a paragraph's inner lines. mode:'editor' keeps the
@@ -3761,7 +3786,12 @@ function renderEntryPreview(components, fieldValues, opts) {
   const firstGi = renderable.length ? renderable[0].gi : -1;
   const lastGi = renderable.length ? renderable[renderable.length - 1].gi : -1;
 
-  const maps = mode === 'works' ? _buildStyleMaps(components, entry_style) : null;
+  // Honorific: a separate styled run appended to the artist (mirrors the
+  // export renderer). Lowercased per template when configured.
+  const honStyle = opts.honorifics_style || '';
+  const rawHon = (fieldValues.artist_honorifics ?? '').toString().trim();
+  const honText = rawHon ? (opts.honorifics_lowercase ? rawHon.toLowerCase() : rawHon) : '';
+  const maps = mode === 'works' ? _buildStyleMaps(components, entry_style, honText ? honStyle : '') : null;
 
   let paper = renderable.map(({ g, gi, items }) => {
     const styleName = g.paragraph_style || (gi === 0 ? entry_style : '');
@@ -3770,7 +3800,12 @@ function renderEntryPreview(components, fieldValues, opts) {
     const add = (html) => { vlines[cur] += html; };
     const breakLine = () => { vlines.push(''); cur = vlines.length - 1; };
     const skip = new Set();
-    const renderToken = (comp, text) => _renderPreviewTokenHTML(comp, text, mode, maps);
+    const renderToken = (comp, text) => {
+      const extra = (comp.field === 'artist' && honText)
+        ? _renderPreviewHonorificInner(honText, honStyle, mode, maps)
+        : '';
+      return _renderPreviewTokenHTML(comp, text, mode, maps, extra);
+    };
 
     if (gi === firstGi && leading_separator && leading_separator !== 'none') {
       add(`<span class="pv-edge" title="Leading separator">${_teSepGlyph(leading_separator)}</span>`);
@@ -3839,6 +3874,8 @@ function _tePreviewHTML() {
     entry_style: _te.entry_style,
     leading_separator: _te.leading_separator,
     trailing_separator: _te.trailing_separator,
+    honorifics_style: _te.honorifics_style,
+    honorifics_lowercase: _te.honorifics_lowercase,
   });
 }
 
@@ -3866,6 +3903,14 @@ function renderEntryTaggedText(components, fieldValues, opts) {
 
   const groups = _teComputeParagraphs(components);
   const styled = (comp, t) => comp.char_style ? `<CharStyle:${comp.char_style}>${t}<CharStyle:>` : t;
+  // Honorific as a separate CharStyle run appended to the artist, mirroring the
+  // export renderer's `artist += " " + _cs(honorifics_style, hon)` (incl. the
+  // optional lowercasing). withHon() attaches it to the artist component only.
+  const honStyle = opts.honorifics_style || '';
+  const rawHon = (fieldValues.artist_honorifics ?? '').toString().trim();
+  const honText = rawHon ? (opts.honorifics_lowercase ? rawHon.toLowerCase() : rawHon) : '';
+  const honRun = honText ? ' ' + (honStyle ? `<CharStyle:${honStyle}>${honText}<CharStyle:>` : honText) : '';
+  const withHon = (comp, s) => s + (comp.field === 'artist' ? honRun : '');
   const lines = [];
   groups.forEach((g, gi) => {
     const items = _teVisibleItems(g, fieldValues);
@@ -3880,12 +3925,12 @@ function renderEntryTaggedText(components, fieldValues, opts) {
       if (wrapped.length > 1 && comp.next_component_position === 'end_of_first_line' && ci + 1 < items.length) {
         const nc = items[ci + 1].comp;
         const ncVal = fieldValues[nc.field] ?? '';
-        line += styled(comp, wrapped[0]) + _teTaggedSepChars(comp.separator_after) + styled(nc, ncVal)
+        line += styled(comp, wrapped[0]) + _teTaggedSepChars(comp.separator_after) + withHon(nc, styled(nc, ncVal))
               + styled(comp, '\n' + wrapped.slice(1).join('\n'));
         skip.add(ci + 1);
         if (ci + 1 !== items.length - 1) line += _teTaggedSepChars(nc.separator_after);
       } else {
-        line += styled(comp, wrapped.length > 1 ? wrapped.join('\n') : v);
+        line += withHon(comp, styled(comp, wrapped.length > 1 ? wrapped.join('\n') : v));
         if (ci !== items.length - 1) line += _teTaggedSepChars(comp.separator_after);
       }
     });
@@ -3908,6 +3953,8 @@ function _teTaggedTextHTML() {
     entry_style: _te.entry_style,
     leading_separator: _te.leading_separator,
     trailing_separator: _te.trailing_separator,
+    honorifics_style: _te.honorifics_style,
+    honorifics_lowercase: _te.honorifics_lowercase,
   });
 }
 
@@ -5570,8 +5617,10 @@ function _workEffectiveFieldValuesWith(w, override, cfg) {
   const title       = o.title_override        ?? w.title        ?? '';
   const title_cased = o.title_cased_override  ?? w.title_cased  ?? '';
   const artist      = o.artist_name_override  ?? w.artist_name  ?? '';
+  // Honorific stays a separate field so the preview can style it as its own
+  // run (matching the export). Lowercasing is applied at render time per the
+  // template's honorifics_lowercase, not here.
   const hon         = o.artist_honorifics_override ?? w.artist_honorifics ?? '';
-  const artistFull  = hon ? `${artist} ${hon}`.trim() : artist;
   // Resolve with the backend's text-suppresses-numeric rule so an "NFS"/"*"
   // text override wins over a spreadsheet number; formatPrice still prepends
   // the currency symbol when the text is a bare number ("600" -> "£600").
@@ -5593,7 +5642,8 @@ function _workEffectiveFieldValuesWith(w, override, cfg) {
   const artwork = o.artwork_override ?? w.artwork;
   return {
     work_number: String(w.raw_cat_no ?? ''),
-    artist:      artistFull,
+    artist,
+    artist_honorifics: hon,
     title,
     title_cased,
     edition,
@@ -5832,6 +5882,8 @@ function _drawerRenderOutputPreviewBodyHTML(w, fieldValues) {
     entry_style: full.entry_style || '',
     leading_separator: full.leading_separator || 'none',
     trailing_separator: full.trailing_separator || 'none',
+    honorifics_style: full.honorifics_style || '',
+    honorifics_lowercase: full.honorifics_lowercase || false,
   };
   return _drawer.tab === 'tagged'
     ? renderEntryTaggedText(componentsWithStyles, fieldValues, opts)
