@@ -54,9 +54,14 @@ Excel Upload
 
 ### Import
 
-One uploaded Excel file. Immutable after creation.
+One uploaded Excel file. The raw spreadsheet and its parsed records are
+immutable, but the `description` is editable after creation.
 
-- `id` (UUID), `filename`, `uploaded_at`, `notes`
+- `id` (UUID), `filename`, `disk_filename` (UUID-prefixed name on disk),
+  `product_type` (`list_of_works` | `artists_index`), `uploaded_at`
+- `description` — free-text, user-editable note about the import (max 256
+  chars, enforced at the API layer). Distinct from the "Import notes"
+  validation panel.
 
 ### Section
 
