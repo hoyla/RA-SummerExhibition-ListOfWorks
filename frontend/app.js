@@ -4051,6 +4051,7 @@ async function loadImportList() {
         <td><code class="import-id" title="${esc(i.id)}">${esc(i.id.slice(0, 8))}&hellip;</code></td>
         <td><a class="link" href="#/import/${esc(i.id)}">${esc(i.filename)}</a></td>
         <td>${esc(formatDate(i.uploaded_at))}</td>
+        <td class="import-description-cell">${i.description ? `<span title="${esc(i.description)}">${esc(i.description)}</span>` : '<span class="muted">&mdash;</span>'}</td>
         <td class="num">${i.sections}</td>
         <td class="num">${i.works}</td>
         <td class="num">${ovrCell}</td>
@@ -4063,7 +4064,7 @@ async function loadImportList() {
     container.innerHTML = `
       <table class="data-table">
         <thead><tr>
-          <th>ID</th><th>Filename</th><th>Uploaded</th>
+          <th>ID</th><th>Filename</th><th>Uploaded</th><th>Description</th>
           <th class="num">Sections</th><th class="num">Works</th>
           <th class="num">Overrides</th>
           <th>Actions</th>
@@ -4381,6 +4382,50 @@ function _importHeadingMeta(imp, isLatest) {
   return `<span class="heading-meta">${parts.join(' · ')}</span>`;
 }
 
+// The free-text "Import description" shown beside the heading meta strip.
+// Editors get an inline-editable input (saved on blur / Enter); everyone else
+// sees it read-only, or nothing when empty. `imp` is an import-list row.
+// Distinct from the "Import notes" validation panel. Returns escaped HTML.
+function _importDescriptionHTML(imp) {
+  const desc = imp.description || '';
+  if (canEdit()) {
+    return `<input type="text" class="import-description-input" id="import-description-input"`
+      + ` maxlength="256" value="${esc(desc)}" placeholder="Add a description…"`
+      + ` aria-label="Import description"`
+      + ` title="Free-text note about this import (max 256 characters)">`;
+  }
+  return desc
+    ? `<span class="import-description" title="${esc(desc)}">${esc(desc)}</span>`
+    : '';
+}
+
+// Wire save-on-blur / Enter for the editable description input. `patchPath` is
+// the PATCH endpoint for this import; `current` is its saved description.
+// Reverts on error and treats blank input as a clear (NULL).
+function _wireImportDescription(patchPath, current) {
+  const input = document.getElementById('import-description-input');
+  if (!input) return;
+  let lastSaved = (current || '').trim();
+  async function save() {
+    const val = input.value.trim();
+    if (val === lastSaved) { input.value = lastSaved; return; }
+    try {
+      const res = await api('PATCH', patchPath, { description: val || null });
+      lastSaved = res?.description || '';
+      input.value = lastSaved;
+      showToast('Description saved', 'success', 2500);
+    } catch (err) {
+      input.value = lastSaved;  // revert on failure
+      showToast(`Couldn’t save description: ${err.message}`, 'error');
+    }
+  }
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { input.value = lastSaved; input.blur(); }
+  });
+}
+
 function formatPrice(price_numeric, price_text, cfg) {
   if (price_numeric != null) {
     const dp  = (cfg?.decimal_places    ?? 0);
@@ -4517,7 +4562,9 @@ async function renderDetail(importId) {
   const detailHeadingEl = document.getElementById('detail-heading');
   if (thisImport) {
     detailHeadingEl.innerHTML =
-      `Import \u2013 ${esc(originalFilename)} ${_importHeadingMeta(thisImport, isLatest)}`;
+      `Import \u2013 ${esc(originalFilename)} ${_importHeadingMeta(thisImport, isLatest)}`
+      + ` ${_importDescriptionHTML(thisImport)}`;
+    _wireImportDescription(`/imports/${importId}`, thisImport.description || '');
   } else {
     detailHeadingEl.textContent = `Import \u2013 ${importId.slice(0, 8)}\u2026`;
   }
@@ -6831,6 +6878,7 @@ async function loadIndexImportList() {
         <td><code class="import-id" title="${esc(i.id)}">${esc(i.id.slice(0, 8))}\u2026</code></td>
         <td><a class="link" href="#/index/${esc(i.id)}">${esc(i.filename)}</a></td>
         <td>${esc(formatDate(i.uploaded_at))}</td>
+        <td class="import-description-cell">${i.description ? `<span title="${esc(i.description)}">${esc(i.description)}</span>` : '<span class="muted">&mdash;</span>'}</td>
         <td class="num">${i.artist_count}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="navigate('#/index/${esc(i.id)}')">View</button>
@@ -6840,7 +6888,7 @@ async function loadIndexImportList() {
     container.innerHTML = `
       <table class="data-table">
         <thead><tr>
-          <th>ID</th><th>Filename</th><th>Uploaded</th>
+          <th>ID</th><th>Filename</th><th>Uploaded</th><th>Description</th>
           <th class="num">Artists</th>
           <th>Actions</th>
         </tr></thead>
@@ -6990,7 +7038,9 @@ async function renderIndexDetail(importId) {
   const idxHeadingEl = document.getElementById('index-detail-heading');
   if (thisImport) {
     idxHeadingEl.innerHTML =
-      `Artists Index \u2013 ${esc(importFilename)} ${_importHeadingMeta(thisImport, isLatest)}`;
+      `Artists Index \u2013 ${esc(importFilename)} ${_importHeadingMeta(thisImport, isLatest)}`
+      + ` ${_importDescriptionHTML(thisImport)}`;
+    _wireImportDescription(`/index/imports/${importId}`, thisImport.description || '');
   } else {
     idxHeadingEl.textContent = `Artists Index \u2013 ${importId.slice(0, 8)}\u2026`;
   }
