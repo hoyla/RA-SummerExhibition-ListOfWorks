@@ -12,6 +12,7 @@ from backend.app.models.override_model import WorkOverride
 from backend.app.models.section_model import Section
 from backend.app.models.validation_warning_model import ValidationWarning
 from backend.app.models.work_model import Work
+from backend.app.services.import_snapshot import create_snapshot
 from backend.app.services.normalisation_service import (
     collect_work_warnings,
     normalise_work,
@@ -410,6 +411,12 @@ def reimport_excel(
         # Roll back any implicit reads so the next call sees a clean session.
         db.rollback()
         return import_record, plan
+
+    # 5a. Capture an append-only snapshot of the full pre-reimport state
+    # (the whole import, regardless of gallery scope) so the change can be
+    # diffed after the fact and restored if needed. This is part of the
+    # re-import transaction, so a failed re-import discards the snapshot too.
+    create_snapshot(import_id, db, note=display_name)
 
     # 6. Delete the scope. Two paths:
     #    - Full re-import (scope None): wipe everything for this import.
