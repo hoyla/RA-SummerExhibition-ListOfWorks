@@ -4455,6 +4455,21 @@ function formatPrice(price_numeric, price_text, cfg) {
   return price_text ?? '';
 }
 
+// Resolve the effective price for display, mirroring the backend resolver
+// (override_service.resolve_effective_work): a non-empty price_text_override
+// suppresses the numeric, so an editorial text price (e.g. "NFS", "*") wins
+// over a number the spreadsheet supplied. Returns { price_numeric, price_text }
+// ready for formatPrice(). Without this, formatPrice would keep showing the
+// spreadsheet number and the text override would look ignored in the UI.
+function resolveEffectivePrice(o, w) {
+  o = o || {};
+  const hasTextOverride = o.price_text_override != null && o.price_text_override !== '';
+  let price_numeric = o.price_numeric_override != null ? o.price_numeric_override : (w?.price_numeric ?? null);
+  const price_text = hasTextOverride ? o.price_text_override : (w?.price_text ?? null);
+  if (hasTextOverride) price_numeric = null; // text wins, mirroring the backend
+  return { price_numeric, price_text };
+}
+
 // ---------------------------------------------------------------------------
 // Display (HTML preview) formatting config — stored in localStorage only
 // ---------------------------------------------------------------------------
@@ -5557,12 +5572,11 @@ function _workEffectiveFieldValuesWith(w, override, cfg) {
   const artist      = o.artist_name_override  ?? w.artist_name  ?? '';
   const hon         = o.artist_honorifics_override ?? w.artist_honorifics ?? '';
   const artistFull  = hon ? `${artist} ${hon}`.trim() : artist;
-  const priceText   = o.price_text_override   ?? w.price_text   ?? '';
-  const priceNum    = o.price_numeric_override ?? w.price_numeric;
-  // Match workRowHTML's call shape: formatPrice handles the
-  // price_text-vs-price_numeric priority AND prepends the currency
-  // symbol when the text is a bare number ("600" -> "£600").
-  const priceDisplay = formatPrice(priceNum, priceText, cfg);
+  // Resolve with the backend's text-suppresses-numeric rule so an "NFS"/"*"
+  // text override wins over a spreadsheet number; formatPrice still prepends
+  // the currency symbol when the text is a bare number ("600" -> "£600").
+  const _ep = resolveEffectivePrice(o, w);
+  const priceDisplay = formatPrice(_ep.price_numeric, _ep.price_text, cfg);
   const eTotal = o.edition_total_override ?? w.edition_total;
   const ePrice = o.edition_price_numeric_override ?? w.edition_price_numeric;
   const prefix = (cfg.edition_prefix ?? 'edition of').trim();
@@ -6081,13 +6095,16 @@ function workRowHTML(importId, w, cfg) {
 
   // Resolve effective values (override takes precedence)
   const o = w.override;
+  // Price honours the backend's text-suppresses-numeric rule (a non-empty
+  // price_text_override wins over the spreadsheet number).
+  const _ep = resolveEffectivePrice(o, w);
   const eff = {
     title:                o?.title_override           ?? w.title,
     title_cased:          o?.title_cased_override     ?? w.title_cased,
     artist_name:          o?.artist_name_override     ?? w.artist_name,
     artist_honorifics:    o?.artist_honorifics_override ?? w.artist_honorifics,
-    price_numeric:        o?.price_numeric_override   ?? w.price_numeric,
-    price_text:           o?.price_text_override      ?? w.price_text,
+    price_numeric:        _ep.price_numeric,
+    price_text:           _ep.price_text,
     edition_total:        o?.edition_total_override   ?? w.edition_total,
     edition_price_numeric: o?.edition_price_numeric_override ?? w.edition_price_numeric,
     medium:               o?.medium_override          ?? w.medium,
