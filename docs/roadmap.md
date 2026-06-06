@@ -553,6 +553,34 @@ controls and editor UX around it.
 
 ---
 
+## Phase 25 – Reimport snapshots, diff & undo ✅
+
+Make "Update Import" reversible and transparent after the fact (see
+`architecture_v1.md` §5.3).
+
+- **Pre-reimport snapshots** — `ImportSnapshot` model + migration; every real
+  re-import captures the full mutable state (append-only, in-transaction,
+  whole-import even when gallery-scoped). Full-column serialisation so a new
+  field can't silently fall out.
+- **Attributed diff** — `diff_states` reports field-level changes tagged by
+  cause (source / normalisation / override), fingerprint-first pairing. Surfaced
+  as a "What the last update changed" panel on the import detail page.
+- **Undo / restore** — `restore_snapshot` reinstates a prior state verbatim
+  (original ids, no re-normalisation); itself reversible and audited.
+  `POST …/snapshots/{id}/restore` + an editor-only "Undo this update" button.
+- **Two fixes surfaced en route** — `title_cased_override` /
+  shared-surname overrides were silently dropped on re-import (PR #107, with a
+  structural test pinning each preservation list to its model); a text price
+  override (`NFS`/`*`) won in export but not in the UI (PR #109).
+- *Deferred:* restore does not reinstate the Import record's
+  `filename`/`description`.
+
+### Test count
+
+- 1019 tests across 45 test files
+
+---
+
 ## Future considerations
 
 - Bidirectional LPG / multi-paragraph LOW reconciliation (parser would map by
