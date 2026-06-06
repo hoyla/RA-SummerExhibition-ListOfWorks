@@ -6589,10 +6589,36 @@ async function toggleReimportDiff(importId, btnEl) {
     const diff = await api('GET', `/imports/${importId}/reimport-diff`);
     panel.dataset.visible = '1';
     panel.innerHTML = _renderReimportDiffPanel(diff);
+    // Wire the undo button (only rendered for editors when there's a snapshot).
+    panel.querySelector('#reimport-undo-btn')?.addEventListener('click', (e) =>
+      undoReimport(importId, diff.snapshot.id, e.currentTarget)
+    );
   } catch (err) {
     if (err.message === 'Auth') return;
     panel.innerHTML = `<p class="error" style="margin-top:8px">${esc(err.message)}</p>`;
   } finally {
+    restore();
+  }
+}
+
+// Undo the last Update Import by restoring the pre-reimport snapshot. The
+// backend captures the current state first, so this is itself reversible.
+async function undoReimport(importId, snapshotId, btnEl) {
+  const ok = window.confirm(
+    'Undo the last Update Import?\n\n' +
+    'This replaces the current data with the snapshot taken just before it — ' +
+    'any changes since (including overrides added afterwards) will be discarded. ' +
+    'A snapshot of the current state is saved first, so this is itself reversible.'
+  );
+  if (!ok) return;
+  const restore = btnLoading(btnEl, 'Undoing');
+  try {
+    const res = await api('POST', `/imports/${importId}/snapshots/${snapshotId}/restore`);
+    showToast(`Restored ${res.works} work${res.works === 1 ? '' : 's'} from the snapshot`, 'success', 5000);
+    await renderDetail(importId);  // rebuilds the page; button is gone afterwards
+  } catch (err) {
+    if (err.message === 'Auth') return;
+    showToast(`Undo failed: ${err.message}`, 'error');
     restore();
   }
 }
@@ -6629,6 +6655,15 @@ function _renderReimportDiffPanel(diff) {
   if (diff.removed.length) badges.push(`<span class="badge badge-removed">${diff.removed.length} removed</span>`);
   if (diff.unchanged_count) badges.push(`<span class="badge badge-unchanged">${diff.unchanged_count} unchanged</span>`);
   parts.push(`<div class="diff-badges">${badges.join(' ')}</div>`);
+
+  // Undo (editors only): restore the pre-update snapshot. Reversible — the
+  // backend snapshots the current state first.
+  if (canEdit() && snap) {
+    parts.push(
+      `<div class="reimport-undo-bar"><button type="button" class="btn btn-secondary" id="reimport-undo-btn">` +
+      `↩ Undo this update — restore the snapshot</button></div>`
+    );
+  }
 
   // Cause legend so the "Why" column reads clearly.
   parts.push(
