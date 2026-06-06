@@ -6903,7 +6903,7 @@ function toggleReconCosmetic() {
   }
   if (!cos.length) return;
   const rows = cos.map(f => `<tr>
-    <td class="diff-catno">${esc(f.cat_no ?? '—')}</td>
+    <td class="diff-catno">${_reconCatNoCell(f.cat_no)}</td>
     <td><code>${esc(f.field || '')}</code></td>
     <td><span class="diff-old">${esc(String(f.db_value ?? ''))}</span></td>
     <td><span class="diff-new">${esc(String(f.low_value ?? ''))}</span></td>
@@ -6941,6 +6941,27 @@ function _paintReconGroups() {
       'Text changes — open the work below and set the override. Best done after the re-import is settled.', textual);
 }
 
+// Reconcile findings are keyed by catalogue number; the works table rows are
+// keyed by work id. Map cat no -> work (via _workCache, populated when the
+// sections render) so the cat-no column can click through to the work below,
+// like the Import notes panel does. Returns null when no work matches (e.g. an
+// entry that's in the corrected LOW but not yet in the data) -> plain text.
+function _workByCatNo(catNo) {
+  if (catNo == null || catNo === '') return null;
+  const want = String(catNo);
+  return Object.values(_workCache).find(w => String(w.raw_cat_no ?? '') === want) || null;
+}
+
+// Inner HTML for a reconcile "Cat No" cell: a scroll-to-work link when the work
+// exists in the current data, otherwise the plain (escaped) number.
+function _reconCatNoCell(catNo) {
+  const txt = (catNo != null && catNo !== '') ? String(catNo) : '—';
+  const work = _workByCatNo(catNo);
+  return work
+    ? `<button type="button" class="link-btn" onclick="scrollToWork('${esc(work.id)}')">${esc(txt)}</button>`
+    : esc(txt);
+}
+
 function _reconTaskGroup(num, title, hint, findings) {
   if (!findings.length) return '';
   const rows = findings.map(f => {
@@ -6949,7 +6970,7 @@ function _reconTaskGroup(num, title, hint, findings) {
     const dbv = (f.db_value != null && f.db_value !== '') ? `<span class="diff-old">${esc(String(f.db_value))}</span>` : '<span class="muted">—</span>';
     const lowv = (f.low_value != null && f.low_value !== '') ? `<span class="diff-new">${esc(String(f.low_value))}</span>` : '<span class="muted">—</span>';
     return `<tr>
-      <td class="diff-catno">${esc(f.cat_no ?? '—')}</td>
+      <td class="diff-catno">${_reconCatNoCell(f.cat_no)}</td>
       <td>${what}</td>
       <td>${dbv}</td>
       <td>${lowv}</td>
