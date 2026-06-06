@@ -4382,21 +4382,30 @@ function _importHeadingMeta(imp, isLatest) {
   return `<span class="heading-meta">${parts.join(' · ')}</span>`;
 }
 
-// The free-text "Import description" shown beside the heading meta strip.
-// Editors get an inline-editable input (saved on blur / Enter); everyone else
-// sees it read-only, or nothing when empty. `imp` is an import-list row.
-// Distinct from the "Import notes" validation panel. Returns escaped HTML.
+// The free-text "Import description" shown inline beside the heading meta
+// strip (kept on the heading row to spare vertical space). Editors get an
+// editable input that grows with its content, bounded by CSS to [356, 712]px;
+// everyone else sees it read-only, or nothing when empty. `imp` is an
+// import-list row. Distinct from the "Import notes" validation panel.
+// Returns escaped HTML.
 function _importDescriptionHTML(imp) {
   const desc = imp.description || '';
   if (canEdit()) {
     return `<input type="text" class="import-description-input" id="import-description-input"`
-      + ` maxlength="256" value="${esc(desc)}" placeholder="Add a description…"`
-      + ` aria-label="Import description"`
+      + ` maxlength="256" size="${_descInputSize(desc)}" value="${esc(desc)}"`
+      + ` placeholder="Add a description…" aria-label="Import description"`
       + ` title="Free-text note about this import (max 256 characters)">`;
   }
   return desc
     ? `<span class="import-description" title="${esc(desc)}">${esc(desc)}</span>`
     : '';
+}
+
+// Character width for the description input so it grows toward its content.
+// The visible width is still clamped to [356, 712]px by CSS; `size` only
+// drives the auto-grow between those bounds. +2 leaves room for the caret.
+function _descInputSize(value) {
+  return Math.max((value || '').length + 2, 1);
 }
 
 // Wire save-on-blur / Enter for the editable description input. `patchPath` is
@@ -4406,6 +4415,8 @@ function _wireImportDescription(patchPath, current) {
   const input = document.getElementById('import-description-input');
   if (!input) return;
   let lastSaved = (current || '').trim();
+  const resize = () => { input.size = _descInputSize(input.value); };
+  input.addEventListener('input', resize);
   async function save() {
     const val = input.value.trim();
     if (val === lastSaved) { input.value = lastSaved; return; }
