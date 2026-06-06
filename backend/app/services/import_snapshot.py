@@ -133,6 +133,31 @@ def serialize_import_state(import_id: _uuid.UUID, db: Session) -> dict:
     }
 
 
+def list_snapshots(import_id: _uuid.UUID, db: Session) -> list[ImportSnapshot]:
+    """All snapshots for an import, newest first."""
+    return (
+        db.query(ImportSnapshot)
+        .filter(ImportSnapshot.import_id == import_id)
+        .order_by(ImportSnapshot.created_at.desc())
+        .all()
+    )
+
+
+def get_latest_snapshot(import_id: _uuid.UUID, db: Session) -> Optional[ImportSnapshot]:
+    """The most recent snapshot for an import, or None."""
+    return (
+        db.query(ImportSnapshot)
+        .filter(ImportSnapshot.import_id == import_id)
+        .order_by(ImportSnapshot.created_at.desc())
+        .first()
+    )
+
+
+def get_snapshot(snapshot_id: _uuid.UUID, db: Session) -> Optional[ImportSnapshot]:
+    """A snapshot by id, or None."""
+    return db.query(ImportSnapshot).filter(ImportSnapshot.id == snapshot_id).first()
+
+
 def create_snapshot(
     import_id: _uuid.UUID,
     db: Session,
