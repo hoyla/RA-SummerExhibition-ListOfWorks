@@ -17,6 +17,8 @@ from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.api.schemas import (
     AutoResolvedFields,
+    ImportDescriptionOut,
+    ImportDescriptionUpdate,
     IndexArtistOut,
     IndexArtistOverrideIn,
     IndexArtistOverrideOut,
@@ -138,12 +140,33 @@ def list_index_imports(db: Session = Depends(get_db)):
             id=str(i.id),
             filename=i.filename,
             uploaded_at=i.uploaded_at.isoformat(),
-            notes=i.notes,
+            description=i.description,
             product_type=i.product_type,
             artist_count=artist_counts.get(str(i.id), 0),
         )
         for i in imports
     ]
+
+
+@router.patch(
+    "/imports/{import_id}",
+    response_model=ImportDescriptionOut,
+    dependencies=[Depends(require_role("editor"))],
+)
+def update_index_import_description(
+    import_id: UUID,
+    body: ImportDescriptionUpdate,
+    db: Session = Depends(get_db),
+):
+    """Set or clear the free-text description for an Artists' Index import.
+
+    Whitespace is trimmed; an empty value clears the field (stored as NULL).
+    The 256-character cap is enforced by ``ImportDescriptionUpdate``.
+    """
+    import_record = _get_index_import_or_404(import_id, db)
+    import_record.description = body.description
+    db.commit()
+    return ImportDescriptionOut(id=str(import_id), description=import_record.description)
 
 
 # ---------------------------------------------------------------------------

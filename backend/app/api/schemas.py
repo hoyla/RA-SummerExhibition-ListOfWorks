@@ -15,13 +15,44 @@ class ImportOut(BaseModel):
     id: str
     filename: str
     uploaded_at: str
-    notes: str | None
+    description: str | None
     sections: int
     works: int
     override_count: int
     last_override_at: str | None
 
     model_config = {"from_attributes": True}
+
+
+# Max length for the free-text import description. Mirrored client-side as the
+# input's maxlength; enforced authoritatively here.
+IMPORT_DESCRIPTION_MAX_LEN = 256
+
+
+class ImportDescriptionUpdate(BaseModel):
+    """Request body for setting/clearing an import's free-text description."""
+
+    description: str | None = None
+
+    @field_validator("description")
+    @classmethod
+    def _normalise(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if len(v) > IMPORT_DESCRIPTION_MAX_LEN:
+            raise ValueError(
+                f"Description must be {IMPORT_DESCRIPTION_MAX_LEN} characters or fewer"
+            )
+        # Empty / whitespace-only is stored as NULL (clears the field).
+        return v or None
+
+
+class ImportDescriptionOut(BaseModel):
+    """Lightweight response after updating a description."""
+
+    id: str
+    description: str | None
 
 
 class GallerySummaryOut(BaseModel):
@@ -562,7 +593,7 @@ class IndexImportOut(BaseModel):
     id: str
     filename: str
     uploaded_at: str
-    notes: str | None = None
+    description: str | None = None
     product_type: str
     artist_count: int
     override_count: int = 0

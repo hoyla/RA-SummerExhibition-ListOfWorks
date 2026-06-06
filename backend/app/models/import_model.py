@@ -14,7 +14,9 @@ class Import(Base):
 
     filename = Column(Text, nullable=False)
     disk_filename = Column(Text, nullable=True)  # UUID-prefixed name on disk
-    notes = Column(Text, nullable=True)
+    # Free-text, user-editable note about this import (max 256 chars, enforced
+    # at the API layer). Distinct from the "Import notes" validation panel.
+    description = Column(Text, nullable=True)
 
     # 'list_of_works' | 'artists_index'
     product_type = Column(Text, nullable=False, server_default="list_of_works")

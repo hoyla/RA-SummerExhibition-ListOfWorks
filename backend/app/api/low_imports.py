@@ -16,6 +16,8 @@ from backend.app.api.auth import require_role
 from backend.app.api.deps import get_db
 from backend.app.api.normalisation_config import load_normalisation_settings
 from backend.app.api.schemas import (
+    ImportDescriptionOut,
+    ImportDescriptionUpdate,
     ImportOut,
     PreviewSectionOut,
     PreviewWorkOut,
@@ -215,7 +217,7 @@ def list_imports(db: Session = Depends(get_db)):
                 "id": iid,
                 "filename": i.filename,
                 "uploaded_at": i.uploaded_at.isoformat(),
-                "notes": i.notes,
+                "description": i.description,
                 "sections": section_counts.get(iid, 0),
                 "works": work_counts.get(iid, 0),
                 "override_count": ovr.override_count if ovr else 0,
@@ -226,6 +228,35 @@ def list_imports(db: Session = Depends(get_db)):
         )
 
     return result
+
+
+@router.patch(
+    "/imports/{import_id}",
+    response_model=ImportDescriptionOut,
+    dependencies=[Depends(require_role("editor"))],
+)
+def update_import_description(
+    import_id: UUID,
+    body: ImportDescriptionUpdate,
+    db: Session = Depends(get_db),
+):
+    """Set or clear the free-text description for a list-of-works import.
+
+    Whitespace is trimmed; an empty value clears the field (stored as NULL).
+    The 256-character cap is enforced by ``ImportDescriptionUpdate``.
+    """
+    import_record = (
+        db.query(Import)
+        .filter(Import.id == import_id, Import.product_type == "list_of_works")
+        .first()
+    )
+    if not import_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import not found")
+
+    import_record.description = body.description
+    db.commit()
+
+    return ImportDescriptionOut(id=str(import_id), description=import_record.description)
 
 
 @router.get("/imports/{import_id}/sections", response_model=List[SectionOut])
