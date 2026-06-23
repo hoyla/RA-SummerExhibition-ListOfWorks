@@ -16,6 +16,10 @@
 #   8. GitHub OIDC provider
 #   9. Secrets Manager entries (per-environment)
 #  10. Application Load Balancer (host-based routing)
+#
+# Seasonal teardown/rebuild of production (between exhibitions) is handled
+# separately by mothball-prod.sh / restore-prod.sh — see
+# docs/mothball-and-restore.md.
 # ==========================================================================
 
 set -euo pipefail

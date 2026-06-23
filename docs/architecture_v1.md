@@ -48,6 +48,13 @@ Excel Upload
 | Storage    | Local disk / Amazon S3                  |
 | Testing    | pytest (~975 tests across 40 test files) |
 
+**Infrastructure & operations.** The AWS stack (ECR, S3, RDS, ECS Fargate,
+ALB, IAM, Cognito) is built by [`.aws/setup-infrastructure.sh`](../.aws/setup-infrastructure.sh).
+The tool runs for only a few weeks each year, so production is mothballed to
+near-zero cost between exhibitions and rebuilt intact — see
+[`mothball-and-restore.md`](mothball-and-restore.md). Database backups are
+covered in [`dev-guide.md`](dev-guide.md#database-backup-production).
+
 ---
 
 ## 3. Data model

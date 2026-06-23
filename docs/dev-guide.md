@@ -439,3 +439,140 @@ If an endpoint returns 500 with no log output:
 | LoW warning type not showing in UI               | Check the label map `_LOW_WARNING_LABELS` and the `_LOW_CHANGED_TYPES` set in `app.js`                                                    |
 | Index warning type not showing in UI             | Check the label map `_IDX_WARNING_LABELS` and the `_IDX_CHANGED_TYPES` set in `app.js`                                                    |
 | LoW Flags column badge not appearing             | Check `workRowHTML()` flags array — badges come from client-side detection (Trimmed, Norm, RA) and server-side warnings                    |
+
+---
+
+## Database backup (production)
+
+The production RDS instance (`catalogue-prod`, Postgres 16) is private
+(`PubliclyAccessible: false`) and there's no bastion or VPN into its VPC, so it
+can't be reached directly from a laptop. `pg_dump` also isn't installed in the
+app image, so dumping via ECS Exec isn't an option (and even if it were, the
+SSM session channel that backs `execute-command` is an interactive PTY, not a
+binary-safe pipe — it would corrupt a custom-format dump).
+
+The reliable, fully-managed route is to **restore a snapshot to a temporary,
+publicly-accessible instance**, `pg_dump` from it locally, then delete it. RDS
+takes automatic daily snapshots (7-day retention); use the latest, or take a
+fresh manual one first if you need up-to-the-minute data.
+
+This account makes that easy: the prod VPC is the **default VPC**, and the
+existing `catalogue-db-subnets` group sits in public subnets (IGW route,
+public-IP-on-launch). So the temp instance can reuse that subnet group and
+still be reachable — the only new resource is a throwaway security group locked
+to your IP.
+
+**Prerequisites:** AWS CLI configured for account `028597908565` / region
+`eu-north-1`, and a local `pg_dump`/`pg_restore` **≥ 16** (the prod engine is
+16.10; older clients refuse the dump). On macOS: `brew install libpq` and put
+its `bin` on your `PATH`.
+
+```bash
+export AWS_REGION=eu-north-1 AWS_PAGER=""
+VPC=vpc-0b17f45cadb2c54aa
+SUBNET_GROUP=catalogue-db-subnets
+TEMP_ID=catalogue-restore-$(date +%Y%m%d)
+```
+
+**1. Pick a snapshot.** Use the latest automated snapshot:
+
+```bash
+SNAPSHOT=$(aws rds describe-db-snapshots \
+  --db-instance-identifier catalogue-prod \
+  --query 'reverse(sort_by(DBSnapshots,&SnapshotCreateTime))[0].DBSnapshotIdentifier' \
+  --output text)
+echo "Using snapshot: $SNAPSHOT"
+```
+
+For up-to-the-minute data, take a fresh one first instead:
+
+```bash
+aws rds create-db-snapshot --db-instance-identifier catalogue-prod \
+  --db-snapshot-identifier "$TEMP_ID"
+aws rds wait db-snapshot-available --db-snapshot-identifier "$TEMP_ID"
+SNAPSHOT=$TEMP_ID
+```
+
+**2. Create a throwaway security group open to your IP only:**
+
+```bash
+MYIP=$(curl -s https://checkip.amazonaws.com)
+SG=$(aws ec2 create-security-group \
+  --group-name "$TEMP_ID-sg" \
+  --description "Temp RDS restore access" \
+  --vpc-id "$VPC" --query GroupId --output text)
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG" --protocol tcp --port 5432 --cidr "${MYIP}/32"
+```
+
+**3. Restore the snapshot to a temporary public instance:**
+
+```bash
+aws rds restore-db-instance-from-db-snapshot \
+  --db-instance-identifier "$TEMP_ID" \
+  --db-snapshot-identifier "$SNAPSHOT" \
+  --db-subnet-group-name "$SUBNET_GROUP" \
+  --vpc-security-group-ids "$SG" \
+  --db-instance-class db.t4g.micro \
+  --publicly-accessible --no-multi-az
+
+aws rds wait db-instance-available --db-instance-identifier "$TEMP_ID"
+ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier "$TEMP_ID" \
+  --query 'DBInstances[0].Endpoint.Address' --output text)
+```
+
+The restored instance keeps prod's master credentials. Reuse them from Secrets
+Manager, swapping the host for the temp endpoint:
+
+```bash
+PROD_URL=$(aws secretsmanager get-secret-value \
+  --secret-id catalogue-prod/DATABASE_URL \
+  --query SecretString --output text)
+# Replace the host:port between '@' and '/dbname' with the temp endpoint.
+# (If the secret is JSON rather than a bare URL, extract the field first.)
+TEMP_URL=$(echo "$PROD_URL" | sed -E "s#@[^/]+/#@${ENDPOINT}:5432/#")
+```
+
+**4. Dump locally:**
+
+```bash
+pg_dump "$TEMP_URL" \
+  --no-owner --no-privileges \
+  --format=custom \
+  --file=prod_$(date +%Y%m%d).dump
+```
+
+`--format=custom` produces a compressed dump for `pg_restore`; `--no-owner
+--no-privileges` strips prod's roles, which don't exist elsewhere.
+
+**5. Restore into local Docker (optional):**
+
+```bash
+pg_restore \
+  --no-owner --no-privileges \
+  --clean --if-exists \
+  --single-transaction \
+  -d postgresql://catalogue:catalogue@localhost:5432/catalogue \
+  prod_$(date +%Y%m%d).dump
+```
+
+`--clean --if-exists` drops and recreates objects so you can re-run over an
+existing local DB; `--single-transaction` makes the restore all-or-nothing.
+
+**6. Tear down the temp resources** — don't skip this; it's a publicly-reachable
+copy of prod data:
+
+```bash
+aws rds delete-db-instance --db-instance-identifier "$TEMP_ID" --skip-final-snapshot
+aws rds wait db-instance-deleted --db-instance-identifier "$TEMP_ID"
+aws ec2 delete-security-group --group-id "$SG"
+# If you took a manual snapshot in step 1, delete it too:
+# aws rds delete-db-snapshot --db-snapshot-identifier "$TEMP_ID"
+```
+
+> Automatic snapshots are also visible in the AWS console under RDS →
+> Snapshots and can be restored to a new instance there without the CLI — the
+> same approach, just click-driven.
+
+> To tear the **whole** production stack down between exhibitions (not just
+> dump the database), see [`mothball-and-restore.md`](mothball-and-restore.md).
