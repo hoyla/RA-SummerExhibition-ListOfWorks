@@ -101,16 +101,32 @@ else
     echo "    (ALB already gone)"
 fi
 
-# Target group can only be deleted once no listener references it (i.e. after
-# the ALB is gone).
+# Target group can only be deleted once no listener references it. The ALB's
+# listener can lag a few seconds behind 'load-balancers-deleted' returning, so
+# the delete races and fails with ResourceInUse. Retry to ride out that window
+# rather than masking the failure (which left an orphaned TG + a misleading
+# success banner).
 TG_ARN=$(aws elbv2 describe-target-groups --names catalogue-prod-tg \
     --query 'TargetGroups[0].TargetGroupArn' --output text \
     --region "$REGION" 2>/dev/null || echo "None")
 if [ "$TG_ARN" != "None" ] && [ -n "$TG_ARN" ]; then
-    aws elbv2 delete-target-group --target-group-arn "$TG_ARN" \
-        --region "$REGION" --no-cli-pager \
-        && echo "    ✓ Target group deleted." \
-        || echo "    (target group still referenced or already gone)"
+    tg_deleted=false
+    for attempt in 1 2 3 4 5; do
+        if aws elbv2 delete-target-group --target-group-arn "$TG_ARN" \
+                --region "$REGION" --no-cli-pager 2>/dev/null; then
+            tg_deleted=true
+            break
+        fi
+        echo "    target group still referenced (attempt $attempt/5) — retrying in 10s..."
+        sleep 10
+    done
+    if [ "$tg_deleted" = true ]; then
+        echo "    ✓ Target group deleted."
+    else
+        echo "    ⚠ Target group NOT deleted after retries (still referenced)."
+        echo "      It's free and restore reuses it, but remove it manually if you want a clean slate:"
+        echo "      aws elbv2 delete-target-group --target-group-arn $TG_ARN --region $REGION"
+    fi
 else
     echo "    (target group already gone)"
 fi
