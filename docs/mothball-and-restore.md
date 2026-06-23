@@ -119,7 +119,10 @@ exactly as they were.
 - The mothball script is **snapshot-first, verify, then delete** — it will not
   delete the database without a confirmed-available snapshot.
 - S3 data and Cognito users are never touched by either script.
-- Both scripts are re-runnable: existing resources are detected and skipped.
+- Both scripts are safe to re-run. On restore, existing resources are detected
+  and reused/skipped. On mothball, the deletions are idempotent (already-gone
+  resources are skipped), but **each run takes a fresh timestamped snapshot** —
+  so a re-run leaves an extra snapshot, which you can delete later.
 - Manual snapshots persist until explicitly deleted (unlike the 7-day automated
   ones), so a mothball snapshot is safe to leave for the full off-season. Delete
   old ones once a season is successfully restored:
