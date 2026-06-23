@@ -77,7 +77,14 @@ RDS_SG=$(sg catalogue-rds-sg)
 echo ">>> 1/5  Restoring RDS catalogue-prod from $SNAPSHOT_ID ..."
 if aws rds describe-db-instances --db-instance-identifier catalogue-prod \
         --region "$REGION" >/dev/null 2>&1; then
-    echo "    (catalogue-prod already exists — skipping restore)"
+    # Reusing an existing instance — flag it loudly with its create time so a
+    # leftover from an interrupted/earlier restore isn't silently adopted as
+    # though it were the snapshot we were asked to restore.
+    EXISTING_CREATED=$(aws rds describe-db-instances --db-instance-identifier catalogue-prod \
+        --query 'DBInstances[0].InstanceCreateTime' --output text --region "$REGION" 2>/dev/null || echo "unknown")
+    echo "    ⚠  catalogue-prod already exists (created $EXISTING_CREATED) — skipping restore."
+    echo "       If that's a leftover rather than the DB you want, delete it and re-run"
+    echo "       to restore from $SNAPSHOT_ID."
 else
     aws rds restore-db-instance-from-db-snapshot \
         --db-instance-identifier catalogue-prod \
@@ -105,6 +112,16 @@ echo ">>> 2/5  Updating catalogue-prod/DATABASE_URL endpoint ..."
 OLD_URL=$(aws secretsmanager get-secret-value --secret-id catalogue-prod/DATABASE_URL \
     --query SecretString --output text --region "$REGION")
 NEW_URL=$(echo "$OLD_URL" | sed -E "s#@[^/]+/#@${RDS_ENDPOINT}:5432/#")
+# Guard: only write a value that actually points at the new host. If the secret's
+# URL shape didn't match the sed (so the dead endpoint would survive), stop rather
+# than silently persist a broken DATABASE_URL. (Passes idempotent re-runs, where
+# the secret already contains the current endpoint.)
+case "$NEW_URL" in
+    *"@${RDS_ENDPOINT}:5432/"*) : ;;
+    *) echo "    ERROR: DATABASE_URL rewrite did not produce the new endpoint ($RDS_ENDPOINT)."
+       echo "    Refusing to write a possibly-broken secret — fix it manually and re-run."
+       exit 1 ;;
+esac
 aws secretsmanager put-secret-value --secret-id catalogue-prod/DATABASE_URL \
     --secret-string "$NEW_URL" --region "$REGION" --no-cli-pager >/dev/null
 echo "    ✓ Secret repointed."
