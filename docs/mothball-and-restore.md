@@ -9,6 +9,10 @@ next exhibition comes round. This is the runbook; the two scripts
 - **Related:** [`staging-rebuild-checklist.md`](staging-rebuild-checklist.md) (staging
   was torn down in April 2026 the same way), [`.aws/setup-infrastructure.sh`](../.aws/setup-infrastructure.sh)
   (the original full build).
+- **Pre-flight:** run [`.aws/mothball-preflight.sh`](../.aws/mothball-preflight.sh)
+  (read-only) before a mothball *or* a restore — it checks every resource name,
+  config value, secret, and the ECR image the scripts rely on, and simulates the
+  `DATABASE_URL` rewrite. Eyeball the ✓/✗/⚠ and clear any ✗ before proceeding.
 
 ## What costs money, and what doesn't
 
