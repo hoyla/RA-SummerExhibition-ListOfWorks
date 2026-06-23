@@ -53,7 +53,8 @@ From the project root:
 ```
 
 It will:
-1. Take a snapshot `catalogue-prod-mothball-YYYYMMDD` and **wait until it is
+1. Take a snapshot `catalogue-prod-mothball-YYYYMMDD-HHMMSS` (timestamped per run,
+   so a re-run never reuses a stale earlier snapshot) and **wait until it is
    `available`** — if the snapshot fails, it aborts *before* deleting anything.
 2. Delete the ECS service (cluster + task definitions kept).
 3. Delete the ALB, then its target group.
@@ -75,7 +76,7 @@ From the project root:
 ```bash
 ./.aws/restore-prod.sh                       # uses newest mothball snapshot
 # or pin one explicitly:
-./.aws/restore-prod.sh catalogue-prod-mothball-20260801
+./.aws/restore-prod.sh catalogue-prod-mothball-20260801-031500
 ```
 
 It will:

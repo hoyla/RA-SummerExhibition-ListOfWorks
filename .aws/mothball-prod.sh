@@ -21,7 +21,11 @@
 set -euo pipefail
 
 REGION="eu-north-1"
-SNAPSHOT_ID="catalogue-prod-mothball-$(date +%Y%m%d)"
+# Timestamp to the second so every run gets a unique snapshot id. A date-only id
+# could collide with a pre-existing (possibly stale) same-day snapshot, which the
+# old reuse-if-exists branch would then have accepted as the "final" backup
+# before deleting the DB with --skip-final-snapshot — silent data loss.
+SNAPSHOT_ID="catalogue-prod-mothball-$(date +%Y%m%d-%H%M%S)"
 export AWS_PAGER=""
 
 echo "============================================"
@@ -43,15 +47,13 @@ echo ">>> 1/4  Snapshotting RDS catalogue-prod -> $SNAPSHOT_ID ..."
 if aws rds describe-db-instances --db-instance-identifier catalogue-prod \
         --region "$REGION" >/dev/null 2>&1; then
 
-    if aws rds describe-db-snapshots --db-snapshot-identifier "$SNAPSHOT_ID" \
-            --region "$REGION" >/dev/null 2>&1; then
-        echo "    (snapshot $SNAPSHOT_ID already exists — reusing)"
-    else
-        aws rds create-db-snapshot \
-            --db-instance-identifier catalogue-prod \
-            --db-snapshot-identifier "$SNAPSHOT_ID" \
-            --region "$REGION" --no-cli-pager >/dev/null
-    fi
+    # The id is unique per run (see above), so always take a fresh snapshot of
+    # the live data. If the id somehow already existed, create fails and set -e
+    # aborts here — before any deletion.
+    aws rds create-db-snapshot \
+        --db-instance-identifier catalogue-prod \
+        --db-snapshot-identifier "$SNAPSHOT_ID" \
+        --region "$REGION" --no-cli-pager >/dev/null
 
     echo "    Waiting for snapshot to complete (5-10 min)..."
     aws rds wait db-snapshot-available \
@@ -118,12 +120,21 @@ echo ""
 # 4. Delete the RDS instance (the snapshot from step 1 is what we keep)
 # --------------------------------------------------------------------------
 echo ">>> 4/4  Deleting RDS instance catalogue-prod ..."
-aws rds delete-db-instance \
-    --db-instance-identifier catalogue-prod \
-    --skip-final-snapshot \
-    --region "$REGION" --no-cli-pager >/dev/null 2>&1 \
-    && echo "    ✓ Deletion initiated (runs in the background, a few minutes)." \
-    || echo "    (instance already gone)"
+if aws rds describe-db-instances --db-instance-identifier catalogue-prod \
+        --region "$REGION" >/dev/null 2>&1; then
+    # Only report "already gone" when it genuinely isn't there. A real failure
+    # (deletion protection, incompatible state) must NOT be masked as success —
+    # otherwise the instance keeps billing while the banner claims it's mothballed.
+    aws rds delete-db-instance \
+        --db-instance-identifier catalogue-prod \
+        --skip-final-snapshot \
+        --region "$REGION" --no-cli-pager >/dev/null \
+        && echo "    ✓ Deletion initiated (runs in the background, a few minutes)." \
+        || { echo "    ERROR: delete-db-instance failed (deletion protection? instance state?)."; \
+             echo "    Snapshot $SNAPSHOT_ID is safe; investigate, then re-run."; exit 1; }
+else
+    echo "    (instance already gone)"
+fi
 echo ""
 
 echo "============================================"
