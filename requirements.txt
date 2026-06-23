@@ -4,7 +4,7 @@ sqlalchemy==2.0.46
 alembic==1.18.4
 psycopg2-binary==2.9.11
 pydantic==2.12.5
-python-multipart==0.0.27
+python-multipart==0.0.31
 openpyxl==3.1.5
 titlecase==2.4.1
 aiofiles==25.1.0
